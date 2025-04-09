@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang='de'>
+<head>
+  <meta charset='UTF-8'>
+  <title>Galerie – Seite {{ seite }}</title>
+  <style>
+    body { font-family: sans-serif; margin: 0; background: #f7f7f7; }
+    .sticky-nav { position: sticky; top: 0; background: #fff; padding: 10px; border-bottom: 1px solid #ccc; z-index: 1000; text-align: center; }
+    .sticky-nav a { margin: 0 8px; text-decoration: none; font-weight: bold; }
+    .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; padding: 20px; }
+    .eintrag { grid-column: span 2; background: white; border: 1px solid #ddd; border-radius: 10px; padding: 10px; box-shadow: 2px 2px 6px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 10px; }
+    .bild { display: block; margin: 0 auto; max-width: 400px; height: auto; border-radius: 5px; cursor: zoom-in; transition: transform 0.2s ease; }
+    .bild:hover { transform: scale(1.03); }
+    .bildname { text-align: center; font-weight: bold; margin-top: 8px; }
+    .text { white-space: pre-wrap; }
+    .checkbox-container { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+<div class='sticky-nav'>
+  <a href='/gallery/?seite=1'>⏮ Anfang</a>
+  <a href='/gallery/?pageToken={{ prevToken or '' }}&seite={{ seite - 1 if seite > 1 else 1 }}'>⬅ Zurück</a>
+  <span style='margin: 0 15px; font-weight: bold;'>Seite {{ seite }}</span>
+  <a href='/gallery/?pageToken={{ next_page_token }}&prevToken={{ pageToken or '' }}&seite={{ seite + 1 }}'>Weiter ➡</a>
+</div>
+<div class='grid'>
+{{ images_html | safe }}
+</div>
+</body>
+</html>

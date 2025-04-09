@@ -1,0 +1,13 @@
+<div class='eintrag'>
+    <img src='{{ thumbnail_src }}' alt='{{ file_name }}' class='bild'>
+    <div class='bildname'>{{ file_name }}</div>
+    <form class='checkbox-container'>
+      <label><input type='checkbox' name='{{ file_name }}_delete'> Löschen</label>
+      <label><input type='checkbox' name='{{ file_name }}_recheck'> Neu beurteilen</label>
+      <label><input type='checkbox' name='{{ file_name }}_bad'> Schlecht</label>
+      <label><input type='checkbox' name='{{ file_name }}_sex'> Sex</label>
+      <label><input type='checkbox' name='{{ file_name }}_animal'> Tiere</label>
+    </form>
+    <div class='text'>{{ text_content | safe }}</div>
+  </div>
+  

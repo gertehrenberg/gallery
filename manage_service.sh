@@ -40,6 +40,7 @@ docker run -d \
   -p 8000:8000 \
   -v "$(pwd):/app" \
   -v "$PWD/secrets:/app/secrets" \
+  -v "$PWD/cache:/data" \
   -e FOLDER_ID=13U8wUpisnRJpQLNb0ecbnEcDlrz-bTzV \
   gallery
 
