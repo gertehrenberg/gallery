@@ -34,11 +34,10 @@ IMAGES_PER_PAGE = 6
 
 image_cache = {}  # file_id -> { 'thumbnail': url }
 text_cache = {}  # lowercase text filename -> content
-pair_cache = {}  # lowercase image filename -> (image_id, text_id)
+pair_cache = {}  # lowercase image filename -> { image_id, text_id, web_link }
 text_id_cache = {}  # lowercase text filename -> google file ID
 
 service = None
-
 
 def download_text_file(service, file_id: str, cache_dir: str) -> str:
     file_path = os.path.join(cache_dir, f"{file_id}.txt")
@@ -61,7 +60,6 @@ def download_text_file(service, file_id: str, cache_dir: str) -> str:
         logging.warning(f"[download_text_file] Fehler beim Laden: {e}")
         raise
 
-
 def download_thumbnail(service, image_cache, file_id):
     if file_id in image_cache:
         logging.info(f"[Thumbnail] Cache-Treffer für Datei-ID: {file_id}")
@@ -79,7 +77,6 @@ def download_thumbnail(service, image_cache, file_id):
         logging.warning(f"[Thumbnail] Fehler beim Abrufen für {file_id}: {e}")
 
     return "https://via.placeholder.com/150?text=Kein+Bild"
-
 
 @app.on_event("startup")
 def init_service():
@@ -104,7 +101,6 @@ def init_service():
     os.makedirs(TEXT_FILE_CACHE_DIR, exist_ok=True)
     fillcache()
 
-
 def retry_google_request(callable_fn, retries: int = 7):
     for attempt in range(retries):
         try:
@@ -116,7 +112,6 @@ def retry_google_request(callable_fn, retries: int = 7):
             logging.warning(f"[Retry] Fehler bei Google Request: {e}")
             time.sleep(1.0 * (attempt + 1))
     raise RuntimeError(f"Google Request nach {retries} Versuchen fehlgeschlagen.")
-
 
 def fillcache():
     global pair_cache, text_id_cache
@@ -130,7 +125,7 @@ def fillcache():
         except Exception as e:
             logging.warning(f"[fillcache] Fehler beim Laden von pair_cache.json: {e}")
 
-    image_id_cache = {}  # lowercase image filename -> google file ID
+    image_id_cache = {}
 
     q = f"'{FOLDER_ID}' in parents and trashed=false and (name contains '.txt' or mimeType contains 'image/')"
     logging.info(f"[p] : {q}")
@@ -139,7 +134,7 @@ def fillcache():
         try:
             response = service.files().list(
                 q=q,
-                fields="nextPageToken, files(id, name, mimeType)",
+                fields="nextPageToken, files(id, name, mimeType, webContentLink)",
                 pageToken=page_token,
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True
@@ -153,11 +148,12 @@ def fillcache():
             clean_name = name.lower()
             fid = f['id']
             mimetype = f.get('mimeType', '')
+            weblink = f.get('webContentLink', '')
 
             if clean_name.endswith(".txt"):
                 text_id_cache[clean_name] = fid
             elif mimetype.startswith("image/"):
-                image_id_cache[clean_name] = fid
+                image_id_cache[clean_name] = (fid, weblink)
 
         page_token = response.get('nextPageToken', None)
         if not page_token:
@@ -166,7 +162,13 @@ def fillcache():
     for img_name in image_id_cache:
         txt_name = img_name + ".txt"
         if txt_name in text_id_cache:
-            pair_cache[img_name] = (image_id_cache[img_name], text_id_cache[txt_name])
+            image_id, web_link = image_id_cache[img_name]
+            text_id = text_id_cache[txt_name]
+            pair_cache[img_name] = {
+                "image_id": image_id,
+                "text_id": text_id,
+                "web_link": web_link
+            }
 
     try:
         with open(PAIR_CACHE_PATH, 'w') as f:
@@ -177,7 +179,6 @@ def fillcache():
 
     logging.info(
         f"[fillcache] Cache vollständig aktualisiert: {len(text_id_cache)} Textdateien, {len(image_id_cache)} Bilder, {len(pair_cache)} Paare.")
-
 
 @app.get("/", response_class=HTMLResponse)
 def show_three_images(request: Request):
@@ -194,7 +195,9 @@ def show_three_images(request: Request):
     images_html_parts = []
 
     for img_name in image_keys:
-        image_id, text_id = pair_cache[img_name]
+        pair = pair_cache[img_name]
+        image_id = pair['image_id']
+        text_id = pair['text_id']
         file_name = img_name
 
         thumbnail_src = download_thumbnail(service, image_cache, image_id)
@@ -210,11 +213,14 @@ def show_three_images(request: Request):
             except Exception as e:
                 text_cache[img_name] = f"Fehler beim Laden: {e}"
 
+        hreflink = f"https://drive.usercontent.google.com/download?id={image_id}&export=view&authuser=0"
         images_html_parts.append(
             templates.get_template("image_entry.html").render(
                 file_name=file_name,
                 thumbnail_src=thumbnail_src,
-                text_content=text_cache.get(img_name, "Kein Text gefunden")
+                text_content=text_cache.get(img_name, "Kein Text gefunden"),
+                hreflink=hreflink,
+                image_id=image_id
             )
         )
 
@@ -226,7 +232,19 @@ def show_three_images(request: Request):
         "images_html": ''.join(images_html_parts)
     })
 
-
 @app.get("/original/{file_id}")
 def show_original_image(file_id: str):
-    return HTMLResponse("<p>Originalbild-Vorschau nicht verfügbar.</p>", status_code=501)
+    try:
+        html = f"""
+        <html>
+        <head><title>Originalbild</title></head>
+        <body style="margin:0; padding:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#000;">
+            <img src="https://drive.google.com/uc?export=view&id={file_id}" style="max-width:100%; max-height:100%;" />
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html, status_code=200)
+
+    except Exception as e:
+        logging.error(f"[show_original_image] Fehler beim Laden des Bildes: {e}")
+        return HTMLResponse("<p>Fehler beim Laden des Bildes.</p>", status_code=500)

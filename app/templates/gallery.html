@@ -14,9 +14,46 @@
     .bildname { text-align: center; font-weight: bold; margin-top: 8px; }
     .text { white-space: pre-wrap; }
     .checkbox-container { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+
+    /* Das Modal (standardmäßig versteckt) */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: auto;
+  background-color: rgba(0,0,0,0.7);
+}
+
+/* Modal-Inhalt */
+.modal-inhalt {
+  position: relative;
+  margin: 10% auto;
+  padding: 20px;
+  width: 80%;
+  max-width: 600px;
+  background-color: #fff;
+}
+
+/* Schließen-Button */
+.schliessen {
+  position: absolute;
+  top: 10px;
+  right: 25px;
+  color: #000;
+  font-size: 35px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
   </style>
 </head>
 <body>
+<!-- Verstecktes iframe -->
+<iframe id="meinIframe" style="display:none; width:600px; height:400px; border:none;"></iframe>
 <div class='sticky-nav'>
   <a href='/gallery/?seite=1'>⏮ Anfang</a>
   <a href='/gallery/?pageToken={{ prevToken or '' }}&seite={{ seite - 1 if seite > 1 else 1 }}'>⬅ Zurück</a>
@@ -26,5 +63,33 @@
 <div class='grid'>
 {{ images_html | safe }}
 </div>
-</body>
+  <script>
+    function openIframe(url) {
+      var iframe = document.getElementById('meinIframe');
+      iframe.src = url;
+      iframe.style.display = 'block';
+    }
+    function openModal(url) {
+      var modal = document.getElementById('meinModal');
+      var iframe = document.getElementById('meinIframe');
+      iframe.src = "https://drive.google.com/file/d/{{url}}/preview";
+      modal.style.display = 'block';
+    }
+
+    function closeModal() {
+      var modal = document.getElementById('meinModal');
+      var iframe = document.getElementById('meinIframe');
+      iframe.src = '';
+      modal.style.display = 'none';
+    }
+
+    // Schließen des Modals, wenn außerhalb geklickt wird
+    window.onclick = function(event) {
+      var modal = document.getElementById('meinModal');
+      if (event.target == modal) {
+        closeModal();
+      }
+    }
+  </script>
+  </body>
 </html>
