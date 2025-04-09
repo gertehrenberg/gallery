@@ -8,13 +8,54 @@ import time
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-from fastapi.templating import Jinja2Templates
 
 logging.basicConfig(level=logging.INFO)
+
+
+def download_text_file(service, file_id: str, cache_dir: str) -> str:
+    file_path = os.path.join(cache_dir, f"{file_id}.txt")
+
+    if os.path.exists(file_path):
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            logging.warning(f"[download_text_file] Fehler beim Lesen von Cache-Datei: {file_path} - {e}")
+
+    try:
+        logging.info(f"Lade Textdatei mit ID: {file_id}")
+        request = service.files().get_media(fileId=file_id)
+        content = request.execute().decode("utf-8")
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(content)
+        return content
+    except Exception as e:
+        logging.warning(f"[download_text_file] Fehler beim Laden: {e}")
+        raise
+
+
+def download_thumbnail(service, image_cache, file_id):
+    if file_id in image_cache:
+        logging.info(f"[Thumbnail] Cache-Treffer für Datei-ID: {file_id}")
+        return image_cache[file_id]['thumbnail']
+
+    try:
+        logging.info(f"[Thumbnail] Abfrage für Datei-ID: {file_id}")
+        file = service.files().get(fileId=file_id, fields="thumbnailLink").execute()
+        thumbnail_url = file.get("thumbnailLink")
+        if thumbnail_url:
+            image_cache[file_id] = {'thumbnail': thumbnail_url}
+            logging.info(f"[Thumbnail] Erfolgreich geladen für Datei-ID {file_id}: {thumbnail_url}")
+            return thumbnail_url
+    except Exception as e:
+        logging.warning(f"[Thumbnail] Fehler beim Abrufen für {file_id}: {e}")
+
+    return "https://via.placeholder.com/150?text=Kein+Bild"
+
 
 app = FastAPI()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
@@ -31,16 +72,17 @@ CRED_FILE = os.path.join(SECRET_PATH, 'credentials.json')
 TOKEN_FILE = os.path.join(SECRET_PATH, 'token.json')
 
 PAIR_CACHE_PATH = '/data/pair_cache.json'
+TEXT_FILE_CACHE_DIR = '/data/textfiles'
 
-IMAGES_PER_PAGE = 3
+IMAGES_PER_PAGE = 6
 
-# Diese Caches sind bewusst global, da sie wiederverwendet werden sollen
 image_cache = {}  # file_id -> { 'thumbnail': url }
-text_cache = {}   # lowercase text filename -> content
-pair_cache = {}   # lowercase image filename -> (image_id, text_id)
+text_cache = {}  # lowercase text filename -> content
+pair_cache = {}  # lowercase image filename -> (image_id, text_id)
 text_id_cache = {}  # lowercase text filename -> google file ID
 
 service = None
+
 
 @app.on_event("startup")
 def init_service():
@@ -62,7 +104,9 @@ def init_service():
             token.write(creds.to_json())
 
     service = build('drive', 'v3', credentials=creds)
+    os.makedirs(TEXT_FILE_CACHE_DIR, exist_ok=True)
     fillcache()
+
 
 def retry_google_request(callable_fn, retries: int = 7):
     for attempt in range(retries):
@@ -76,41 +120,6 @@ def retry_google_request(callable_fn, retries: int = 7):
             time.sleep(1.0 * (attempt + 1))
     raise RuntimeError(f"Google Request nach {retries} Versuchen fehlgeschlagen.")
 
-def download_text_file(file_id: str, retries: int = 5) -> str:
-    logging.info(f"Lade Textdatei mit ID: {file_id}")
-    for attempt in range(retries):
-        try:
-            request = service.files().get_media(fileId=file_id)
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, request)
-            done = False
-            while not done:
-                status, done = downloader.next_chunk()
-            return fh.getvalue().decode('utf-8', errors='replace')
-        except (ssl.SSLError, socket.timeout) as e:
-            logging.warning(f"[SSL] Versuch {attempt + 1} fehlgeschlagen: {e}")
-            time.sleep(1.0 * (attempt + 1))
-        except Exception as e:
-            logging.error(f"[Download] Fehler bei {file_id}: {e}")
-            time.sleep(1.0 * (attempt + 1))
-    raise RuntimeError(f"Download von {file_id} nach {retries} Versuchen fehlgeschlagen.")
-
-def download_thumbnail(file_id: str) -> str:
-    logging.info(f"[Thumbnail] Abfrage für Datei-ID: {file_id}")
-
-    if file_id in image_cache and image_cache[file_id].get("thumbnail"):
-        logging.info(f"[Thumbnail] Cache-Treffer für Datei-ID: {file_id}")
-        return image_cache[file_id]["thumbnail"]
-
-    try:
-        file = retry_google_request(lambda: service.files().get(fileId=file_id, fields="thumbnailLink").execute())
-        thumbnail_link = file.get("thumbnailLink", "")
-        logging.info(f"[Thumbnail] Erfolgreich geladen für Datei-ID {file_id}: {thumbnail_link}")
-        image_cache[file_id] = {"thumbnail": thumbnail_link}
-        return thumbnail_link
-    except Exception as e:
-        logging.warning(f"[Thumbnail] Fehler beim Abrufen für {file_id}: {e}")
-        return ""
 
 def fillcache():
     global pair_cache, text_id_cache
@@ -169,7 +178,9 @@ def fillcache():
     except Exception as e:
         logging.warning(f"[fillcache] Fehler beim Speichern von pair_cache.json: {e}")
 
-    logging.info(f"[fillcache] Cache vollständig aktualisiert: {len(text_id_cache)} Textdateien, {len(image_id_cache)} Bilder, {len(pair_cache)} Paare.")
+    logging.info(
+        f"[fillcache] Cache vollständig aktualisiert: {len(text_id_cache)} Textdateien, {len(image_id_cache)} Bilder, {len(pair_cache)} Paare.")
+
 
 @app.get("/", response_class=HTMLResponse)
 def show_three_images(request: Request):
@@ -189,12 +200,16 @@ def show_three_images(request: Request):
         image_id, text_id = pair_cache[img_name]
         file_name = img_name
 
-        thumbnail_src = download_thumbnail(image_id)
+        thumbnail_src = download_thumbnail(service, image_cache, image_id)
 
         if img_name not in text_cache:
             try:
-                content = download_text_file(text_id)
-                text_cache[img_name] = content
+                if text_id in text_cache:
+                    content = text_cache[text_id]
+                else:
+                    content = download_text_file(service, text_id, TEXT_FILE_CACHE_DIR)
+                    text_cache[img_name] = content
+                    text_cache[text_id] = content
             except Exception as e:
                 text_cache[img_name] = f"Fehler beim Laden: {e}"
 
@@ -213,6 +228,7 @@ def show_three_images(request: Request):
         "prev_seite": max(1, seite - 1),
         "images_html": ''.join(images_html_parts)
     })
+
 
 @app.get("/original/{file_id}")
 def show_original_image(file_id: str):
