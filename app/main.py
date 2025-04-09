@@ -1,4 +1,3 @@
-import io
 import json
 import logging
 import os
@@ -14,6 +13,31 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
 logging.basicConfig(level=logging.INFO)
+app = FastAPI()
+templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
+
+SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.readonly"
+]
+
+FOLDER_ID = os.environ.get("FOLDER_ID", "DEIN_ORDNER_ID_HIER")
+
+SECRET_PATH = 'secrets'
+CRED_FILE = os.path.join(SECRET_PATH, 'credentials.json')
+TOKEN_FILE = os.path.join(SECRET_PATH, 'token.json')
+
+PAIR_CACHE_PATH = '/data/pair_cache.json'
+TEXT_FILE_CACHE_DIR = '/data/textfiles'
+
+IMAGES_PER_PAGE = 6
+
+image_cache = {}  # file_id -> { 'thumbnail': url }
+text_cache = {}  # lowercase text filename -> content
+pair_cache = {}  # lowercase image filename -> (image_id, text_id)
+text_id_cache = {}  # lowercase text filename -> google file ID
+
+service = None
 
 
 def download_text_file(service, file_id: str, cache_dir: str) -> str:
@@ -55,33 +79,6 @@ def download_thumbnail(service, image_cache, file_id):
         logging.warning(f"[Thumbnail] Fehler beim Abrufen für {file_id}: {e}")
 
     return "https://via.placeholder.com/150?text=Kein+Bild"
-
-
-app = FastAPI()
-templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
-
-SCOPES = [
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/drive.readonly"
-]
-
-FOLDER_ID = os.environ.get("FOLDER_ID", "DEIN_ORDNER_ID_HIER")
-
-SECRET_PATH = 'secrets'
-CRED_FILE = os.path.join(SECRET_PATH, 'credentials.json')
-TOKEN_FILE = os.path.join(SECRET_PATH, 'token.json')
-
-PAIR_CACHE_PATH = '/data/pair_cache.json'
-TEXT_FILE_CACHE_DIR = '/data/textfiles'
-
-IMAGES_PER_PAGE = 6
-
-image_cache = {}  # file_id -> { 'thumbnail': url }
-text_cache = {}  # lowercase text filename -> content
-pair_cache = {}  # lowercase image filename -> (image_id, text_id)
-text_id_cache = {}  # lowercase text filename -> google file ID
-
-service = None
 
 
 @app.on_event("startup")
