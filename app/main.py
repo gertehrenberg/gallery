@@ -32,12 +32,14 @@ TOKEN_FILE = os.path.join(SECRET_PATH, 'token.json')
 
 PAIR_CACHE_PATH = '/data/pair_cache.json'
 
-IMAGES_PER_PAGE = 12
+IMAGES_PER_PAGE = 3
 
-image_cache = {}  # file_id -> { 'thumbnail': url, 'text': str }
-text_cache = {}  # lowercase text filename -> content
-pair_cache = {}  # lowercase image filename -> (image_id, text_id)
+# Diese Caches sind bewusst global, da sie wiederverwendet werden sollen
+image_cache = {}  # file_id -> { 'thumbnail': url }
+text_cache = {}   # lowercase text filename -> content
+pair_cache = {}   # lowercase image filename -> (image_id, text_id)
 text_id_cache = {}  # lowercase text filename -> google file ID
+
 service = None
 
 @app.on_event("startup")
