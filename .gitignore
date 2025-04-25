@@ -1,0 +1,6 @@
+# Ignoriere den Cache-Ordner
+cache/
+secrets/
+
+# Ignoriere alle .log-Dateien
+*.log
