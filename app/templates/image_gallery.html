@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang='de'>
+<head>
+    <meta charset='UTF-8'>
+    <title>Galerie – Seite {{ seite }}</title>
+    <style>
+        body { font-family: sans-serif; margin: 0; background: #f7f7f7; }
+        .sticky-nav { position: sticky; top: 0; background: #fff; padding: 10px; border-bottom: 1px solid #ccc; z-index: 1000; text-align: center; }
+        .sticky-nav a { margin: 0 8px; text-decoration: none; font-weight: bold; }
+        .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; padding: 20px; }
+        .eintrag { grid-column: span 2; background: white; border: 1px solid #ddd; border-radius: 10px; padding: 10px; box-shadow: 2px 2px 6px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 10px; }
+        .bild { display: block; margin: 0 auto; max-width: 400px; height: auto; border-radius: 5px; cursor: zoom-in; transition: transform 0.2s ease; }
+        .bild:hover { transform: scale(1.03); }
+        .bildname { text-align: center; font-weight: bold; margin-top: 8px; }
+        .text { white-space: pre-wrap; }
+        .checkbox-container { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+
+        /* Modal (unsichtbar standardmäßig) */
+        .modal {
+          display: none;
+          position: fixed;
+          z-index: 1;
+          left: 0;
+          top: 0;
+          width: 100%;
+          height: 100%;
+          overflow: auto;
+          background-color: rgba(0,0,0,0.7);
+        }
+
+        .modal-inhalt {
+          position: relative;
+          margin: 5% auto;
+          padding: 0;
+          width: 80%;
+          max-width: 900px;
+          background-color: #fff;
+        }
+
+        .schliessen {
+          position: absolute;
+          top: 10px;
+          right: 25px;
+          color: #000;
+          font-size: 35px;
+          font-weight: bold;
+          cursor: pointer;
+        }
+
+        #meinIframe {
+          width: 100%;
+          height: 600px;
+          border: none;
+          display: block;
+        }
+    </style>
+</head>
+<body>
+<div class='sticky-nav'>
+  {% if seite > 1 %}
+  <a href="#" onclick="saveAndGo({{kategorien}}, 1, {{ count }}, '{{ current_folder }}')">⏮ Anfang</a>
+  <a href="#" onclick="saveAndGo({{kategorien}}, {{ seite - 1 }}, {{ count }}, '{{ current_folder }}')">⬅ Zurück</a>
+  {% else %}
+  <span style="color: #ccc;">⏮ Anfang</span>
+  <span style="color: #ccc;">⬅ Zurück</span>
+  {% endif %}
+  <span>Seite {{ seite }} von {{ total_pages }}</span>
+  {% if seite < total_pages %}
+  <a href="#" onclick="saveAndGo({{kategorien}}, {{ seite + 1 }}, {{ count }}, '{{ current_folder }}')">Weiter ➡</a>
+  <a href="#" onclick="saveAndGo({{kategorien}}, {{ total_pages }}, {{ count }}, '{{ current_folder }}')">⏭ Ende</a>
+  {% else %}
+  <span style="color: #ccc;">Weiter ➡</span>
+  <span style="color: #ccc;">⏭ Ende</span>
+  {% endif %}
+</div>
+<div class='grid'>
+    {{ images_html | safe }}
+</div>
+
+<!-- MODAL-Container -->
+<div class="modal" id="meinModal">
+    <div class="modal-inhalt">
+        <span class="schliessen" onclick="closeModal()">&times;</span>
+        <iframe id="meinIframe"></iframe>
+    </div>
+</div>
+
+<script>
+    function openIframe(url) {
+      var iframe = document.getElementById('meinIframe');
+      iframe.src = url;
+      iframe.style.display = 'block';
+    }
+
+    function openModal(url) {
+      var modal = document.getElementById('meinModal');
+      var iframe = document.getElementById('meinIframe');
+      iframe.src = "https://drive.google.com/file/d/" + url + "/preview";
+      modal.style.display = 'block';
+    }
+
+    function closeModal() {
+      var modal = document.getElementById('meinModal');
+      var iframe = document.getElementById('meinIframe');
+      iframe.src = '';
+      modal.style.display = 'none';
+    }
+
+    window.onclick = function(event) {
+      var modal = document.getElementById('meinModal');
+      if (event.target == modal) {
+        closeModal();
+      }
+    }
+    function saveAndGo(kategorien, seite, count, folder) {
+      const data = Array.from(document.querySelectorAll("form")).map(form => {
+        const entry = {};
+        entry.image_id = form.querySelector('[name="image_id"]').value;
+        kategorien.forEach(cat => {
+          const box = form.querySelector(`[name="${cat.key}"]`);
+          entry[cat.key] = box && box.checked ? "on" : "";
+        });
+        entry.notiz = form.querySelector('[name="notiz"]')?.value || "";
+        return entry;
+      });
+
+      Promise.all(
+        data.map(entry => fetch("/gallery/save", {
+          method: "POST",
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams(entry)
+        }))
+      ).then(() => {
+        const url = new URL(window.location.href);
+        url.searchParams.set("seite", seite);
+        url.searchParams.set("count", count);
+        url.searchParams.set("folder", folder);
+        window.location.href = url.toString();
+      }).catch(err => {
+        alert("Fehler beim Speichern!");
+        console.error(err);
+      });
+    }
+
+</script>
+</body>
+</html>
