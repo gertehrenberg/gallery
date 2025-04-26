@@ -1,147 +1,564 @@
 <!DOCTYPE html>
-<html lang='de'>
-<head>
-    <meta charset='UTF-8'>
-    <title>Galerie – Seite {{ seite }}</title>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Galerie – Seite {{ page }}</title>
     <style>
-        body { font-family: sans-serif; margin: 0; background: #f7f7f7; }
-        .sticky-nav { position: sticky; top: 0; background: #fff; padding: 10px; border-bottom: 1px solid #ccc; z-index: 1000; text-align: center; }
-        .sticky-nav a { margin: 0 8px; text-decoration: none; font-weight: bold; }
-        .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 20px; padding: 20px; }
-        .eintrag { grid-column: span 2; background: white; border: 1px solid #ddd; border-radius: 10px; padding: 10px; box-shadow: 2px 2px 6px rgba(0,0,0,0.1); display: flex; flex-direction: column; gap: 10px; }
-        .bild { display: block; margin: 0 auto; max-width: 400px; height: auto; border-radius: 5px; cursor: zoom-in; transition: transform 0.2s ease; }
-        .bild:hover { transform: scale(1.03); }
-        .bildname { text-align: center; font-weight: bold; margin-top: 8px; }
-        .text { white-space: pre-wrap; }
-        .checkbox-container { display: flex; justify-content: center; gap: 10px; margin-top: 10px; }
+      body {
+        font-family: sans-serif;
+        margin: 0;
+        background: #f7f7f7;
+      }
 
-        /* Modal (unsichtbar standardmäßig) */
-        .modal {
-          display: none;
-          position: fixed;
-          z-index: 1;
-          left: 0;
-          top: 0;
-          width: 100%;
-          height: 100%;
-          overflow: auto;
-          background-color: rgba(0,0,0,0.7);
-        }
+      .eintrag {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+        display: grid;
+        grid-template-columns: 2fr 1fr; /* Bild ist etwas breiter als die Checkboxen */
+        gap: 10px;
+        width: 100%; /* Damit die Einträge den gesamten Bildschirm ausfüllen */
+      }
 
-        .modal-inhalt {
-          position: relative;
-          margin: 5% auto;
-          padding: 0;
-          width: 80%;
-          max-width: 900px;
-          background-color: #fff;
-        }
+      .bild-wrapper {
+        grid-column: 1 / 2; /* Bild nimmt die erste Spalte ein */
+        display: flex;
+        justify-content: center;
+        align-items: flex-start; /* Bild nach oben ausrichten */
+      }
 
-        .schliessen {
-          position: absolute;
-          top: 10px;
-          right: 25px;
-          color: #000;
-          font-size: 35px;
-          font-weight: bold;
-          cursor: pointer;
-        }
+      .bild {
+        max-width: 100%; /* Bild füllt die gesamte Spaltenbreite */
+        height: auto;
+        border-radius: 8px;
+        cursor: pointer;
+      }
 
-        #meinIframe {
-          width: 100%;
-          height: 600px;
-          border: none;
-          display: block;
-        }
+      .checkbox-container {
+        grid-column: 2 / 3; /* Checkboxen in der zweiten Spalte */
+        display: block; /* sorgt dafür, dass die checkboxen untereinander angezeigt werden */
+        gap: 8px;
+        align-items: flex-start; /* Checkboxen nach oben ausrichten */
+      }
+
+      .checkbox-container label {
+        display: block; /* macht jedes Label zu einem Block-Element */
+        margin-bottom: 8px; /* Abstand zwischen den Checkboxen */
+      }
+
+      .bildname-box {
+        grid-column: span 2; /* Dateiname geht über beide Spalten */
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 5px;
+        margin-top: 10px;
+        text-align: center;
+        background: #f5f5f5;
+      }
+
+      .bildname {
+        font-weight: bold;
+        color: #555;
+      }
+
+      .text {
+        grid-column: span 2; /* Text geht über beide Spalten */
+        margin-top: 10px;
+        font-size: 0.9em;
+        color: #333;
+        white-space: pre-wrap;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(
+          auto-fill,
+          minmax(250px, 1fr)
+        ); /* Automatisch Spalten erstellen, min. Breite 250px */
+        gap: 20px; /* Abstand zwischen den Einträgen */
+        padding: 20px;
+      }
+
+      .eintrag {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .bild-wrapper {
+        display: flex;
+        justify-content: center;
+      }
+
+      .bild {
+        width: 100%; /* Bild nimmt 100% der Breite des Containers ein */
+        height: auto;
+        max-width: 250px; /* Maximale Breite des Bildes */
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .checkbox-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .bildname-box {
+        display: flex;
+        justify-content: center;
+      }
+
+      .bildname {
+        font-weight: bold;
+        color: #555;
+        text-align: center;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(
+          auto-fill,
+          minmax(250px, 1fr)
+        ); /* Dynamische Spalten */
+        gap: 20px; /* Abstand zwischen den Einträgen */
+        padding: 20px;
+      }
+
+      .eintrag {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column; /* Zeilenorientierte Ausrichtung für Bildname und Text */
+        gap: 10px;
+      }
+
+      .bild-wrapper {
+        display: flex;
+        flex-direction: row; /* Horizontale Anordnung von Bild und Checkboxen */
+        align-items: flex-start; /* Oben ausrichten */
+        gap: 10px; /* Abstand zwischen Bild und Checkboxen */
+      }
+
+      .bild {
+        width: 100%; /* Bild nimmt 100% der Breite des Containers ein */
+        height: auto;
+        max-width: 250px; /* Maximale Breite des Bildes */
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .checkbox-container {
+        display: flex;
+        flex-direction: column; /* Checkboxen untereinander anordnen */
+        gap: 8px;
+      }
+
+      .bildname-box {
+        display: flex;
+        justify-content: center;
+      }
+
+      .bildname {
+        font-weight: bold;
+        color: #555;
+        text-align: center;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(
+          auto-fill,
+          minmax(250px, 1fr)
+        ); /* Dynamische Spalten */
+        gap: 20px;
+        padding: 20px;
+      }
+
+      .eintrag {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      .bild {
+        border-radius: 8px;
+        cursor: pointer;
+        max-width: 100%;
+      }
+
+      .checkbox-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .bildname {
+        font-weight: bold;
+        color: #555;
+        text-align: center;
+        margin-top: 8px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(
+          auto-fill,
+          minmax(300px, 1fr)
+        ); /* Flexible Spalten */
+        gap: 20px;
+        padding: 20px;
+      }
+
+      .eintrag {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+        display: block; /* Display als Block für Tabellenanpassung */
+      }
+
+      .bild {
+        border-radius: 8px;
+        cursor: pointer;
+        width: 100%;
+        max-width: 100%;
+      }
+
+      .checkbox-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .bildname {
+        font-weight: bold;
+        color: #555;
+        text-align: center;
+        margin-top: 8px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(
+          auto-fill,
+          minmax(300px, 1fr)
+        ); /* Mindestens 300px für jedes Grid-Element */
+        gap: 20px;
+        padding: 20px;
+        width: 100%; /* Grid-Container füllt die Breite */
+      }
+
+      .eintrag {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+        min-width: 300px; /* Mindestens 300px Breite für jedes Element */
+      }
+
+      .bild-wrapper {
+        display: flex;
+        justify-content: center;
+      }
+
+      .bild {
+        width: 100%; /* Bild soll den gesamten verfügbaren Platz einnehmen */
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .checkbox-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .bildname-box {
+        display: flex;
+        justify-content: center;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(
+          auto-fill,
+          minmax(350px, 1fr)
+        ); /* Mindestbreite für jedes Element auf 350px gesetzt */
+        gap: 20px;
+        padding: 20px;
+        width: 100%;
+      }
+
+      .eintrag {
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 10px;
+        padding: 10px;
+        box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+        min-width: 350px; /* Mindestbreite für jedes Element */
+      }
+
+      .checkbox-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0px; /* Setzt den Abstand zwischen den Checkboxen auf 0px */
+      }
+
+      .checkbox-container label {
+        display: block;
+        margin-bottom: 0px; /* Entfernt den unteren Rand */
+        font-size: 0.8em; /* Kleineren Text für die Checkboxen */
+        padding: 0; /* Entfernt zusätzliches Padding */
+      }
+
+      .bild-wrapper {
+        grid-column: 1 / 2;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start; /* Bild nach oben ausrichten */
+      }
+
+      .bild {
+        width: 100%; /* Bild nimmt 100% der Breite des Containers ein */
+        height: auto;
+        max-width: 250px; /* Maximale Breite des Bildes */
+        border-radius: 8px;
+        cursor: pointer;
+      }
+
+      .bildname-box {
+        grid-column: span 2;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 5px;
+        margin-top: 10px;
+        text-align: center;
+        background: #f5f5f5;
+      }
+
+      .bildname {
+        font-weight: bold;
+        color: #555;
+      }
+
+      .text {
+        grid-column: span 2;
+        margin-top: 10px;
+        font-size: 0.9em;
+        color: #333;
+        white-space: pre-wrap;
+      }
+
+      .sticky-nav {
+        position: sticky;
+        top: 0;
+        background: #fff;
+        padding: 8px 20px; /* Weniger Höhe */
+        border-bottom: 1px solid #ddd;
+        text-align: center;
+        font-size: 1.1em;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 20px;
+        z-index: 1000;
+      }
+
+      .sticky-nav a,
+      .sticky-nav span {
+        text-decoration: none;
+        color: #333;
+        font-weight: bold;
+      }
+
+      .sticky-nav a:hover {
+        color: #007bff;
+      }
+
+      .modal {
+        display: none;
+        position: fixed;
+        z-index: 1;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0, 0, 0, 0.7);
+      }
+
+      .modal-inhalt {
+        position: relative;
+        margin: 5% auto;
+        padding: 0;
+        width: 80%;
+        max-width: 900px;
+        background-color: #fff;
+      }
+
+      .schliessen {
+        position: absolute;
+        top: 10px;
+        right: 25px;
+        color: #000;
+        font-size: 35px;
+        font-weight: bold;
+        cursor: pointer;
+      }
+
+      #meinIframe {
+        width: 100%;
+        height: 600px;
+        border: none;
+        display: block;
+      }
     </style>
-</head>
-<body>
-<div class='sticky-nav'>
-  {% if seite > 1 %}
-  <a href="#" onclick="saveAndGo({{kategorien}}, 1, {{ count }}, '{{ current_folder }}')">⏮ Anfang</a>
-  <a href="#" onclick="saveAndGo({{kategorien}}, {{ seite - 1 }}, {{ count }}, '{{ current_folder }}')">⬅ Zurück</a>
-  {% else %}
-  <span style="color: #ccc;">⏮ Anfang</span>
-  <span style="color: #ccc;">⬅ Zurück</span>
-  {% endif %}
-  <span>Seite {{ seite }} von {{ total_pages }}</span>
-  {% if seite < total_pages %}
-  <a href="#" onclick="saveAndGo({{kategorien}}, {{ seite + 1 }}, {{ count }}, '{{ current_folder }}')">Weiter ➡</a>
-  <a href="#" onclick="saveAndGo({{kategorien}}, {{ total_pages }}, {{ count }}, '{{ current_folder }}')">⏭ Ende</a>
-  {% else %}
-  <span style="color: #ccc;">Weiter ➡</span>
-  <span style="color: #ccc;">⏭ Ende</span>
-  {% endif %}
-</div>
-<div class='grid'>
-    {{ images_html | safe }}
-</div>
-
-<!-- MODAL-Container -->
-<div class="modal" id="meinModal">
-    <div class="modal-inhalt">
+  </head>
+  <body>
+    <div class="sticky-nav">
+      {% if page > 1 %}
+      <a
+        href="#"
+        onclick="saveAndGo({{kategorien}}, 1, {{ count }}, '{{ current_folder }}')"
+        >⏮ Anfang</a
+      >
+      <a
+        href="#"
+        onclick="saveAndGo({{kategorien}}, {{ page - 1 }}, {{ count }}, '{{ current_folder }}')"
+        >⬅ Zurück</a
+      >
+      {% else %}
+      <span style="color: #ccc">⏮ Anfang</span>
+      <span style="color: #ccc">⬅ Zurück</span>
+      {% endif %}
+      <span>
+        <a
+          href="#"
+          onclick="saveAndGo({{kategorien}}, {{ page }}, {{ count }}, '{{ current_folder }}')"
+          >Seite {{ page }} von {{ total_pages }}</a
+        >
+      </span>
+      {% if page < total_pages %}
+      <a
+        href="#"
+        onclick="saveAndGo({{kategorien}}, {{ page + 1 }}, {{ count }}, '{{ current_folder }}')"
+        >Weiter ➡</a
+      >
+      <a
+        href="#"
+        onclick="saveAndGo({{kategorien}}, {{ total_pages }}, {{ count }}, '{{ current_folder }}')"
+        >⏭ Ende</a
+      >
+      {% else %}
+      <span style="color: #ccc">Weiter ➡</span>
+      <span style="color: #ccc">⏭ Ende</span>
+      {% endif %}
+    </div>
+    <div class="grid">{{ images_html | safe }}</div>
+    <!-- MODAL-Container -->
+    <div class="modal" id="meinModal">
+      <div class="modal-inhalt">
         <span class="schliessen" onclick="closeModal()">&times;</span>
         <iframe id="meinIframe"></iframe>
+      </div>
     </div>
-</div>
 
-<script>
-    function openIframe(url) {
-      var iframe = document.getElementById('meinIframe');
-      iframe.src = url;
-      iframe.style.display = 'block';
-    }
-
-    function openModal(url) {
-      var modal = document.getElementById('meinModal');
-      var iframe = document.getElementById('meinIframe');
-      iframe.src = "https://drive.google.com/file/d/" + url + "/preview";
-      modal.style.display = 'block';
-    }
-
-    function closeModal() {
-      var modal = document.getElementById('meinModal');
-      var iframe = document.getElementById('meinIframe');
-      iframe.src = '';
-      modal.style.display = 'none';
-    }
-
-    window.onclick = function(event) {
-      var modal = document.getElementById('meinModal');
-      if (event.target == modal) {
-        closeModal();
+    <script>
+      function openIframe(url) {
+        var iframe = document.getElementById("meinIframe");
+        iframe.src = url;
+        iframe.style.display = "block";
       }
-    }
-    function saveAndGo(kategorien, seite, count, folder) {
-      const data = Array.from(document.querySelectorAll("form")).map(form => {
-        const entry = {};
-        entry.image_id = form.querySelector('[name="image_id"]').value;
-        kategorien.forEach(cat => {
-          const box = form.querySelector(`[name="${cat.key}"]`);
-          entry[cat.key] = box && box.checked ? "on" : "";
-        });
-        entry.notiz = form.querySelector('[name="notiz"]')?.value || "";
-        return entry;
-      });
 
-      Promise.all(
-        data.map(entry => fetch("/gallery/save", {
-          method: "POST",
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams(entry)
-        }))
-      ).then(() => {
-        const url = new URL(window.location.href);
-        url.searchParams.set("seite", seite);
-        url.searchParams.set("count", count);
-        url.searchParams.set("folder", folder);
-        window.location.href = url.toString();
-      }).catch(err => {
-        alert("Fehler beim Speichern!");
-        console.error(err);
-      });
-    }
+      function openModal(url) {
+        var modal = document.getElementById("meinModal");
+        var iframe = document.getElementById("meinIframe");
+        iframe.src = "https://drive.google.com/file/d/" + url + "/preview";
+        modal.style.display = "block";
+      }
 
-</script>
-</body>
+      function closeModal() {
+        var modal = document.getElementById("meinModal");
+        var iframe = document.getElementById("meinIframe");
+        iframe.src = "";
+        modal.style.display = "none";
+      }
+
+      window.onclick = function (event) {
+        var modal = document.getElementById("meinModal");
+        if (event.target == modal) {
+          closeModal();
+        }
+      };
+      function saveAndGo(kategorien, targetPage, count, folder) {
+        const data = Array.from(document.querySelectorAll("form")).map(
+          (form) => {
+            const entry = {};
+            // Extrahiere image_name aus dem Formular
+            entry.image_name = form.querySelector('[name="image_name"]').value;
+
+            // Gehe durch alle Kategorien und speichere die Checkbox-Werte
+            kategorien.forEach((cat) => {
+              // Name der Checkbox angepasst an das Format img_5242.jpg_<key>
+              const box = form.querySelector(
+                `[name="${entry.image_name}_${cat.key}"]`
+              );
+              entry[cat.key] = box && box.checked ? "on" : ""; // 'on' wenn angekreuzt, sonst leer
+            });
+
+            // Notiz extrahieren
+            entry.notiz = form.querySelector('[name="notiz"]')?.value || "";
+            return entry;
+          }
+        );
+
+        // Sende die Daten an den Server
+        Promise.all(
+          data.map((entry) =>
+            fetch("/gallery/save", {
+              method: "POST",
+              headers: { "Content-Type": "application/x-www-form-urlencoded" },
+              body: new URLSearchParams(entry),
+            })
+          )
+        )
+          .then(() => {
+            const url = new URL(window.location.href);
+            url.searchParams.set("page", targetPage);
+            url.searchParams.set("count", count);
+            url.searchParams.set("folder", folder);
+            window.location.href = url.toString();
+          })
+          .catch((err) => {
+            alert("Fehler beim Speichern!");
+            console.error(err);
+          });
+      }
+    </script>
+  </body>
 </html>

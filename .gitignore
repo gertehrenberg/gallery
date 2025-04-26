@@ -4,3 +4,4 @@ secrets/
 
 # Ignoriere alle .log-Dateien
 *.log
+*.db

@@ -41,7 +41,6 @@ docker run -d \
   -v "$(pwd):/app" \
   -v "$PWD/secrets:/app/secrets" \
   -v "$PWD/cache:/data" \
-  -e FOLDER_ID=13U8wUpisnRJpQLNb0ecbnEcDlrz-bTzV \
   gallery
 
 echo "[Fertig] läuft unter: https://levellevel.me/gallery"

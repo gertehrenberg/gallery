@@ -1,23 +1,26 @@
 from google_auth_oauthlib.flow import InstalledAppFlow
-import os
+from pathlib import Path
 
-SCOPES = ['https://www.googleapis.com/auth/drive.metadata.readonly']
-CRED_FILE = 'secrets/credentials.json'
-TOKEN_FILE = 'secrets/token.json'
+SCOPES = [
+    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.readonly"
+]
 
-flow = InstalledAppFlow.from_client_secrets_file(CRED_FILE, SCOPES)
+CRED_FILE = Path("secrets/credentials.json")
+TOKEN_FILE = Path("secrets/token.json")
 
+# Manuelle Methode – erzeugt URL, du kopierst sie in den Browser
+flow = InstalledAppFlow.from_client_secrets_file(str(CRED_FILE), SCOPES)
 auth_url, _ = flow.authorization_url(prompt='consent')
 
-print("\n🔗 Bitte öffne diese URL in deinem Browser:\n")
+print("\n🔗 Öffne diese URL im Browser und gib den Auth-Code unten ein:\n")
 print(auth_url)
-print("\n⚠️  Du wirst danach einen Code erhalten.\n")
-
-code = input("🔐 Bitte den Auth-Code hier eingeben: ").strip()
+code = input("\n🔐 Auth-Code: ").strip()
 
 flow.fetch_token(code=code)
+creds = flow.credentials
 
-with open(TOKEN_FILE, 'w') as token:
-    token.write(flow.credentials.to_json())
+with TOKEN_FILE.open("w") as f:
+    f.write(creds.to_json())
 
-print("\n✅ token.json wurde erfolgreich erstellt!")
+print(f"\n✅ Token gespeichert in: {TOKEN_FILE.resolve()}")
