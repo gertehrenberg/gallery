@@ -1,8 +1,8 @@
 import json
 import logging
+import math
 import os
 import socket
-import sqlite3
 import ssl
 import time
 from pathlib import Path
@@ -34,8 +34,6 @@ kategorien = [
     {"key": "document", "label": "Dokumente", "icon": "📄", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAW"},
 ]
 
-CHECKBOX_CATEGORIES = [k["key"] for k in kategorien]
-
 FOLDER_ID = next((k["folderid"] for k in kategorien if k["key"] == "real"), None)
 
 DB_PATH = Path("checkboxen.db")
@@ -48,15 +46,13 @@ REDIRECT_URI = "https://levellevel.me/gallery/auth/callback"
 PAIR_CACHE_PATH = '/data/pair_cache.json'
 TEXT_FILE_CACHE_DIR = '/data/textfiles'
 
-IMAGES_PER_PAGE = 1
-
 image_cache = {}  # file_id -> { 'thumbnail': url }
 text_cache = {}  # lowercase text filename -> content
 pair_cache = {}  # lowercase image filename -> { image_id, text_id, web_link }
 text_id_cache = {}  # lowercase text filename -> google file ID
+file_parents_cache = {}
 
 service = None
-
 
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:
@@ -77,9 +73,7 @@ def init_db():
         )
         """)
 
-
 logging.basicConfig(level=logging.INFO)
-
 
 def save_status(image_name: str, data: dict):
     # Logge die Eingabedaten für das Speichern
@@ -181,6 +175,17 @@ def auth_callback(request: Request):
 
     return {"message": "✅ Authentifizierung erfolgreich!"}
 
+def verify_folders_exist(service, kategorien):
+    """Filtert Kategorien nach tatsächlich existierenden Ordnern."""
+    valid_kategorien = []
+    for kat in kategorien:
+        try:
+            folder = service.files().get(fileId=kat["folderid"], fields="id").execute()
+            if folder.get("id") == kat["folderid"]:
+                valid_kategorien.append(kat)
+        except Exception as e:
+            logging.warning(f"[verify_folders_exist] Ordner nicht gefunden: {kat['key']} ({kat['folderid']}) - {e}")
+    return valid_kategorien
 
 @app.on_event("startup")
 def init_service():
@@ -201,8 +206,16 @@ def init_service():
         return
 
     service = build('drive', 'v3', credentials=creds)
+
+    global kategorien, CHECKBOX_CATEGORIES
+
+    kategorien = verify_folders_exist(service, kategorien)
+    CHECKBOX_CATEGORIES = [k["key"] for k in kategorien]
+
     os.makedirs(TEXT_FILE_CACHE_DIR, exist_ok=True)
+
     fillcache()
+    fill_folder_cache(service)
     init_db()
 
 
@@ -261,7 +274,9 @@ def retry_google_request(callable_fn, retries: int = 7):
 
 
 def fillcache():
-    global pair_cache, text_id_cache
+    global pair_cache
+    text_id_cache = {}
+    image_name_cache = {}
 
     # Falls der Cache existiert, lade ihn
     if os.path.exists(PAIR_CACHE_PATH):
@@ -274,7 +289,6 @@ def fillcache():
             logging.warning(f"[fillcache] Fehler beim Laden von pair_cache.json: {e}")
 
     # Cache für die Bildnamen anstelle der IDs
-    image_name_cache = {}
 
     q = f"'{FOLDER_ID}' in parents and trashed=false and (name contains '.txt' or mimeType contains 'image/')"
     logging.info(f"[p] : {q}")
@@ -332,6 +346,59 @@ def fillcache():
         f"[fillcache] Cache vollständig aktualisiert: {len(text_id_cache)} Textdateien, {len(image_name_cache)} Bilder, {len(pair_cache)} Paare.")
 
 
+def init_folder_cache(FOLDER_ID):
+    file_parents_cache.clear()
+    file_parents_cache[FOLDER_ID] = []
+
+    for image_name, pair in pair_cache.items():
+        image_id = pair['image_id']
+        file_parents_cache[FOLDER_ID].append(image_id)
+
+
+def is_file_in_folder(service, file_id: str, folder_id: str) -> bool:
+    """Prüft nur lokal im Cache, ob eine Datei in einem Ordner ist."""
+    parents = file_parents_cache.get(folder_id, [])
+    return file_id in parents
+
+
+def clear_folder_parents_cache(folder_id: str):
+    if folder_id in file_parents_cache:
+        del file_parents_cache[folder_id]
+
+
+def fill_folder_cache(service):
+    """Füllt den file_parents_cache für alle gültigen Kategorien."""
+    file_parents_cache.clear()
+
+    for kat in kategorien:
+        folder_id = kat["folderid"]
+        logging.info(f"[fill_folder_cache] Lade Dateien für Ordner: {kat['key']} ({folder_id})")
+
+        query = f"'{folder_id}' in parents and trashed = false"
+        page_token = None
+        file_parents_cache[folder_id] = []
+
+        while True:
+            try:
+                response = service.files().list(
+                    q=query,
+                    spaces='drive',
+                    fields='nextPageToken, files(id)',
+                    pageToken=page_token
+                ).execute()
+            except Exception as e:
+                logging.warning(f"[fill_folder_cache] Fehler beim Laden für {kat['key']} ({folder_id}): {e}")
+                break
+
+            for file in response.get('files', []):
+                file_id = file['id']
+                file_parents_cache[folder_id].append(file_id)
+
+            page_token = response.get('nextPageToken', None)
+            if page_token is None:
+                break
+
+
 @app.get("/", response_class=HTMLResponse)
 def show_three_images(request: Request):
     page_str = request.query_params.get('page', '1')
@@ -342,9 +409,31 @@ def show_three_images(request: Request):
     except ValueError:
         page = 1
 
-    start = (page - 1) * IMAGES_PER_PAGE
-    end = start + IMAGES_PER_PAGE
-    image_keys = list(pair_cache.keys())[start:end]
+    count_str = request.query_params.get('count', '1')
+    try:
+        count = int(count_str)
+        if count < 1:
+            count = 1
+    except ValueError:
+        count = 1
+
+    folder_str = request.query_params.get('folder', 'real')
+    folder_id = get_folderid_for_checkbox(folder_str)
+
+    start = (page - 1) * count
+    end = start + count
+
+    image_keys = []
+    for image_name in pair_cache.keys():
+        pair = pair_cache[image_name]
+        image_id = pair['image_id']
+
+        # Prüfen, ob die Datei im gewünschten Ordner ist
+        if is_file_in_folder(service, image_id, folder_id):
+            image_keys.append(image_name)
+
+    total_images = len(image_keys)
+    image_keys = image_keys[start:end]
 
     images_html_parts = []
     for image_name in image_keys:
@@ -382,15 +471,136 @@ def show_three_images(request: Request):
             )
         )
 
+    # Berechnung total_pages
+    total_pages = max(1, math.ceil(total_images / count))
+    print(f"💾 Total Pages {total_pages} ({total_images} / {count})")
+
     return templates.TemplateResponse("image_gallery.html", {
         "request": request,
         "page": page,
-        "total_pages": 1000,
-        "current_folder": "sex",
-        "count": IMAGES_PER_PAGE,
+        "total_pages": total_pages,
+        "current_folder": folder_str,
+        "count": count,
         "kategorien": kategorien,
         "images_html": ''.join(images_html_parts)
     })
+
+
+@app.get("/verarbeite/check/{checkbox}")
+def verarbeite_check_checkbox(checkbox: str):
+    if checkbox not in CHECKBOX_CATEGORIES:
+        return {"error": "ungültige Kategorie"}
+    with sqlite3.connect(DB_PATH) as conn:
+        count = conn.execute("""
+            SELECT COUNT(*) FROM checkbox_status
+            WHERE checked = 1 AND checkbox = ?
+        """, (checkbox,)).fetchone()[0]
+    return {"count": count}
+
+
+import sqlite3
+
+
+def move_marked_images_by_checkbox(service, current_folder: str, save_folder_key: str) -> int:
+    logging.info(f"[move_marked_images_by_checkbox] Starte Verschieben von '{current_folder}' nach '{save_folder_key}'")
+
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT image_name FROM checkbox_status
+            WHERE checked = 1 AND checkbox = ?
+        """, (save_folder_key,))
+        rows = cursor.fetchall()
+
+        logging.info(f"[move_marked_images_by_checkbox] {len(rows)} markierte Bilder gefunden für '{save_folder_key}'.")
+
+        anzahl_verschoben = 0
+
+        folder_id = get_folderid_for_checkbox(current_folder)
+        save_folder_id = get_folderid_for_checkbox(save_folder_key)
+
+        for (image_name,) in rows:
+            image_name = image_name.lower()
+
+            if image_name not in pair_cache:
+                logging.warning(
+                    f"[move_marked_images_by_checkbox] ⚠️ Bild '{image_name}' nicht im Pair-Cache gefunden, übersprungen.")
+                continue
+
+            image_id = pair_cache[image_name]["image_id"]
+
+            try:
+                move_file(service, image_id, folder_id, save_folder_id)
+                conn.execute("""
+                    DELETE FROM checkbox_status
+                    WHERE image_name = ? AND checkbox = ?
+                """, (image_name, save_folder_key))
+                anzahl_verschoben += 1
+                logging.info(f"[move_marked_images_by_checkbox] ✅ Verschoben: {image_name} ({image_id})")
+            except Exception as e:
+                logging.error(f"[move_marked_images_by_checkbox] ❌ Fehler beim Verschieben von {image_name}: {e}")
+
+        conn.commit()
+
+    logging.info(
+        f"[move_marked_images_by_checkbox] ✅ {anzahl_verschoben} Dateien erfolgreich verschoben von '{current_folder}' nach '{save_folder_key}'.")
+
+    return anzahl_verschoben
+
+
+def move_file(service, file_id: str, old_folder_id: str, new_folder_id: str):
+    """Verschiebt eine Datei auf Google Drive von einem Ordner in einen anderen."""
+    logging.info(f"[move_file] Starte Verschieben von Datei {file_id} von {old_folder_id} zu {new_folder_id}")
+
+    service.files().update(
+        fileId=file_id,
+        addParents=new_folder_id,
+        removeParents=old_folder_id,
+        fields='id, parents'
+    ).execute()
+
+    # Update lokaler Cache
+    if old_folder_id in file_parents_cache:
+        try:
+            file_parents_cache[old_folder_id].remove(file_id)
+        except ValueError:
+            logging.warning(f"[move_file] Datei {file_id} war nicht in {old_folder_id} vorhanden.")
+
+    if new_folder_id not in file_parents_cache:
+        file_parents_cache[new_folder_id] = []
+
+    if file_id not in file_parents_cache[new_folder_id]:
+        file_parents_cache[new_folder_id].append(file_id)
+
+    logging.info(f"[move_file] 📂 Erfolgreich verschoben: {file_id}")
+
+
+@app.post("/moveToFolder/{checkbox}")
+async def verarbeite_checkbox(checkbox: str):
+    if checkbox not in CHECKBOX_CATEGORIES:
+        return RedirectResponse(url="/?done=0", status_code=303)
+    move_marked_images_by_checkbox(service, "real", checkbox)
+    return RedirectResponse(url=f"/?done={checkbox}&count={anzahl_verschoben}", status_code=303)
+
+
+@app.get("/moveToFolder/{checkbox}")
+def get_marked_images_count(checkbox: str):
+    if checkbox not in CHECKBOX_CATEGORIES:
+        return {"count": 0}
+    with sqlite3.connect(DB_PATH) as conn:
+        count = conn.execute("""
+            SELECT COUNT(*) FROM checkbox_status
+            WHERE checked = 1 AND checkbox = ?
+        """, (checkbox,)).fetchone()[0]
+    return {"count": count}
+
+
+# Hilfsfunktion: hole folderid anhand checkbox/key
+def get_folderid_for_checkbox(cat: str) -> str:
+    for kategorie in kategorien:
+        if kategorie["key"] == cat:
+            return kategorie["folderid"]
+    raise ValueError(f"Keine folderid gefunden für Checkbox '{cat}'")
 
 
 @app.get("/original/{file_id}")
