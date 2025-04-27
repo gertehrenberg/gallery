@@ -548,10 +548,11 @@ def show_images(request: Request):
     image_keys = image_keys[start:end]
 
     images_html_parts = []
+    images_html_parts.append("<div class='grid'>")
     for image_name in image_keys:
         image_data = prepare_image_data(image_name, count)
         images_html_parts.append(
-            templates.get_template("image_entry.html").render(
+            templates.get_template("image_entry.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
                 text_content=image_data["text_content"],
                 image_id=image_data["image_id"],
@@ -562,12 +563,13 @@ def show_images(request: Request):
                 kategorien=kategorien
             )
         )
+    images_html_parts.append("</div>")
 
     # Berechnung total_pages
     total_pages = max(1, math.ceil(total_images / count))
     print(f"💾 Total Pages {total_pages} ({total_images} / {count})")
 
-    return templates.TemplateResponse("image_gallery.html", {
+    return templates.TemplateResponse("image_gallery.j2", {
         "request": request,
         "page": page,
         "total_pages": total_pages,

@@ -17,6 +17,7 @@
             gap: 10px;
             padding: 10px;
             width: 100%;
+            row-gap: 2px;
         }
 
         /* Einzelner Eintrag */
@@ -233,57 +234,64 @@
         <hr style="margin: 10px 0"/>
         <div style="display: flex; flex-direction: column; gap: 6px;">
             {% for k in kategorien %}
-            <div style="display: flex; gap: 6px;">
-                <button onclick="moveToFolder({{ kategorien }}, '{{ k.key }}')" style="padding: 6px 10px; border-radius: 5px; width: 180px;">
-                    {{ k.icon }} {{ k.label }} (<span id="count-{{ k.key }}">?</span>)
-                </button>
-                <button
-                        onclick="navigateToFolder({{ kategorien }}, '{{ k.key }}', {{ count }})"
-                        style="padding: 6px 10px; border-radius: 5px; width: 40px; {{ 'background: #eef;' if current_folder == k.key else '' }}">
-                    📂
-                </button>
-            </div>
+                <div style="display: flex; gap: 6px;">
+                    <button onclick="moveToFolder({{ kategorien }}, '{{ k.key }}')"
+                            style="padding: 6px 10px; border-radius: 5px; width: 180px;">
+                        {{ k.icon }} {{ k.label }} (<span id="count-{{ k.key }}">?</span>)
+                    </button>
+                    <button
+                            onclick="navigateToFolder({{ kategorien }}, '{{ k.key }}', {{ count }})"
+                            style="padding: 6px 10px; border-radius: 5px; width: 40px; {{ 'background: #eef;' if current_folder == k.key else '' }}">
+                        📂
+                    </button>
+                </div>
             {% endfor %}
         </div>
     </div>
 </div>
 <div class="sticky-nav">
     {% if page > 1 %}
-    <a
-            href="#"
-            onclick="saveAndGo({{kategorien}}, 1, {{ count }}, '{{ current_folder }}')"
-    >⏮ Anfang</a
-    >
-    <a
-            href="#"
-            onclick="saveAndGo({{kategorien}}, {{ page - 1 }}, {{ count }}, '{{ current_folder }}')"
-    >⬅ Zurück</a
-    >
-    {% else %}
-    <span style="color: #ccc">⏮ Anfang</span>
-    <span style="color: #ccc">⬅ Zurück</span>
-    {% endif %}
-    <span>
         <a
                 href="#"
-                onclick="saveAndGo({{kategorien}}, {{ page }}, {{ count }}, '{{ current_folder }}')"
-        >Seite {{ page }} von {{ total_pages }}</a
+                onclick="saveAndGo({{ kategorien }}, 1, {{ count }}, '{{ current_folder }}')"
+        >⏮ Anfang</a
         >
-      </span>
-    {% if page < total_pages %}
-    <a
-            href="#"
-            onclick="saveAndGo({{kategorien}}, {{ page + 1 }}, {{ count }}, '{{ current_folder }}')"
-    >Weiter ➡</a
-    >
-    <a
-            href="#"
-            onclick="saveAndGo({{kategorien}}, {{ total_pages }}, {{ count }}, '{{ current_folder }}')"
-    >⏭ Ende</a
-    >
+        <a
+                href="#"
+                onclick="saveAndGo({{ kategorien }}, {{ page - 1 }}, {{ count }}, '{{ current_folder }}')"
+        >⬅ Zurück</a
+        >
     {% else %}
-    <span style="color: #ccc">Weiter ➡</span>
-    <span style="color: #ccc">⏭ Ende</span>
+        <span style="color: #ccc">⏮ Anfang</span>
+        <span style="color: #ccc">⬅ Zurück</span>
+    {% endif %}
+    <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+        <button onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count * 2 }}, '{{ current_folder }}')">
+            ➕➕ Mehr anzeigen
+        </button>
+        <button onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ current_folder }}')">
+            ➖➖ Weniger anzeigen
+        </button>
+    </div>
+    <a
+            href="#"
+            onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count }}, '{{ current_folder }}')"
+    >Seite {{ page }} von {{ total_pages }}</a
+    >
+    {% if page < total_pages %}
+        <a
+                href="#"
+                onclick="saveAndGo({{ kategorien }}, {{ page + 1 }}, {{ count }}, '{{ current_folder }}')"
+        >Weiter ➡</a
+        >
+        <a
+                href="#"
+                onclick="saveAndGo({{ kategorien }}, {{ total_pages }}, {{ count }}, '{{ current_folder }}')"
+        >⏭ Ende</a
+        >
+    {% else %}
+        <span style="color: #ccc">Weiter ➡</span>
+        <span style="color: #ccc">⏭ Ende</span>
     {% endif %}
 </div>
 <div class="grid">{{ images_html | safe }}</div>
@@ -368,7 +376,8 @@
             });
     }
 
-    const kategorien = {{ kategorien | tojson }};
+    const kategorien = {{ kategorien | tojson }}
+    ;
 
     window.addEventListener("DOMContentLoaded", () => {
         const menu = document.getElementById("menu");
