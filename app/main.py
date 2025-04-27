@@ -8,6 +8,8 @@ import threading
 import time
 import cv2
 
+import numpy as np
+
 from skimage import feature
 from pathlib import Path
 from fastapi import FastAPI, Request
