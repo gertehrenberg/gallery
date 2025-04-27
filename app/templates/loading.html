@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Gallery lädt...</title>
+    <style>
+        body {
+            background: #111;
+            color: #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: sans-serif;
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .spinner {
+            margin: 20px;
+            width: 40px;
+            height: 40px;
+            border: 5px solid #ccc;
+            border-top: 5px solid #09f;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #progress {
+            margin-top: 20px;
+            font-size: 1.2em;
+        }
+    </style>
+    <script>
+        let dots = 0;
+
+        function checkStatus() {
+            fetch('/gallery/loading_status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.ready) {
+                        window.location.href = "/gallery/?page=1&count=6&folder=real";
+                    } else {
+                        dots = (dots + 1) % 4; // 0, 1, 2, 3 Punkte
+                        let dotString = '.'.repeat(dots);
+                        document.getElementById('progress').innerText =
+                            `🔹 ${data.folders_loaded} von ${data.folders_total} Ordnern geladen${dotString} (${data.current_folder})`;
+                    }
+                })
+                .catch(err => {
+                    console.error('Statusabfrage fehlgeschlagen', err);
+                });
+        }
+
+        setInterval(checkStatus, 2000); // Alle 2 Sekunden neuen Status abrufen
+        window.onload = checkStatus;
+    </script>
+</head>
+<body>
+<h1>🔄 Gallery wird vorbereitet...</h1>
+<div class="spinner"></div>
+<p id="progress">Initialisiere...</p>
+</body>
+</html>

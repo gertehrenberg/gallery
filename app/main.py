@@ -4,6 +4,7 @@ import math
 import os
 import socket
 import ssl
+import threading
 import time
 from pathlib import Path
 
@@ -54,28 +55,91 @@ file_parents_cache = {}
 
 service = None
 
+app_ready = False
+
+folders_total = len(kategorien)
+current_loading_folder = ""
+folders_loaded = 0
+
+logging.basicConfig(level=logging.INFO)
+
+
+@app.on_event("startup")
+def init_service():
+    global service
+
+    os.environ.pop("HTTPS_PROXY", None)
+    os.environ.pop("HTTP_PROXY", None)
+
+    if not os.path.exists(CRED_FILE):
+        raise RuntimeError("credentials.json fehlt")
+
+    if os.path.exists(TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+    else:
+        logging.warning("Kein Token gefunden. Bitte besuche /gallery/auth.")
+        return
+
+    service = build('drive', 'v3', credentials=creds)
+    global kategorien, CHECKBOX_CATEGORIES
+
+    kategorien = verify_folders_exist(service, kategorien)
+    CHECKBOX_CATEGORIES = [k["key"] for k in kategorien]
+
+    # Sofort Thread starten!
+    threading.Thread(target=slow_start, daemon=True).start()
+
+
+def slow_start():
+    global app_ready
+
+    logging.info("🏁 Starte langsames Initialisieren...")
+
+    # erst nach dem Start langsam laden
+    fillcache()
+    fill_folder_cache()
+    init_db()
+
+    app_ready = True
+    logging.info("🚀 Anwendung bereit!")
+
 
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
-        CREATE TABLE IF NOT EXISTS checkbox_status (
-            image_name TEXT,
-            checkbox TEXT,
-            checked INTEGER,
-            PRIMARY KEY (image_name, checkbox)
-        )
-        """)
+                     CREATE TABLE IF NOT EXISTS checkbox_status
+                     (
+                         image_name
+                         TEXT,
+                         checkbox
+                         TEXT,
+                         checked
+                         INTEGER,
+                         PRIMARY
+                         KEY
+                     (
+                         image_name,
+                         checkbox
+                     )
+                         )
+                     """)
         conn.execute("""
-        CREATE TABLE IF NOT EXISTS text_status (
-            image_name TEXT,
-            field TEXT,
-            value TEXT,
-            PRIMARY KEY (image_name, field)
-        )
-        """)
-
-
-logging.basicConfig(level=logging.INFO)
+                     CREATE TABLE IF NOT EXISTS text_status
+                     (
+                         image_name
+                         TEXT,
+                         field
+                         TEXT,
+                         value
+                         TEXT,
+                         PRIMARY
+                         KEY
+                     (
+                         image_name,
+                         field
+                     )
+                         )
+                     """)
 
 
 def save_status(image_name: str, data: dict):
@@ -116,8 +180,10 @@ def load_status(image_name: str):
         with sqlite3.connect(DB_PATH) as conn:
             # Wir suchen nun nach allen Checkboxen, deren name den Dateinamen enthält, z.B. "img_5242.jpg_save"
             rows = conn.execute("""
-                SELECT checkbox, checked FROM checkbox_status WHERE image_name = ?
-            """, (image_name,))
+                                SELECT checkbox, checked
+                                FROM checkbox_status
+                                WHERE image_name = ?
+                                """, (image_name,))
             for row in rows:
                 # Den Bildnamen beibehalten
                 checkbox_key = row[0]  # Der Schlüssel bleibt wie er ist, z.B. "img_5242.jpg_save"
@@ -125,8 +191,10 @@ def load_status(image_name: str):
 
             # Laden der Textstatusfelder
             rows = conn.execute("""
-                SELECT field, value FROM text_status WHERE image_name = ?
-            """, (image_name,))
+                                SELECT field, value
+                                FROM text_status
+                                WHERE image_name = ?
+                                """, (image_name,))
             for row in rows:
                 status[row[0]] = row[1]
 
@@ -190,38 +258,6 @@ def verify_folders_exist(service, kategorien):
         except Exception as e:
             logging.warning(f"[verify_folders_exist] Ordner nicht gefunden: {kat['key']} ({kat['folderid']}) - {e}")
     return valid_kategorien
-
-
-@app.on_event("startup")
-def init_service():
-    global service
-
-    os.environ.pop("HTTPS_PROXY", None)
-    os.environ.pop("HTTP_PROXY", None)
-
-    if not os.path.exists(CRED_FILE):
-        raise RuntimeError("credentials.json fehlt")
-
-    creds = None
-    if os.path.exists(TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
-    else:
-        logging.warning(
-            "Kein Token gefunden. Bitte besuche https://levellevel.me/gallery/auth um dich zu authentifizieren.")
-        return
-
-    service = build('drive', 'v3', credentials=creds)
-
-    global kategorien, CHECKBOX_CATEGORIES
-
-    kategorien = verify_folders_exist(service, kategorien)
-    CHECKBOX_CATEGORIES = [k["key"] for k in kategorien]
-
-    os.makedirs(TEXT_FILE_CACHE_DIR, exist_ok=True)
-
-    fillcache()
-    fill_folder_cache(service)
-    init_db()
 
 
 def download_text_file(service, file_id: str, cache_dir: str) -> str:
@@ -371,12 +407,15 @@ def clear_folder_parents_cache(folder_id: str):
         del file_parents_cache[folder_id]
 
 
-def fill_folder_cache(service):
+def fill_folder_cache():
+    global folders_loaded, current_loading_folder
+
     """Füllt den file_parents_cache für alle gültigen Kategorien."""
     file_parents_cache.clear()
 
     for kat in kategorien:
         folder_id = kat["folderid"]
+        current_loading_folder = kat["label"]
         logging.info(f"[fill_folder_cache] Lade Dateien für Ordner: {kat['key']} ({folder_id})")
 
         query = f"'{folder_id}' in parents and trashed = false"
@@ -402,10 +441,24 @@ def fill_folder_cache(service):
             page_token = response.get('nextPageToken', None)
             if page_token is None:
                 break
+        folders_loaded += 1
+
+
+@app.get("/loading_status")
+def loading_status():
+    return {
+        "ready": app_ready,
+        "current_folder": current_loading_folder,
+        "folders_loaded": folders_loaded,
+        "folders_total": folders_total
+    }
 
 
 @app.get("/", response_class=HTMLResponse)
-def show_three_images(request: Request):
+def show_images(request: Request):
+    if not app_ready:
+        return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
+
     page_str = request.query_params.get('page', '1')
     try:
         page = int(page_str)
@@ -442,42 +495,17 @@ def show_three_images(request: Request):
 
     images_html_parts = []
     for image_name in image_keys:
-        pair = pair_cache[image_name]
-        image_id = pair['image_id']
-        text_id = pair['text_id']
-
-        if image_name not in text_cache:
-            try:
-                if text_id in text_cache:
-                    content = text_cache[text_id]
-                else:
-                    content = download_text_file(service, text_id, TEXT_FILE_CACHE_DIR)
-                    text_cache[image_name] = content
-                    text_cache[text_id] = content
-            except Exception as e:
-                text_cache[image_name] = f"Fehler beim Laden: {e}"
-
-        # Beispiel für die Status-Überprüfung, es kann angepasst werden
-        status = {}  # Du kannst hier eine Logik hinzufügen, um den Status zu ermitteln
-
-        thumbnail_src = download_thumbnail(service, image_cache, image_id)
-
-        status = load_status(image_name)  # immer laden, egal in welchem Ordner
-
-        if (count > 6):
-            text_content = ""
-        else:
-            text_content = text_cache.get(image_name, "Kein Text gefunden")
-
-        # Übergabe der Status- und anderen Variablen an das Template
+        image_data = prepare_image_data(image_name, count)
         images_html_parts.append(
             templates.get_template("image_entry.html").render(
-                thumbnail_src=thumbnail_src,
-                text_content=text_content,
-                image_id=image_id,
-                image_name=image_name,
-                status=status,  # Hier wird der Status übergeben
-                kategorien=kategorien  # Wenn du die Kategorien dynamisch generierst
+                thumbnail_src=image_data["thumbnail_src"],
+                text_content=image_data["text_content"],
+                image_id=image_data["image_id"],
+                image_name=image_data["image_name"],
+                status=image_data["status"],
+                quality=image_data["quality"],
+                quality_class=image_data["quality_class"],  # <--- das hier!
+                kategorien=kategorien
             )
         )
 
@@ -502,9 +530,11 @@ def verarbeite_check_checkbox(checkbox: str):
         return {"error": "ungültige Kategorie"}
     with sqlite3.connect(DB_PATH) as conn:
         count = conn.execute("""
-            SELECT COUNT(*) FROM checkbox_status
-            WHERE checked = 1 AND checkbox = ?
-        """, (checkbox,)).fetchone()[0]
+                             SELECT COUNT(*)
+                             FROM checkbox_status
+                             WHERE checked = 1
+                               AND checkbox = ?
+                             """, (checkbox,)).fetchone()[0]
     return {"count": count}
 
 
@@ -517,9 +547,11 @@ def move_marked_images_by_checkbox(service, current_folder: str, save_folder_key
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT image_name FROM checkbox_status
-            WHERE checked = 1 AND checkbox = ?
-        """, (save_folder_key,))
+                       SELECT image_name
+                       FROM checkbox_status
+                       WHERE checked = 1
+                         AND checkbox = ?
+                       """, (save_folder_key,))
         rows = cursor.fetchall()
 
         logging.info(f"[move_marked_images_by_checkbox] {len(rows)} markierte Bilder gefunden für '{save_folder_key}'.")
@@ -542,9 +574,11 @@ def move_marked_images_by_checkbox(service, current_folder: str, save_folder_key
             try:
                 move_file(service, image_id, folder_id, save_folder_id)
                 conn.execute("""
-                    DELETE FROM checkbox_status
-                    WHERE image_name = ? AND checkbox = ?
-                """, (image_name, save_folder_key))
+                             DELETE
+                             FROM checkbox_status
+                             WHERE image_name = ?
+                               AND checkbox = ?
+                             """, (image_name, save_folder_key))
                 anzahl_verschoben += 1
                 logging.info(f"[move_marked_images_by_checkbox] ✅ Verschoben: {image_name} ({image_id})")
             except Exception as e:
@@ -588,9 +622,9 @@ def move_file(service, file_id: str, old_folder_id: str, new_folder_id: str):
 @app.post("/moveToFolder/{checkbox}")
 async def verarbeite_checkbox(checkbox: str):
     if checkbox not in CHECKBOX_CATEGORIES:
-        return RedirectResponse(url="/?done=0", status_code=303)
+        return RedirectResponse(url="/gallery/?done=0", status_code=303)
     anzahl_verschoben = move_marked_images_by_checkbox(service, "real", checkbox)
-    return RedirectResponse(url=f"/?done={checkbox}&count={anzahl_verschoben}", status_code=303)
+    return RedirectResponse(url=f"/gallery/?done={checkbox}&count={anzahl_verschoben}", status_code=303)
 
 
 @app.get("/moveToFolder/{checkbox}")
@@ -599,9 +633,11 @@ def get_marked_images_count(checkbox: str):
         return {"count": 0}
     with sqlite3.connect(DB_PATH) as conn:
         count = conn.execute("""
-            SELECT COUNT(*) FROM checkbox_status
-            WHERE checked = 1 AND checkbox = ?
-        """, (checkbox,)).fetchone()[0]
+                             SELECT COUNT(*)
+                             FROM checkbox_status
+                             WHERE checked = 1
+                               AND checkbox = ?
+                             """, (checkbox,)).fetchone()[0]
     return {"count": count}
 
 
@@ -611,6 +647,69 @@ def get_folderid_for_checkbox(cat: str) -> str:
         if kategorie["key"] == cat:
             return kategorie["folderid"]
     raise ValueError(f"Keine folderid gefunden für Checkbox '{cat}'")
+
+
+def get_quality_class(quality: int) -> str:
+    """Gibt eine CSS-Klasse basierend auf der Qualität zurück."""
+    if quality is None:
+        return "quality-unknown"
+    elif quality >= 70:
+        return "quality-good"
+    elif quality >= 40:
+        return "quality-medium"
+    else:
+        return "quality-bad"
+
+
+def prepare_image_data(image_name: str, count: int):
+    """Bereitet alle Variablen für ein einzelnes Bild vor, inkl. Qualität."""
+    pair = pair_cache[image_name]
+    image_id = pair['image_id']
+    text_id = pair['text_id']
+
+    if image_name not in text_cache:
+        try:
+            if text_id not in text_cache:
+                content = download_text_file(service, text_id, TEXT_FILE_CACHE_DIR)
+                text_cache[image_name] = content
+                text_cache[text_id] = content
+        except Exception as e:
+            text_cache[image_name] = f"Fehler beim Laden: {e}"
+
+    thumbnail_src = download_thumbnail(service, image_cache, image_id)
+    status = load_status(image_name)
+    quality = load_image_quality(image_name)
+
+    text_content = "" if (count > 6) else text_cache.get(image_name, "Kein Text gefunden")
+
+    # Qualität Klasse bestimmen
+    quality_class = get_quality_class(quality)
+
+    return {
+        "thumbnail_src": thumbnail_src,
+        "text_content": text_content,
+        "image_id": image_id,
+        "image_name": image_name,
+        "status": status,
+        "quality": quality,
+        "quality_class": quality_class
+    }
+
+
+def load_image_quality(image_name: str) -> int:
+    """Lädt die Qualitätsbewertung (0-100) eines Bildes aus der Datenbank, case-insensitiv."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            result = conn.execute("""
+                                  SELECT quality
+                                  FROM image_quality
+                                  WHERE LOWER(image_name) = LOWER(?)
+                                  """, (image_name,)).fetchone()
+            if result:
+                return result[0]
+    except Exception as e:
+        logging.error(f"[load_image_quality] Fehler beim Laden der Qualität für {image_name}: {e}")
+    return None
 
 
 @app.get("/original/{file_id}")

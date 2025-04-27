@@ -1,40 +1,49 @@
 <div class="grid">
-  <div class="eintrag">
-    <table style="width: 100%; table-layout: fixed">
-      <tr>
-        <!-- Bild in der ersten Spalte -->
-        <td style="width: 60%; vertical-align: top">
-          <img
-            alt="{{ image_name }}"
-            class="bild"
-            onclick="openModal('{{ image_id }}')"
-            src="{{ thumbnail_src }}"
-            style="cursor: pointer; max-width: 100%"
-          />
-        </td>
+    <div class="eintrag">
+        <table style="width: 100%; table-layout: fixed">
+            <tr>
+                <!-- Bild in der ersten Spalte -->
+                <td style="width: 60%; vertical-align: top">
+                    <img
+                            alt="{{ image_name }}"
+                            class="bild"
+                            onclick="openModal('{{ image_id }}')"
+                            src="{{ thumbnail_src }}"
+                            style="cursor: pointer; max-width: 100%"
+                    />
+                </td>
 
-        <!-- Checkboxen in der zweiten Spalte -->
-        <td style="width: 40%; vertical-align: top; padding-left: 10px">
-          <form class="checkbox-container">
-            <input type="hidden" name="image_name" value="{{ image_name }}" />
-            <!-- Verstecktes Eingabefeld für image_name -->
-            {% for k in kategorien %}
-            <label>
-              <input name="{{ image_name }}_{{ k.key }}" type="checkbox" {{
-              'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label
-              }}
-            </label>
-            {% endfor %}
-          </form>
-        </td>
-      </tr>
-      <tr>
-        <td colspan="2">
-          <!-- Bildname und Text in einer gemeinsamen Zeile -->
-          <div class="bildname">{{ image_name }}</div>
-          <div class="text">{{ text_content | safe }}</div>
-        </td>
-      </tr>
-    </table>
-  </div>
+                <!-- Checkboxen in der zweiten Spalte -->
+                <td style="width: 40%; vertical-align: top; padding-left: 10px">
+                    <form class="checkbox-container">
+                        <input name="image_name" type="hidden" value="{{ image_name }}"/>
+                        <!-- Verstecktes Eingabefeld für image_name -->
+                        {% for k in kategorien %}
+                        <label>
+                            <input name="{{ image_name }}_{{ k.key }}" type="checkbox" {{
+                            'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label
+                            }}
+                        </label>
+                        {% endfor %}
+                    </form>
+                </td>
+            </tr>
+            <tr>
+                <td class="bildname">{{ image_name }}
+                </td>
+                <td class="quality {{ quality_class }}">
+                    {% if quality is not none %}
+                    Qualität: {{ quality }}/100
+                    {% else %}
+                    Qualität: Noch nicht bewertet
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <td colspan="2">
+                    <div class="text">{{ text_content | safe }}</div>
+                </td>
+            </tr>
+        </table>
+    </div>
 </div>
