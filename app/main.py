@@ -26,10 +26,10 @@ SCOPES = [
 kategorien = [
     {"key": "real", "label": "Alle Bilder", "icon": "💾", "folderid": "1fyE_ZYoVoGZ7ehjuWrS9Kd6WW4w2UZWy"},
     {"key": "delete", "label": "Löschen", "icon": "❌", "folderid": "1wjUj6NHZ_ZHwlahQuJUbCTf_HplqePVw"},
-    {"key": "recheck", "label": "Neu beurteilen", "icon": "🔄", "folderid": "1EyrM6LLv_nEyB8s6zzGDGzf-hcPC76dg"},
+    {"key": "recheck", "label": "Neu", "icon": "🔄", "folderid": "1EyrM6LLv_nEyB8s6zzGDGzf-hcPC76dg"},
     {"key": "bad", "label": "Schlecht", "icon": "⛔", "folderid": "1EkX7TxoRJlYUyeNA10T3Gzdt5Nd7yRRf"},
     {"key": "sex", "label": "Anzüglich", "icon": "🔞", "folderid": "1XCOjgEi0m0YGu11oPo3IZJizUf3p3tZg"},
-    {"key": "ki", "label": "KI generiert", "icon": "🤖", "folderid": "1LWF_V26zvX-W9vRNwscmeQ6U7YeJxOuL"},
+    {"key": "ki", "label": "KI", "icon": "🤖", "folderid": "1LWF_V26zvX-W9vRNwscmeQ6U7YeJxOuL"},
     {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️", "folderid": "1UjmQV-dO3y8uhqmWjSIzU1t7w6-rQEqG"},
     {"key": "document", "label": "Dokumente", "icon": "📄", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAW"},
 ]
@@ -54,6 +54,7 @@ file_parents_cache = {}
 
 service = None
 
+
 def init_db():
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
@@ -73,7 +74,9 @@ def init_db():
         )
         """)
 
+
 logging.basicConfig(level=logging.INFO)
+
 
 def save_status(image_name: str, data: dict):
     # Logge die Eingabedaten für das Speichern
@@ -175,6 +178,7 @@ def auth_callback(request: Request):
 
     return {"message": "✅ Authentifizierung erfolgreich!"}
 
+
 def verify_folders_exist(service, kategorien):
     """Filtert Kategorien nach tatsächlich existierenden Ordnern."""
     valid_kategorien = []
@@ -186,6 +190,7 @@ def verify_folders_exist(service, kategorien):
         except Exception as e:
             logging.warning(f"[verify_folders_exist] Ordner nicht gefunden: {kat['key']} ({kat['folderid']}) - {e}")
     return valid_kategorien
+
 
 @app.on_event("startup")
 def init_service():
@@ -459,11 +464,16 @@ def show_three_images(request: Request):
 
         status = load_status(image_name)  # immer laden, egal in welchem Ordner
 
+        if (count > 6):
+            text_content = ""
+        else:
+            text_content = text_cache.get(image_name, "Kein Text gefunden")
+
         # Übergabe der Status- und anderen Variablen an das Template
         images_html_parts.append(
             templates.get_template("image_entry.html").render(
                 thumbnail_src=thumbnail_src,
-                text_content=text_cache.get(image_name, "Kein Text gefunden"),
+                text_content=text_content,
                 image_id=image_id,
                 image_name=image_name,
                 status=status,  # Hier wird der Status übergeben
@@ -579,7 +589,7 @@ def move_file(service, file_id: str, old_folder_id: str, new_folder_id: str):
 async def verarbeite_checkbox(checkbox: str):
     if checkbox not in CHECKBOX_CATEGORIES:
         return RedirectResponse(url="/?done=0", status_code=303)
-    move_marked_images_by_checkbox(service, "real", checkbox)
+    anzahl_verschoben = move_marked_images_by_checkbox(service, "real", checkbox)
     return RedirectResponse(url=f"/?done={checkbox}&count={anzahl_verschoben}", status_code=303)
 
 
