@@ -14,30 +14,28 @@
                         src="{{ thumbnail_src }}"
                         style="cursor: pointer; max-width: 100%"
                 />
+                <div colspan="2" class="quality {{ quality_class }}">
+                    {% if quality is not none %}
+                        Qualität: {{ quality }}/100
+                    {% else %}
+                        Qualität: fehlt
+                    {% endif %}
+                </div>
             </td>
-
-            <!-- Checkboxen in der zweiten Spalte -->
             <td style="width: 40%; vertical-align: top; padding-left: 10px">
-                <form class="checkbox-container">
-                    <input name="image_name" type="hidden" value="{{ image_name }}"/>
-                    <!-- Verstecktes Eingabefeld für image_name -->
-                    {% for k in kategorien %}
-                    <label>
-                        <input name="{{ image_name }}_{{ k.key }}" type="checkbox" {{
-                        'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label
-                        }}
-                    </label>
-                    {% endfor %}
-                </form>
-            </td>
-        </tr>
-        <tr>
-            <td colspan="2" class="quality {{ quality_class }}">
-                {% if quality is not none %}
-                Qualität: {{ quality }}/100
-                {% else %}
-                Qualität: fehlt
-                {% endif %}
+                <div id="checkboxes-{{ image_name }}">
+                    <form class="checkbox-container">
+                        <input name="image_name" type="hidden" value="{{ image_name }}"/>
+                        <!-- Verstecktes Eingabefeld für image_name -->
+                        {% for k in kategorien %}
+                        <label>
+                            <input name="{{ image_name }}_{{ k.key }}" type="checkbox" {{
+                            'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label
+                            }}
+                        </label>
+                        {% endfor %}
+                    </form>
+                </div>
             </td>
         </tr>
         <tr>

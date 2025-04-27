@@ -3,16 +3,18 @@ import logging
 import math
 import os
 import socket
+import sqlite3
 import ssl
 import threading
 import time
-import sqlite3
 from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
@@ -50,12 +52,15 @@ REDIRECT_URI = "https://levellevel.me/gallery/auth/callback"
 
 PAIR_CACHE_PATH = '/data/pair_cache.json'
 TEXT_FILE_CACHE_DIR = '/data/textfiles'
+IMAGE_FILE_CACHE_DIR = '/data/imagefiles'
+THUMBNAIL_CACHE_DIR = '/data/thumbnailfiles300'
 
 image_cache = {}  # file_id -> { 'thumbnail': url }
 text_cache = {}  # lowercase text filename -> content
 pair_cache = {}  # lowercase image filename -> { image_id, text_id, web_link }
 text_id_cache = {}  # lowercase text filename -> google file ID
 file_parents_cache = {}
+rendered_image_cache = {}
 
 service = None
 
@@ -66,6 +71,9 @@ current_loading_folder = ""
 folders_loaded = 0
 
 logging.basicConfig(level=logging.INFO)
+
+# Static mount für Thumbnails
+app.mount("/static/thumbnails", StaticFiles(directory="/app/thumbnails"), name="thumbnails")
 
 
 @app.on_event("startup")
@@ -300,7 +308,7 @@ def download_text_file(service, file_id: str, cache_dir: str) -> str:
         raise
 
 
-def download_thumbnail(service, image_cache, file_id):
+def download_thumbnail(image_cache, file_id):
     if file_id in image_cache:
         logging.info(f"[Thumbnail] Cache-Treffer für Datei-ID: {file_id}")
         return image_cache[file_id]['thumbnail']
@@ -403,6 +411,11 @@ def fillcache():
 
     logging.info(
         f"[fillcache] Cache vollständig aktualisiert: {len(text_id_cache)} Textdateien, {len(image_name_cache)} Bilder, {len(pair_cache)} Paare.")
+
+
+@app.get("/status/{image_name}")
+def get_status_for_image(image_name: str):
+    return load_status(image_name)
 
 
 def fill_folder_cache():
@@ -508,6 +521,16 @@ def loading_status():
     }
 
 
+def render_status(status: dict) -> str:
+    html = []
+    for key, checked in status.items():
+        if checked:
+            html.append(f'<input type="checkbox" name="{key}" checked>')
+        else:
+            html.append(f'<input type="checkbox" name="{key}">')
+    return '\n'.join(html)
+
+
 @app.get("/", response_class=HTMLResponse)
 def show_images(request: Request):
     if not app_ready:
@@ -548,26 +571,48 @@ def show_images(request: Request):
     image_keys = image_keys[start:end]
 
     images_html_parts = []
-    images_html_parts.append("<div class='grid'>")
+
     for image_name in image_keys:
-        image_data = prepare_image_data(image_name, count)
-        images_html_parts.append(
-            templates.get_template("image_entry.j2").render(
+        # 1. Laden der aktuellen Statusdaten
+        status = load_status(image_name)
+
+        # 2. Schnell-rendern: Wenn gecacht vorhanden
+        if image_name in rendered_image_cache:
+            images_html_parts.append(rendered_image_cache[image_name])
+        else:
+            # Rendern und cachen
+            image_data = prepare_image_data(image_name, count)
+            rendered_html = templates.get_template("image_entry.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
                 text_content=image_data["text_content"],
                 image_id=image_data["image_id"],
                 image_name=image_data["image_name"],
-                status=image_data["status"],
+                status={},
                 quality=image_data["quality"],
-                quality_class=image_data["quality_class"],  # <--- das hier!
+                quality_class=image_data["quality_class"],
                 kategorien=kategorien
             )
-        )
-    images_html_parts.append("</div>")
+            rendered_image_cache[image_name] = rendered_html
+            images_html_parts.append(rendered_html)
+
+        # Status dynamisch nachschieben
+        status_json = json.dumps({f"{image_name}_{key}": value for key, value in status.items()})
+        safe_image_id = pair_cache[image_name]["image_id"].replace("-", "_")
+
+        images_html_parts.append(f"""
+        <script>
+        const checkboxStatus_{safe_image_id} = {status_json};
+        for (const key in checkboxStatus_{safe_image_id}) {{
+            const checkbox = document.querySelector(`input[name="${{key}}"]`);
+            if (checkbox) {{
+                checkbox.checked = checkboxStatus_{safe_image_id}[key];
+            }}
+        }}
+        </script>
+        """)
 
     # Berechnung total_pages
     total_pages = max(1, math.ceil(total_images / count))
-    print(f"💾 Total Pages {total_pages} ({total_images} / {count})")
 
     return templates.TemplateResponse("image_gallery.j2", {
         "request": request,
@@ -592,6 +637,7 @@ def verarbeite_check_checkbox(checkbox: str):
                                AND checkbox = ?
                              """, (checkbox,)).fetchone()[0]
     return {"count": count}
+
 
 def move_marked_images_by_checkbox(current_folder: str, save_folder_key: str) -> int:
     logging.info(f"[move_marked_images_by_checkbox] Starte Verschieben von '{current_folder}' nach '{save_folder_key}'")
@@ -708,6 +754,7 @@ def move_file(file_id: str, old_folder_id: str, new_folder_id: str):
 
 from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
+
 @app.post("/moveToFolder/{checkbox}")
 async def verarbeite_checkbox(checkbox: str, request: Request):
     referer = request.headers.get("referer", "/gallery/?page=1&count=6&folder=real")
@@ -780,6 +827,7 @@ def prepare_image_data(image_name: str, count: int):
     """Bereitet alle Variablen für ein einzelnes Bild vor, inkl. Qualität."""
     pair = pair_cache[image_name]
     image_id = pair['image_id']
+    image_name = image_name.lower()
     text_id = pair['text_id']
 
     if image_name not in text_cache:
@@ -791,8 +839,14 @@ def prepare_image_data(image_name: str, count: int):
         except Exception as e:
             text_cache[image_name] = f"Fehler beim Laden: {e}"
 
-    thumbnail_src = download_thumbnail(service, image_cache, image_id)
-    status = load_status(image_name)
+    local_thumbnail_path = download_and_save_image(image_id, image_name)
+
+    if os.path.exists(local_thumbnail_path):
+        thumbnail_src = f"/gallery/static/thumbnails/{image_name}"
+    else:
+        # Falls nicht vorhanden → Drive-Thumbnail verwenden
+        thumbnail_src = download_thumbnail(image_cache, image_id)
+
     quality = load_image_quality(image_name)
 
     text_content = "" if (count > 6) else text_cache.get(image_name, "Kein Text gefunden")
@@ -805,7 +859,6 @@ def prepare_image_data(image_name: str, count: int):
         "text_content": text_content,
         "image_id": image_id,
         "image_name": image_name,
-        "status": status,
         "quality": quality,
         "quality_class": quality_class
     }
@@ -944,3 +997,38 @@ def calculate_simple_brisque(image_path):
     lbp = feature.local_binary_pattern(image, P=8, R=1, method="uniform")
     score = np.std(lbp)
     return score
+
+
+def download_and_save_image(file_id: str, image_name: str) -> str:
+    """Lädt das Originalbild und speichert es + Thumbnail lokal."""
+    image_path = os.path.join(IMAGE_FILE_CACHE_DIR, image_name)
+    thumbnail_path = os.path.join(THUMBNAIL_CACHE_DIR, image_name)
+
+    # Original speichern
+    if not os.path.exists(image_path):
+        try:
+            logging.info(f"[download_and_save_image] Lade Originalbild für {image_name}")
+            request = service.files().get_media(fileId=file_id)
+            content = request.execute()
+            os.makedirs(IMAGE_FILE_CACHE_DIR, exist_ok=True)
+            with open(image_path, 'wb') as f:
+                f.write(content)
+            logging.info(f"[download_and_save_image] ✅ Originalbild gespeichert: {image_path}")
+        except Exception as e:
+            logging.error(f"[download_and_save_image] ❌ Fehler beim Laden von Originalbild {image_name}: {e}")
+            return  # Fehler → abbrechen
+
+    # Thumbnail erzeugen
+    if not os.path.exists(thumbnail_path):
+        try:
+            logging.info(f"[download_and_save_image] Erzeuge Thumbnail für {image_name}")
+            img = Image.open(image_path)
+            img.thumbnail((300, 300),
+                          Image.Resampling.LANCZOS)  # max 300x300, Seitenverhältnis wird AUTOMATISCH behalten
+            os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
+            img.save(thumbnail_path, format="JPEG")
+            logging.info(f"[download_and_save_image] ✅ Thumbnail gespeichert: {thumbnail_path}")
+        except Exception as e:
+            logging.error(f"[download_and_save_image] ❌ Fehler beim Erzeugen von Thumbnail {image_name}: {e}")
+
+    return thumbnail_path
