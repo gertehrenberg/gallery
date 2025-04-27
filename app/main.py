@@ -6,8 +6,10 @@ import socket
 import ssl
 import threading
 import time
-from pathlib import Path
+import cv2
 
+from skimage import feature
+from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -96,9 +98,11 @@ def slow_start():
     logging.info("🏁 Starte langsames Initialisieren...")
 
     # erst nach dem Start langsam laden
+    init_db()
     fillcache()
     fill_folder_cache()
-    init_db()
+
+    # move_all_images_to_real_folder()
 
     app_ready = True
     logging.info("🚀 Anwendung bereit!")
@@ -139,6 +143,18 @@ def init_db():
                          field
                      )
                          )
+                     """)
+
+        conn.execute("""
+                     CREATE TABLE IF NOT EXISTS image_folder_status
+                     (
+                         image_id
+                         TEXT
+                         PRIMARY
+                         KEY,
+                         folder_id
+                         TEXT
+                     )
                      """)
 
 
@@ -387,6 +403,79 @@ def fillcache():
         f"[fillcache] Cache vollständig aktualisiert: {len(text_id_cache)} Textdateien, {len(image_name_cache)} Bilder, {len(pair_cache)} Paare.")
 
 
+def fill_folder_cache():
+    global folders_loaded, current_loading_folder
+
+    file_parents_cache.clear()
+
+    with sqlite3.connect(DB_PATH) as conn:
+        # Prüfen, ob schon Einträge existieren
+        row = conn.execute("SELECT COUNT(*) FROM image_folder_status").fetchone()
+        if row and row[0] > 0:
+            logging.info("[fill_folder_cache] 📦 Lade file_parents_cache aus der Datenbank...")
+
+            rows = conn.execute("SELECT image_id, folder_id FROM image_folder_status").fetchall()
+            for image_id, folder_id in rows:
+                if folder_id not in file_parents_cache:
+                    file_parents_cache[folder_id] = []
+                file_parents_cache[folder_id].append(image_id)
+
+            folders_loaded = folders_total
+            logging.info(f"[fill_folder_cache] ✅ Cache aus DB geladen: {folders_loaded}/{folders_total} Ordner")
+            return  # <<< Fertig, nichts mehr von Google Drive laden
+
+    # Falls KEINE Daten vorhanden → API laden
+    logging.info("[fill_folder_cache] 🛰️ Keine Cache-Daten vorhanden, lade von Google Drive...")
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DELETE FROM image_folder_status")  # <<< Sauber löschen
+
+        for kat in kategorien:
+            folder_id = kat["folderid"]
+            current_loading_folder = kat["label"]
+            logging.info(f"[fill_folder_cache] Lade Dateien für Ordner: {kat['key']} ({folder_id})")
+
+            query = f"'{folder_id}' in parents and trashed = false"
+            page_token = None
+            file_parents_cache[folder_id] = []
+
+            while True:
+                try:
+                    response = service.files().list(
+                        q=query,
+                        spaces='drive',
+                        fields='nextPageToken, files(id)',
+                        pageToken=page_token,
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives=True
+                    ).execute()
+                except Exception as e:
+                    logging.warning(f"[fill_folder_cache] Fehler beim Laden für {kat['key']} ({folder_id}): {e}")
+                    break
+
+                for file in response.get('files', []):
+                    file_id = file['id']
+                    file_parents_cache[folder_id].append(file_id)
+
+                    try:
+                        # Direkt in die DB speichern
+                        conn.execute("""
+                            INSERT OR REPLACE INTO image_folder_status (image_id, folder_id)
+                            VALUES (?, ?)
+                        """, (file_id, folder_id))
+                    except Exception as e:
+                        logging.warning(f"[fill_folder_cache] Fehler beim Speichern von {file_id} → {folder_id}: {e}")
+
+                page_token = response.get('nextPageToken', None)
+                if page_token is None:
+                    break
+
+            folders_loaded += 1
+            logging.info(f"[fill_folder_cache] ✅ {folders_loaded}/{folders_total} Ordner geladen: {kat['key']}")
+
+        conn.commit()
+
+
 def init_folder_cache(FOLDER_ID):
     file_parents_cache.clear()
     file_parents_cache[FOLDER_ID] = []
@@ -405,43 +494,6 @@ def is_file_in_folder(service, file_id: str, folder_id: str) -> bool:
 def clear_folder_parents_cache(folder_id: str):
     if folder_id in file_parents_cache:
         del file_parents_cache[folder_id]
-
-
-def fill_folder_cache():
-    global folders_loaded, current_loading_folder
-
-    """Füllt den file_parents_cache für alle gültigen Kategorien."""
-    file_parents_cache.clear()
-
-    for kat in kategorien:
-        folder_id = kat["folderid"]
-        current_loading_folder = kat["label"]
-        logging.info(f"[fill_folder_cache] Lade Dateien für Ordner: {kat['key']} ({folder_id})")
-
-        query = f"'{folder_id}' in parents and trashed = false"
-        page_token = None
-        file_parents_cache[folder_id] = []
-
-        while True:
-            try:
-                response = service.files().list(
-                    q=query,
-                    spaces='drive',
-                    fields='nextPageToken, files(id)',
-                    pageToken=page_token
-                ).execute()
-            except Exception as e:
-                logging.warning(f"[fill_folder_cache] Fehler beim Laden für {kat['key']} ({folder_id}): {e}")
-                break
-
-            for file in response.get('files', []):
-                file_id = file['id']
-                file_parents_cache[folder_id].append(file_id)
-
-            page_token = response.get('nextPageToken', None)
-            if page_token is None:
-                break
-        folders_loaded += 1
 
 
 @app.get("/loading_status")
@@ -572,7 +624,7 @@ def move_marked_images_by_checkbox(service, current_folder: str, save_folder_key
             image_id = pair_cache[image_name]["image_id"]
 
             try:
-                move_file(service, image_id, folder_id, save_folder_id)
+                move_file(image_id, folder_id, save_folder_id)
                 conn.execute("""
                              DELETE
                              FROM checkbox_status
@@ -592,7 +644,7 @@ def move_marked_images_by_checkbox(service, current_folder: str, save_folder_key
     return anzahl_verschoben
 
 
-def move_file(service, file_id: str, old_folder_id: str, new_folder_id: str):
+def move_file(file_id: str, old_folder_id: str, new_folder_id: str):
     """Verschiebt eine Datei auf Google Drive von einem Ordner in einen anderen."""
     logging.info(f"[move_file] Starte Verschieben von Datei {file_id} von {old_folder_id} zu {new_folder_id}")
 
@@ -771,3 +823,59 @@ def show_grid_view(request: Request):
         "count": count,
         "grid_entries": "".join(grid_entries)
     })
+
+def move_all_images_to_real_folder():
+    """Verschiebt ALLE Dateien aus ALLEN Ordnern in den real-Ordner, echtes Live-Lesen ohne Cache."""
+    logging.info("[move_all_images_to_real_folder] 🚀 Starte Verschieben aller Dateien nach 'real' (ohne Cache)...")
+
+    real_folder_id = get_folderid_for_checkbox("real")
+    anzahl_verschoben = 0
+
+    for folder_key in CHECKBOX_CATEGORIES:
+        if folder_key == "real":
+            continue  # 'real'-Ordner selbst überspringen
+
+        source_folder_id = get_folderid_for_checkbox(folder_key)
+
+        logging.info(f"[move_all_images_to_real_folder] 📂 Lade Dateien aus Ordner: {folder_key} ({source_folder_id})")
+        page_token = None
+
+        while True:
+            try:
+                response = service.files().list(
+                    q=f"'{source_folder_id}' in parents and trashed = false",
+                    spaces='drive',
+                    fields='nextPageToken, files(id)',
+                    pageToken=page_token,
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True
+                ).execute()
+            except Exception as e:
+                logging.error(f"[move_all_images_to_real_folder] ❌ Fehler beim Laden der Dateien: {e}")
+                break
+
+            for file in response.get('files', []):
+                file_id = file['id']
+                try:
+                    move_file(file_id, source_folder_id, real_folder_id)
+                    anzahl_verschoben += 1
+                    logging.info(f"[move_all_images_to_real_folder] ✅ Datei {file_id} verschoben")
+                except Exception as e:
+                    logging.error(f"[move_all_images_to_real_folder] ❌ Fehler beim Verschieben von {file_id}: {e}")
+
+            page_token = response.get('nextPageToken')
+            if not page_token:
+                break
+
+    logging.info(f"[move_all_images_to_real_folder] 🎯 Insgesamt {anzahl_verschoben} Dateien erfolgreich verschoben.")
+
+def calculate_simple_brisque(image_path):
+    """Berechnet die Fake-BRISQUE (LBP-Standardabweichung)."""
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        print(f"Bild {image_path} konnte nicht geladen werden.")
+        return None
+
+    lbp = feature.local_binary_pattern(image, P=8, R=1, method="uniform")
+    score = np.std(lbp)
+    return score
