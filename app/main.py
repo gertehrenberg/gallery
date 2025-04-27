@@ -6,18 +6,18 @@ import socket
 import ssl
 import threading
 import time
-import cv2
-
-import numpy as np
-
-from skimage import feature
+import sqlite3
 from pathlib import Path
+
+import cv2
+import numpy as np
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from skimage import feature
 
 logging.basicConfig(level=logging.INFO)
 app = FastAPI()
@@ -521,13 +521,13 @@ def show_images(request: Request):
     except ValueError:
         page = 1
 
-    count_str = request.query_params.get('count', '1')
+    count_str = request.query_params.get('count', '6')
     try:
         count = int(count_str)
         if count < 1:
-            count = 1
+            count = 6
     except ValueError:
-        count = 1
+        count = 6
 
     folder_str = request.query_params.get('folder', 'real')
     folder_id = get_folderid_for_checkbox(folder_str)
@@ -591,11 +591,7 @@ def verarbeite_check_checkbox(checkbox: str):
                              """, (checkbox,)).fetchone()[0]
     return {"count": count}
 
-
-import sqlite3
-
-
-def move_marked_images_by_checkbox(service, current_folder: str, save_folder_key: str) -> int:
+def move_marked_images_by_checkbox(current_folder: str, save_folder_key: str) -> int:
     logging.info(f"[move_marked_images_by_checkbox] Starte Verschieben von '{current_folder}' nach '{save_folder_key}'")
 
     with sqlite3.connect(DB_PATH) as conn:
@@ -626,7 +622,7 @@ def move_marked_images_by_checkbox(service, current_folder: str, save_folder_key
             image_id = pair_cache[image_name]["image_id"]
 
             try:
-                move_file(image_id, folder_id, save_folder_id)
+                move_file_db(image_id, folder_id, save_folder_id)
                 conn.execute("""
                              DELETE
                              FROM checkbox_status
@@ -644,6 +640,41 @@ def move_marked_images_by_checkbox(service, current_folder: str, save_folder_key
         f"[move_marked_images_by_checkbox] ✅ {anzahl_verschoben} Dateien erfolgreich verschoben von '{current_folder}' nach '{save_folder_key}'.")
 
     return anzahl_verschoben
+
+
+def move_file_db(file_id: str, old_folder_id: str, new_folder_id: str):
+    """Verschiebt eine Datei nur in der lokalen Datenbank von einem Ordner in einen anderen."""
+    logging.info(
+        f"[move_file_db] Starte Verschieben von Datei {file_id} in der Datenbank von {old_folder_id} zu {new_folder_id}")
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            # Update in der Datenbank
+            conn.execute("""
+                         UPDATE image_folder_status
+                         SET folder_id = ?
+                         WHERE image_id = ?
+                           AND folder_id = ?
+                         """, (new_folder_id, file_id, old_folder_id))
+            conn.commit()
+
+        # Lokalen Cache anpassen
+        if old_folder_id in file_parents_cache:
+            try:
+                file_parents_cache[old_folder_id].remove(file_id)
+            except ValueError:
+                logging.warning(f"[move_file_db] Datei {file_id} war nicht im Cache von {old_folder_id} vorhanden.")
+
+        if new_folder_id not in file_parents_cache:
+            file_parents_cache[new_folder_id] = []
+
+        if file_id not in file_parents_cache[new_folder_id]:
+            file_parents_cache[new_folder_id].append(file_id)
+
+        logging.info(f"[move_file_db] 📂 Erfolgreich verschoben (nur DB): {file_id}")
+
+    except Exception as e:
+        logging.error(f"[move_file_db] ❌ Fehler beim Verschieben von {file_id}: {e}")
 
 
 def move_file(file_id: str, old_folder_id: str, new_folder_id: str):
@@ -673,12 +704,40 @@ def move_file(file_id: str, old_folder_id: str, new_folder_id: str):
     logging.info(f"[move_file] 📂 Erfolgreich verschoben: {file_id}")
 
 
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+
 @app.post("/moveToFolder/{checkbox}")
-async def verarbeite_checkbox(checkbox: str):
+async def verarbeite_checkbox(checkbox: str, request: Request):
+    referer = request.headers.get("referer", "/gallery/?page=1&count=6&folder=real")
+    parsed_url = urlparse(referer)
+    query = parse_qs(parsed_url.query)
+
+    # Hole aktuelle page, count und folder aus der URL
+    page = query.get("page", ["1"])[0]
+    count = query.get("count", ["6"])[0]
+    folder = query.get("folder", ["real"])[0]
+
     if checkbox not in CHECKBOX_CATEGORIES:
-        return RedirectResponse(url="/gallery/?done=0", status_code=303)
-    anzahl_verschoben = move_marked_images_by_checkbox(service, "real", checkbox)
-    return RedirectResponse(url=f"/gallery/?done={checkbox}&count={anzahl_verschoben}", status_code=303)
+        # Fehler: einfach sauber ohne done zurück
+        clean_query = urlencode({
+            "page": page,
+            "count": count,
+            "folder": folder
+        })
+        clean_url = urlunparse(parsed_url._replace(query=clean_query))
+        return RedirectResponse(url=clean_url, status_code=303)
+
+    anzahl_verschoben = move_marked_images_by_checkbox("real", checkbox)
+
+    # Erfolgreich: mit done zurück
+    done_query = urlencode({
+        "page": page,
+        "count": count,
+        "folder": folder,
+        "done": checkbox
+    })
+    done_url = urlunparse(parsed_url._replace(query=done_query))
+    return RedirectResponse(url=done_url, status_code=303)
 
 
 @app.get("/moveToFolder/{checkbox}")
@@ -826,6 +885,7 @@ def show_grid_view(request: Request):
         "grid_entries": "".join(grid_entries)
     })
 
+
 def move_all_images_to_real_folder():
     """Verschiebt ALLE Dateien aus ALLEN Ordnern in den real-Ordner, echtes Live-Lesen ohne Cache."""
     logging.info("[move_all_images_to_real_folder] 🚀 Starte Verschieben aller Dateien nach 'real' (ohne Cache)...")
@@ -870,6 +930,7 @@ def move_all_images_to_real_folder():
                 break
 
     logging.info(f"[move_all_images_to_real_folder] 🎯 Insgesamt {anzahl_verschoben} Dateien erfolgreich verschoben.")
+
 
 def calculate_simple_brisque(image_path):
     """Berechnet die Fake-BRISQUE (LBP-Standardabweichung)."""

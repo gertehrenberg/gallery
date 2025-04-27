@@ -2,6 +2,10 @@
     <div class="eintrag">
         <table style="width: 100%; table-layout: fixed">
             <tr>
+                <td colspan="2" class="bildname">{{ image_name }}
+                </td>
+            </tr>
+            <tr>
                 <!-- Bild in der ersten Spalte -->
                 <td style="width: 60%; vertical-align: top">
                     <img
@@ -29,9 +33,7 @@
                 </td>
             </tr>
             <tr>
-                <td class="bildname">{{ image_name }}
-                </td>
-                <td class="quality {{ quality_class }}">
+                <td colspan="2" class="quality {{ quality_class }}">
                     {% if quality is not none %}
                     Qualität: {{ quality }}/100
                     {% else %}

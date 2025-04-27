@@ -72,6 +72,7 @@
             padding: 5px;
             margin-top: 10px;
             background: #f5f5f5;
+            font-size: 0.7em;
         }
 
         /* Bildname-Text */
@@ -79,6 +80,7 @@
             color: #555;
             text-align: center;
             margin-top: 8px;
+            font-size: 0.7em;
         }
 
         /* Bildbeschreibung/Text */
@@ -125,6 +127,7 @@
             text-align: left;
             margin-top: 8px;
             margin-right: 30px;
+            font-size: 0.7em;
         }
 
         .quality-medium {
@@ -132,6 +135,7 @@
             text-align: left;
             margin-top: 8px;
             margin-right: 30px;
+            font-size: 0.7em;
         }
 
         .quality-bad {
@@ -139,6 +143,7 @@
             text-align: left;
             margin-top: 8px;
             margin-right: 30px;
+            font-size: 0.7em;
         }
 
         .quality-unknown {
@@ -147,6 +152,7 @@
             text-align: left;
             margin-top: 8px;
             margin-right: 30px;
+            font-size: 0.7em;
         }
 
         .modal {
@@ -173,7 +179,7 @@
         .schliessen {
             position: absolute;
             top: 10px;
-            right: 25px;
+            right: 65px;
             color: #000;
             font-size: 35px;
             font-weight: bold;
@@ -201,13 +207,6 @@
     </style>
 </head>
 <body>
-<script>
-    const kategorien = {
-    {
-        kategorien | tojson
-    }
-    }
-</script>
 <div
         id="hamburger"
         style="position: fixed; top: 40px; left: 20px; z-index: 1000"
@@ -232,17 +231,18 @@
             <button onclick="gotoPage()">Gehe zu Seite</button>
         </div>
         <hr style="margin: 10px 0"/>
-        <div style="display: flex; flex-direction: column; gap: 6px">
+        <div style="display: flex; flex-direction: column; gap: 6px;">
             {% for k in kategorien %}
-            <button onclick="moveToFolder({{ kategorien }},'{{ k.key }}')">
-                {{ k.icon }} {{ k.label }} (<span id="count-{{ k.key }}">?</span>)
-            </button>
-            <button
-                    onclick="navigateToFolder({{ kategorien }}, '{{ k.key }}', {{ count }})"
-                    style="padding: 6px 10px; border-radius: 5px; {{ 'background: #eef;' if current_folder == k.key else '' }}"
-            >
-                📂 Anzeigen: {{ k.label }}
-            </button>
+            <div style="display: flex; gap: 6px;">
+                <button onclick="moveToFolder({{ kategorien }}, '{{ k.key }}')" style="padding: 6px 10px; border-radius: 5px; width: 180px;">
+                    {{ k.icon }} {{ k.label }} (<span id="count-{{ k.key }}">?</span>)
+                </button>
+                <button
+                        onclick="navigateToFolder({{ kategorien }}, '{{ k.key }}', {{ count }})"
+                        style="padding: 6px 10px; border-radius: 5px; width: 40px; {{ 'background: #eef;' if current_folder == k.key else '' }}">
+                    📂
+                </button>
+            </div>
             {% endfor %}
         </div>
     </div>
@@ -367,6 +367,8 @@
                 console.error(err);
             });
     }
+
+    const kategorien = {{ kategorien | tojson }};
 
     window.addEventListener("DOMContentLoaded", () => {
         const menu = document.getElementById("menu");
