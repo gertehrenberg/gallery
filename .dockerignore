@@ -1,0 +1,39 @@
+# Python-Standardkram
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# Umgebungsdateien
+.env
+*.bak
+
+# Deine lokalen großen Ordner ausschließen
+n8n-autobackups/
+n8n-backup/
+n8n-backup-from-container/
+zips/
+gallery/cache/imagefiles/
+gallery/cache/zips/
+gallery/cache/thumbnails/
+
+# Archivdateien
+*.zip
+*.tar
+*.gz
+
+# VSCode- und IntelliJ-Dateien
+.vscode/
+.idea/
+
+# Docker-Zeug
+Dockerfile
+docker-compose.yml
+.dockerignore
+
+# Sonstiger Kleinkram
+snap/
