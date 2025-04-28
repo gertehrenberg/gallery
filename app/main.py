@@ -11,7 +11,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -22,6 +22,7 @@ from googleapiclient.discovery import build
 from skimage import feature
 
 logging.basicConfig(level=logging.INFO)
+
 app = FastAPI()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 
@@ -69,8 +70,6 @@ app_ready = False
 folders_total = len(kategorien)
 current_loading_folder = ""
 folders_loaded = 0
-
-logging.basicConfig(level=logging.INFO)
 
 # Static mount für Thumbnails
 app.mount("/static/thumbnails", StaticFiles(directory="/app/thumbnails"), name="thumbnails")
@@ -286,8 +285,8 @@ def verify_folders_exist(service, kategorien):
     return valid_kategorien
 
 
-def download_text_file(service, file_id: str, cache_dir: str) -> str:
-    file_path = os.path.join(cache_dir, f"{file_id}.txt")
+def download_text_file(image_name, file_id: str, cache_dir: str) -> str:
+    file_path = os.path.join(cache_dir, f"{image_name}.txt")
 
     if os.path.exists(file_path):
         try:
@@ -302,6 +301,7 @@ def download_text_file(service, file_id: str, cache_dir: str) -> str:
         content = request.execute().decode("utf-8")
         with open(file_path, 'w', encoding='utf-8') as f:
             f.write(content)
+            logging.info(f"[download_text_file] ✅ Text gespeichert: {file_path}")
         return content
     except Exception as e:
         logging.warning(f"[download_text_file] Fehler beim Laden: {e}")
@@ -391,6 +391,7 @@ def fillcache():
 
     # Verknüpfung von Bild- und Text-ID
     for image_name in image_name_cache:
+        image_name = image_name.lower()
         txt_name = image_name + ".txt"
         if txt_name in text_id_cache:
             image_id, web_link = image_name_cache[image_name]
@@ -573,18 +574,26 @@ def show_images(request: Request):
     images_html_parts = []
 
     for image_name in image_keys:
+        image_name = image_name.lower()
+
         # 1. Laden der aktuellen Statusdaten
         status = load_status(image_name)
 
-        # 2. Schnell-rendern: Wenn gecacht vorhanden
-        if image_name in rendered_image_cache:
+        if count > 6 and image_name in rendered_image_cache:
             images_html_parts.append(rendered_image_cache[image_name])
+        elif count <= 6 and image_name + "_T" in rendered_image_cache:
+            images_html_parts.append(rendered_image_cache[image_name + "_T"])
         else:
-            # Rendern und cachen
-            image_data = prepare_image_data(image_name, count)
+            image_data = prepare_image_data(image_name)
+
+            if count > 6:
+                text_content = ""
+            else:
+                text_content = text_cache.get(image_name, "Kein Text gefunden")
+
             rendered_html = templates.get_template("image_entry.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
-                text_content=image_data["text_content"],
+                text_content=text_content,
                 image_id=image_data["image_id"],
                 image_name=image_data["image_name"],
                 status={},
@@ -592,7 +601,12 @@ def show_images(request: Request):
                 quality_class=image_data["quality_class"],
                 kategorien=kategorien
             )
-            rendered_image_cache[image_name] = rendered_html
+
+            if len(text_content) == 0:
+                rendered_image_cache[image_name] = rendered_html
+            else:
+                rendered_image_cache[image_name + "_T"] = rendered_html
+
             images_html_parts.append(rendered_html)
 
         # Status dynamisch nachschieben
@@ -823,21 +837,19 @@ def get_quality_class(quality: int) -> str:
         return "quality-bad"
 
 
-def prepare_image_data(image_name: str, count: int):
+def prepare_image_data(image_name: str):
     """Bereitet alle Variablen für ein einzelnes Bild vor, inkl. Qualität."""
+    image_name = image_name.lower()
     pair = pair_cache[image_name]
     image_id = pair['image_id']
-    image_name = image_name.lower()
     text_id = pair['text_id']
 
-    if image_name not in text_cache:
-        try:
-            if text_id not in text_cache:
-                content = download_text_file(service, text_id, TEXT_FILE_CACHE_DIR)
-                text_cache[image_name] = content
-                text_cache[text_id] = content
-        except Exception as e:
-            text_cache[image_name] = f"Fehler beim Laden: {e}"
+    try:
+        if image_name not in text_cache:
+            content = download_text_file(image_name, text_id, TEXT_FILE_CACHE_DIR)
+            text_cache[image_name] = content
+    except Exception as e:
+        text_cache[image_name] = f"Fehler beim Laden: {e}"
 
     local_thumbnail_path = download_and_save_image(image_id, image_name)
 
@@ -849,14 +861,11 @@ def prepare_image_data(image_name: str, count: int):
 
     quality = load_image_quality(image_name)
 
-    text_content = "" if (count > 6) else text_cache.get(image_name, "Kein Text gefunden")
-
     # Qualität Klasse bestimmen
     quality_class = get_quality_class(quality)
 
     return {
         "thumbnail_src": thumbnail_src,
-        "text_content": text_content,
         "image_id": image_id,
         "image_name": image_name,
         "quality": quality,
@@ -999,7 +1008,7 @@ def calculate_simple_brisque(image_path):
     return score
 
 
-def download_and_save_image(file_id: str, image_name: str) -> str:
+def download_and_save_image(file_id: str, image_name: str) -> str | None:
     """Lädt das Originalbild und speichert es + Thumbnail lokal."""
     image_path = os.path.join(IMAGE_FILE_CACHE_DIR, image_name)
     thumbnail_path = os.path.join(THUMBNAIL_CACHE_DIR, image_name)
@@ -1016,13 +1025,14 @@ def download_and_save_image(file_id: str, image_name: str) -> str:
             logging.info(f"[download_and_save_image] ✅ Originalbild gespeichert: {image_path}")
         except Exception as e:
             logging.error(f"[download_and_save_image] ❌ Fehler beim Laden von Originalbild {image_name}: {e}")
-            return  # Fehler → abbrechen
+            return None
 
     # Thumbnail erzeugen
     if not os.path.exists(thumbnail_path):
         try:
             logging.info(f"[download_and_save_image] Erzeuge Thumbnail für {image_name}")
             img = Image.open(image_path)
+            img = ImageOps.exif_transpose(img)
             img.thumbnail((300, 300),
                           Image.Resampling.LANCZOS)  # max 300x300, Seitenverhältnis wird AUTOMATISCH behalten
             os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
