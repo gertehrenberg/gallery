@@ -16,6 +16,7 @@ __pycache__/
 n8n-autobackups/
 n8n-backup/
 n8n-backup-from-container/
+cache/
 zips/
 gallery/cache/imagefiles/
 gallery/cache/zips/
