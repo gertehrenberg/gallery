@@ -44,7 +44,7 @@ kategorien = [
 
 FOLDER_ID = next((k["folderid"] for k in kategorien if k["key"] == "real"), None)
 
-DB_PATH = Path("checkboxen.db")
+DB_PATH = Path("gallery.db")
 
 SECRET_PATH = 'secrets'
 CRED_FILE = os.path.join(SECRET_PATH, 'credentials.json')
@@ -163,6 +163,18 @@ def init_db():
                          KEY,
                          folder_id
                          TEXT
+                     )
+                     """)
+
+        conn.execute("""
+                     CREATE TABLE IF NOT EXISTS image_quality
+                     (
+                         image_name
+                         TEXT
+                         PRIMARY
+                         KEY,
+                         quality
+                         INTEGER
                      )
                      """)
 
