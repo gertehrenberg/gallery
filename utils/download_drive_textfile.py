@@ -4,7 +4,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/drive.readonly"]
-SECRET_PATH = "secrets"
+SECRET_PATH = "../secrets"
 CRED_FILE = os.path.join(SECRET_PATH, "credentials.json")
 TOKEN_FILE = os.path.join(SECRET_PATH, "token.json")
 

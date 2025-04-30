@@ -36,6 +36,7 @@ docker build -t "${IMAGE_NAME}" .
 echo "[Info] Starte neuen Container '${CONTAINER_NAME}'..."
 docker run -d \
   --name "${CONTAINER_NAME}" \
+  --user 1000:1000 \
   --network "${NETWORK_NAME}" \
   -p 8000:8000 \
   -v "$(pwd):/app" \
