@@ -9,6 +9,7 @@ import ssl
 import threading
 import time
 from pathlib import Path
+from typing import Any
 
 import cv2
 import numpy as np
@@ -448,7 +449,7 @@ def prepare_image_data(image_name: str):
     else:
         thumbnail_src = "https://via.placeholder.com/150?text=Kein+Bild"
 
-    quality = load_image_quality(image_name)
+    quality = load_quality(image_name)
     quality_class = get_quality_class(quality)
 
     return {
@@ -822,7 +823,26 @@ def get_quality_class(quality: int) -> str:
         return "quality-bad"
 
 
-def load_image_quality(image_name: str) -> int:
+def calculate_simple_brisque(image_path):
+    """Berechnet die Fake-BRISQUE (LBP-Standardabweichung)."""
+    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    if image is None:
+        print(f"Bild {image_path} konnte nicht geladen werden.")
+        return None
+
+    lbp = feature.local_binary_pattern(image, P=8, R=1, method="uniform")
+    score = np.std(lbp)
+    return score
+
+
+def scale_score_to_0_100(score):
+    """Skaliert den LBP-Score präzise auf 0–100."""
+    scaled = (score / 5.0) * 100  # 5.0 ist ein erfahrener Maximalwert für LBP-std
+    scaled = max(0, min(100, scaled))  # Clamping
+    return int(round(scaled))
+
+
+def load_quality(image_name: str) -> int | None | Any:
     """Lädt die Qualitätsbewertung (0-100) eines Bildes aus der Datenbank, case-insensitiv."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
@@ -833,9 +853,27 @@ def load_image_quality(image_name: str) -> int:
                                   """, (image_name,)).fetchone()
             if result:
                 return result[0]
+            else:
+                logging.info(f"[load_quality] nicht in DB für {image_name}")
+                full_path = os.path.join(IMAGE_FILE_CACHE_DIR, image_name)
+                score = calculate_simple_brisque(full_path)
+                if score is not None:
+                    quality_score = scale_score_to_0_100(score)
+                    save_image_quality(image_name, quality_score)
+                    return quality_score
     except Exception as e:
-        logging.error(f"[load_image_quality] Fehler beim Laden der Qualität für {image_name}: {e}")
+        logging.error(f"[load_quality] Fehler bei {image_name}: {e}")
+
     return None
+
+
+def save_image_quality(image_name, quality_score):
+    """Speichert Bildname + Qualitätsscore in die Datenbank."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO image_quality (image_name, quality)
+            VALUES (?, ?)
+        """, (image_name, quality_score))
 
 
 @app.get("/original/{file_id}")
