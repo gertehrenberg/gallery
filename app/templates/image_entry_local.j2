@@ -1,0 +1,46 @@
+<div class="eintrag">
+    <table style="width: 100%; table-layout: fixed">
+        <tr>
+            <td colspan="2" class="bildname">{{ image_name }}
+            </td>
+        </tr>
+        <tr>
+            <!-- Bild in der ersten Spalte -->
+            <td style="width: 60%; vertical-align: top">
+                <img
+                        alt="{{ image_name }}"
+                        class="bild"
+                        onclick="openModal('{{ image_name }}')"
+                        src="{{ thumbnail_src }}"
+                        style="cursor: pointer; max-width: 100%"
+                />
+                <div colspan="2" class="quality {{ quality_class }}">
+                    {% if quality is not none %}
+                        Qualität: {{ quality }}/100
+                    {% else %}
+                        Qualität: fehlt
+                    {% endif %}
+                </div>
+            </td>
+            <td style="width: 40%; vertical-align: top; padding-left: 10px">
+                <div id="checkboxes-{{ image_id }}">
+                    <form class="checkbox-container">
+                        <input name="image_id" type="hidden" value="{{ image_id }}"/>
+                        <!-- Verstecktes Eingabefeld für image_name -->
+                        {% for k in kategorien %}
+                            <label>
+                                <input name="{{ image_id }}_{{ k.key }}"
+                                       type="checkbox" {{ 'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label }}
+                            </label>
+                        {% endfor %}
+                    </form>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <div class="text">{{ text_content | safe }}</div>
+            </td>
+        </tr>
+    </table>
+</div>
