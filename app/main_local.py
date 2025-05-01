@@ -24,6 +24,8 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from skimage import feature
 
+KEIN_TEXT_GEFUNDEN = "Kein Text gefunden"
+
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
@@ -57,15 +59,13 @@ REDIRECT_URI = "https://levellevel.me/gallery/auth/callback"
 PAIR_CACHE_PATH = '/data/pair_cache_local.json'
 TEXT_FILE_CACHE_DIR = '/data/textfiles'
 IMAGE_FILE_CACHE_DIR = '/data/imagefiles'
-THUMBNAIL_CACHE_DIR = '/data/thumbnailfiles300'
+THUMBNAIL_CACHE_DIR_300 = '/data/thumbnailfiles300'
 
 image_cache = {}  # file_id -> { 'thumbnail': url }
 text_cache = {}  # lowercase text filename -> content
 pair_cache = {}  # lowercase image filename -> { image_id, text_id, web_link }
 file_parents_cache = {}
 rendered_image_cache = {}
-
-service = None
 
 app_ready = False
 
@@ -108,8 +108,6 @@ def init_service():
     app.mount("/static/thumbnails", StaticFiles(directory="/app/thumbnails"), name="thumbnails")
     app.mount("/static/imagefiles", StaticFiles(directory="/app/imagefiles"), name="imagefiles")
 
-    global service
-
     os.environ.pop("HTTPS_PROXY", None)
     os.environ.pop("HTTP_PROXY", None)
 
@@ -139,7 +137,7 @@ def slow_start():
 
     # erst nach dem Start langsam laden
     init_db(DB_PATH)
-    fillcache_local(PAIR_CACHE_PATH, IMAGE_FILE_CACHE_DIR, TEXT_FILE_CACHE_DIR)
+    fillcache_local(PAIR_CACHE_PATH, IMAGE_FILE_CACHE_DIR)
     fill_folder_cache(DB_PATH)
 
     app_ready = True
@@ -210,9 +208,9 @@ def init_db(db_path):
 
 def fillcache_local(
         pair_cache_path_local,
-        image_file_cache_dir,
-        text_file_cache_dir):
+        image_file_cache_dir):
     global pair_cache
+    pair_cache.clear()  # Verhindert Vermischung mit alten Daten
     image_name_cache = {}
 
     # Falls der Cache existiert, lade ihn
@@ -225,17 +223,19 @@ def fillcache_local(
         except Exception as e:
             logging.warning(f"[fillcache_local] Fehler beim Laden von pair_cache.json: {e}")
 
-    # Alle Bilddateien einlesen
-    for root, _, files in os.walk(image_file_cache_dir):
-        for name in files:
-            if name.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".gif")):
-                clean_name = name.lower()
-                full_path = os.path.join(root, name)
-                image_name_cache[clean_name] = (full_path, "")  # Kein Weblink, daher leerer Platzhalter
+    # Nur oberstes Verzeichnis einlesen (keine Unterordner)
+    for name in os.listdir(image_file_cache_dir):
+        full_path = os.path.join(image_file_cache_dir, name)
+        if os.path.isfile(full_path) and name.lower().endswith((".jpg", ".jpeg", ".png", ".gif")):
+            clean_name = name.lower()
+            image_name_cache[clean_name] = (full_path, "")  # Kein Weblink, daher leerer Platzhalter
 
     # Verknüpfung von Bild- und Text-Datei
-    for image_name in image_name_cache:
+    for image_name in list(image_name_cache.keys()):
         image_path, _ = image_name_cache[image_name]
+        if not os.path.exists(image_path):
+            logging.warning(f"[fillcache_local] Bild fehlt und wird aus dem Cache entfernt: {image_name}")
+            continue
         md5_hash = hashlib.md5(image_name.encode()).hexdigest()
         pair_cache[image_name] = {
             "image_id": md5_hash,
@@ -370,8 +370,8 @@ def show_images(request: Request):
             if count > 6:
                 text_content = ""
             else:
-                text_content = text_cache.get(image_id, "Kein Text gefunden")
-                if "Kein Text gefunden" == text_content:
+                text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                if KEIN_TEXT_GEFUNDEN == text_content:
                     set_status(image_id, recheck)
 
             rendered_html = templates.get_template("image_entry_local.j2").render(
@@ -443,15 +443,12 @@ def prepare_image_data(image_name: str):
 
     local_thumbnail_path = download_and_save_image(image_id, image_name)
 
-    if os.path.exists(local_thumbnail_path):
+    if local_thumbnail_path and os.path.exists(local_thumbnail_path):
         thumbnail_src = f"/gallery/static/thumbnails/{image_name}"
     else:
-        # Falls nicht vorhanden → Drive-Thumbnail verwenden
-        thumbnail_src = download_thumbnail(image_cache, image_id)
+        thumbnail_src = "https://via.placeholder.com/150?text=Kein+Bild"
 
     quality = load_image_quality(image_name)
-
-    # Qualität Klasse bestimmen
     quality_class = get_quality_class(quality)
 
     return {
@@ -462,7 +459,7 @@ def prepare_image_data(image_name: str):
     }
 
 
-def download_text_file(image_name, cache_dir: str) -> str:
+def download_text_file(image_name, cache_dir: str) -> str | None:
     file_path = os.path.join(cache_dir, f"{image_name}.txt")
 
     if os.path.exists(file_path):
@@ -471,18 +468,8 @@ def download_text_file(image_name, cache_dir: str) -> str:
                 return f.read()
         except Exception as e:
             logging.warning(f"[download_text_file] Fehler beim Lesen von Cache-Datei: {file_path} - {e}")
-
-    try:
-        logging.info(f"Lade Textdatei mit ID: {file_id}")
-        request = service.files().get_media(fileId=file_id)
-        content = request.execute().decode("utf-8")
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-            logging.info(f"[download_text_file] ✅ Text gespeichert: {file_path}")
-        return content
-    except Exception as e:
-        logging.warning(f"[download_text_file] Fehler beim Laden: {e}")
-        raise
+            return None
+    return None
 
 
 def set_status(image_id: str, key: str, checked: int = 1):
@@ -533,6 +520,10 @@ def save_status(image_id: str, data: dict):
 
 
 def load_status(image_id: str):
+    conn = sqlite3.connect(DB_PATH)
+    if conn.in_transaction:
+        return
+
     logging.info(f"[load_status] Laden des Status für {image_id}")
 
     status = {}
@@ -688,19 +679,24 @@ def move_marked_images_by_checkbox(current_folder: str, save_folder_key: str) ->
         save_folder_id = save_folder_key
 
         for (image_id,) in rows:
-            try:
-                move_file_db(image_id, folder_id, save_folder_id)
-                conn.execute("""
-                             DELETE
-                             FROM checkbox_status
-                             WHERE image_id = ?
-                               AND checkbox = ?
-                             """, (image_id, save_folder_key))
-                anzahl_verschoben += 1
-                logging.info(
-                    f"[move_marked_images_by_checkbox] ✅ Verschoben: {image_id} ({current_folder}) -> ({save_folder_key})")
-            except Exception as e:
-                logging.error(f"[move_marked_images_by_checkbox] ❌ Fehler beim Verschieben von {image_id}: {e}")
+            success = move_file_db(conn, image_id, folder_id, save_folder_id)
+            if success:
+                try:
+                    conn.execute("""
+                                 DELETE
+                                 FROM checkbox_status
+                                 WHERE image_id = ?
+                                   AND checkbox = ?
+                                 """, (image_id, save_folder_key))
+                    anzahl_verschoben += 1
+                    logging.info(
+                        f"[move_marked_images_by_checkbox] ✅ Verschoben: {image_id} ({current_folder}) -> ({save_folder_key})")
+                except Exception as e:
+                    logging.error(
+                        f"[move_marked_images_by_checkbox] ❌ Fehler beim Entfernen der Checkbox von {image_id}: {e}")
+            else:
+                logging.warning(
+                    f"[move_marked_images_by_checkbox] ⚠️ Verschieben von {image_id} nicht erfolgreich – überspringe Löschen.")
 
         conn.commit()
 
@@ -710,39 +706,50 @@ def move_marked_images_by_checkbox(current_folder: str, save_folder_key: str) ->
     return anzahl_verschoben
 
 
-def move_file_db(file_id: str, old_folder_id: str, new_folder_id: str):
+def move_file_db(conn, image_id: str, old_folder_id: str, new_folder_id: str, retries: int = 5) -> bool:
     """Verschiebt eine Datei nur in der lokalen Datenbank von einem Ordner in einen anderen."""
     logging.info(
-        f"[move_file_db] Starte Verschieben von Datei {file_id} in der Datenbank von {old_folder_id} zu {new_folder_id}")
+        f"[move_file_db] Starte Verschieben von Datei {image_id} in der Datenbank von {old_folder_id} zu {new_folder_id} (Thread: {threading.get_ident()})")
 
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            # Update in der Datenbank
+    for attempt in range(retries):
+        try:
             conn.execute("""
                          UPDATE image_folder_status
                          SET folder_id = ?
                          WHERE image_id = ?
                            AND folder_id = ?
-                         """, (new_folder_id, file_id, old_folder_id))
-            conn.commit()
+                         """, (new_folder_id, image_id, old_folder_id))
 
-        # Lokalen Cache anpassen
-        if old_folder_id in file_parents_cache:
-            try:
-                file_parents_cache[old_folder_id].remove(file_id)
-            except ValueError:
-                logging.warning(f"[move_file_db] Datei {file_id} war nicht im Cache von {old_folder_id} vorhanden.")
+            # Lokalen Cache anpassen
+            if old_folder_id in file_parents_cache:
+                try:
+                    file_parents_cache[old_folder_id].remove(image_id)
+                except ValueError:
+                    logging.warning(
+                        f"[move_file_db] Datei {image_id} war nicht im Cache von {old_folder_id} vorhanden.")
 
-        if new_folder_id not in file_parents_cache:
-            file_parents_cache[new_folder_id] = []
+            if new_folder_id not in file_parents_cache:
+                file_parents_cache[new_folder_id] = []
 
-        if file_id not in file_parents_cache[new_folder_id]:
-            file_parents_cache[new_folder_id].append(file_id)
+            if image_id not in file_parents_cache[new_folder_id]:
+                file_parents_cache[new_folder_id].append(image_id)
 
-        logging.info(f"[move_file_db] 📂 Erfolgreich verschoben (nur DB): {file_id}")
+            logging.info(f"[move_file_db] 📂 Erfolgreich verschoben (nur DB): {image_id}")
+            return True
 
-    except Exception as e:
-        logging.error(f"[move_file_db] ❌ Fehler beim Verschieben von {file_id}: {e}")
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                logging.warning(f"[move_file_db] Datenbank gesperrt, Versuch {attempt + 1}/{retries}")
+                time.sleep(0.3 * (attempt + 1))
+            else:
+                logging.error(f"[move_file_db] ❌ Unerwarteter Fehler bei {image_id}: {e}")
+                return False
+        except Exception as e:
+            logging.error(f"[move_file_db] ❌ Fehler beim Verschieben von {image_id}: {e}")
+            return False
+
+    logging.error(f"[move_file_db] ❌ Max. Versuche erreicht für {image_id}: Datenbank bleibt gesperrt")
+    return False
 
 
 def move_file(file_id: str, old_folder_id: str, new_folder_id: str):
@@ -904,40 +911,35 @@ def calculate_simple_brisque(image_path):
     return score
 
 
-def download_and_save_image(file_id: str, image_name: str) -> str | None:
-    """Lädt das Originalbild und speichert es + Thumbnail lokal."""
+def download_and_save_image(image_id: str, image_name: str) -> str | None:
+    """Erzeugt ein Thumbnail aus einer lokalen Originalbilddatei."""
     image_path = os.path.join(IMAGE_FILE_CACHE_DIR, image_name)
-    thumbnail_path = os.path.join(THUMBNAIL_CACHE_DIR, image_name)
+    thumbnail_path = os.path.join(THUMBNAIL_CACHE_DIR_300, image_name)
 
-    # Original speichern
     if not os.path.exists(image_path):
-        try:
-            logging.info(f"[download_and_save_image] Lade Originalbild für {image_name}")
-            request = service.files().get_media(fileId=file_id)
-            content = request.execute()
-            os.makedirs(IMAGE_FILE_CACHE_DIR, exist_ok=True)
-            with open(image_path, 'wb') as f:
-                f.write(content)
-            logging.info(f"[download_and_save_image] ✅ Originalbild gespeichert: {image_path}")
-        except Exception as e:
-            logging.error(f"[download_and_save_image] ❌ Fehler beim Laden von Originalbild {image_name}: {e}")
+        logging.warning(f"[download_and_save_image] Originalbild nicht gefunden: {image_path}")
+        return None
+
+    if not os.path.exists(thumbnail_path):
+        if not generate_thumbnail(image_path, thumbnail_path, image_name):
             return None
 
-    # Thumbnail erzeugen
-    if not os.path.exists(thumbnail_path):
-        try:
-            logging.info(f"[download_and_save_image] Erzeuge Thumbnail für {image_name}")
-            img = Image.open(image_path)
-            img = ImageOps.exif_transpose(img)
-            img.thumbnail((300, 300),
-                          Image.Resampling.LANCZOS)  # max 300x300, Seitenverhältnis wird AUTOMATISCH behalten
-            os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
-            img.save(thumbnail_path, format="JPEG")
-            logging.info(f"[download_and_save_image] ✅ Thumbnail gespeichert: {thumbnail_path}")
-        except Exception as e:
-            logging.error(f"[download_and_save_image] ❌ Fehler beim Erzeugen von Thumbnail {image_name}: {e}")
-
     return thumbnail_path
+
+
+def generate_thumbnail(image_path: str, thumbnail_path: str, image_name: str) -> bool:
+    try:
+        logging.info(f"[generate_thumbnail] Erzeuge Thumbnail für {image_name}")
+        img = Image.open(image_path)
+        img = ImageOps.exif_transpose(img)
+        img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+        os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
+        img.save(thumbnail_path, format="JPEG")
+        logging.info(f"[generate_thumbnail] ✅ Thumbnail gespeichert: {thumbnail_path}")
+        return True
+    except Exception as e:
+        logging.error(f"[generate_thumbnail] ❌ Fehler beim Erzeugen von Thumbnail {image_name}: {e}")
+        return False
 
 
 import subprocess
@@ -1001,14 +1003,13 @@ if __name__ == "__main__":
 
     IMAGE_FILE_CACHE_DIR = '../cache/imagefiles'
     TEXT_FILE_CACHE_DIR = '../cache/textfiles'
-    THUMBNAIL_CACHE_DIR = '../cache/thumbnailfiles300'
+    THUMBNAIL_CACHE_DIR_300 = '../cache/thumbnailfiles300'
 
     app_ready = True
 
     fillcache_local(
         '../cache/pair_cache_local.json',
-        IMAGE_FILE_CACHE_DIR,
-        TEXT_FILE_CACHE_DIR)
+        IMAGE_FILE_CACHE_DIR)
 
     fill_folder_cache(DB_PATH)
 
