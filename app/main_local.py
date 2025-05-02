@@ -3,6 +3,7 @@ import json
 import logging
 import math
 import os
+import re
 import socket
 import sqlite3
 import ssl
@@ -60,6 +61,7 @@ REDIRECT_URI = "https://levellevel.me/gallery/auth/callback"
 PAIR_CACHE_PATH = '/data/pair_cache_local.json'
 TEXT_FILE_CACHE_DIR = '/data/textfiles'
 IMAGE_FILE_CACHE_DIR = '/data/imagefiles'
+GESICHTER_FILE_CACHE_DIR = '/data/facefiles'
 THUMBNAIL_CACHE_DIR_300 = '/data/thumbnailfiles300'
 
 image_cache = {}  # file_id -> { 'thumbnail': url }
@@ -108,6 +110,7 @@ def auth_callback(request: Request):
 def init_service():
     app.mount("/static/thumbnails", StaticFiles(directory="/app/thumbnails"), name="thumbnails")
     app.mount("/static/imagefiles", StaticFiles(directory="/app/imagefiles"), name="imagefiles")
+    app.mount("/static/facefiles", StaticFiles(directory="/app/facefiles"), name="facefiles")
 
     os.environ.pop("HTTPS_PROXY", None)
     os.environ.pop("HTTP_PROXY", None)
@@ -382,8 +385,8 @@ def show_images(request: Request):
                 image_id=image_id,
                 status={},
                 quality=image_data["quality"],
-                quality_class=image_data["quality_class"],
-                kategorien=kategorien
+                kategorien=kategorien,
+                extra_thumbnails=image_data["extra_thumbnails"]
             )
 
             if count > 6:
@@ -450,13 +453,14 @@ def prepare_image_data(image_name: str):
         thumbnail_src = "https://via.placeholder.com/150?text=Kein+Bild"
 
     quality = load_quality(image_name)
-    quality_class = get_quality_class(quality)
+
+    extra_thumbnails = get_extra_thumbnails(image_name)
 
     return {
         "thumbnail_src": thumbnail_src,
         "image_id": image_id,
         "quality": quality,
-        "quality_class": quality_class
+        "extra_thumbnails": extra_thumbnails
     }
 
 
@@ -571,15 +575,7 @@ async def save(request: Request):
 
 
 def verify_folders_exist(service, kategorien):
-    """Filtert Kategorien nach tatsächlich existierenden Ordnern."""
-    valid_kategorien = []
-    for kat in kategorien:
-        try:
-            folder = service.files().get(fileId=kat["folderid"], fields="id").execute()
-            if folder.get("id") == kat["folderid"]:
-                valid_kategorien.append(kat)
-        except Exception as e:
-            logging.warning(f"[verify_folders_exist] Ordner nicht gefunden: {kat['key']} ({kat['folderid']}) - {e}")
+    valid_kategorien = kategorien
     return valid_kategorien
 
 
@@ -811,71 +807,6 @@ def get_marked_images_count(checkbox: str):
     return {"count": count}
 
 
-def get_quality_class(quality: int) -> str:
-    """Gibt eine CSS-Klasse basierend auf der Qualität zurück."""
-    if quality is None:
-        return "quality-unknown"
-    elif quality >= 70:
-        return "quality-good"
-    elif quality >= 40:
-        return "quality-medium"
-    else:
-        return "quality-bad"
-
-
-def calculate_simple_brisque(image_path):
-    """Berechnet die Fake-BRISQUE (LBP-Standardabweichung)."""
-    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
-    if image is None:
-        print(f"Bild {image_path} konnte nicht geladen werden.")
-        return None
-
-    lbp = feature.local_binary_pattern(image, P=8, R=1, method="uniform")
-    score = np.std(lbp)
-    return score
-
-
-def scale_score_to_0_100(score):
-    """Skaliert den LBP-Score präzise auf 0–100."""
-    scaled = (score / 5.0) * 100  # 5.0 ist ein erfahrener Maximalwert für LBP-std
-    scaled = max(0, min(100, scaled))  # Clamping
-    return int(round(scaled))
-
-
-def load_quality(image_name: str) -> int | None | Any:
-    """Lädt die Qualitätsbewertung (0-100) eines Bildes aus der Datenbank, case-insensitiv."""
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            result = conn.execute("""
-                                  SELECT quality
-                                  FROM image_quality
-                                  WHERE LOWER(image_name) = LOWER(?)
-                                  """, (image_name,)).fetchone()
-            if result:
-                return result[0]
-            else:
-                logging.info(f"[load_quality] nicht in DB für {image_name}")
-                full_path = os.path.join(IMAGE_FILE_CACHE_DIR, image_name)
-                score = calculate_simple_brisque(full_path)
-                if score is not None:
-                    quality_score = scale_score_to_0_100(score)
-                    save_image_quality(image_name, quality_score)
-                    return quality_score
-    except Exception as e:
-        logging.error(f"[load_quality] Fehler bei {image_name}: {e}")
-
-    return None
-
-
-def save_image_quality(image_name, quality_score):
-    """Speichert Bildname + Qualitätsscore in die Datenbank."""
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("""
-            INSERT OR REPLACE INTO image_quality (image_name, quality)
-            VALUES (?, ?)
-        """, (image_name, quality_score))
-
-
 @app.get("/original/{file_id}")
 def show_original_image(file_id: str):
     try:
@@ -1033,8 +964,8 @@ def sync_out():
     restore_to_container()
 
 
-# Beispiel
-if __name__ == "__main__":
+def egal():
+    global DB_PATH, IMAGE_FILE_CACHE_DIR, TEXT_FILE_CACHE_DIR, THUMBNAIL_CACHE_DIR_300, app_ready
     sync_in()
 
     DB_PATH = Path(LOCAL_DB)
@@ -1065,3 +996,123 @@ if __name__ == "__main__":
     print(response)
 
     sync_out()
+
+
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
+
+def has_numbered_gesichter(image_path: Path, gesichter_file_cache_dir: Path) -> bool:
+    stem = image_path.stem  # z. B. "img_1952"
+    pattern = f"{stem}_*.jpg"
+    regex = re.compile(rf"^{re.escape(stem)}_(\d+)\.jpg$")
+
+    for file in Path(gesichter_file_cache_dir).glob(pattern):
+        if regex.match(file.name):
+            return True
+    return False
+
+
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
+
+def gesichter(image_path: Path, gesichter_file_cache_dir: str, min_gesichtsgroesse=(200, 300)) -> None:
+    gesichter_file_cache_dir_path = Path(gesichter_file_cache_dir)
+    gesichter_file_cache_dir_path.mkdir(parents=True, exist_ok=True)
+
+    if not has_numbered_gesichter(image_path, gesichter_file_cache_dir_path):
+        ergebnisse = []
+
+        img = cv2.imread(str(image_path))
+        if img is None:
+            return None
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gesichter = face_cascade.detectMultiScale(
+            gray, scaleFactor=1.3, minNeighbors=8, minSize=min_gesichtsgroesse
+        )
+
+        # Keine Filterung nach Seitenverhältnis
+        gefilterte_gesichter = list(gesichter)
+        for (x, y, w, h) in gesichter:
+            verhaeltnis = w / h
+            if 0.6 < verhaeltnis < 1.0 and w >= min_gesichtsgroesse[0] and h >= min_gesichtsgroesse[1]:
+                gefilterte_gesichter.append((x, y, w, h))
+
+            if len(gefilterte_gesichter) > 0:
+                eintrag = f"{image_path} -> {len(gefilterte_gesichter)} Gesicht(er)"
+                ergebnisse.append(eintrag)
+
+                for i, (x, y, w, h) in enumerate(gefilterte_gesichter):
+                    gesicht_img = img[y:y + h, x:x + w]
+                    ziel_datei = Path(gesichter_file_cache_dir) / f"{image_path.stem}_{i}.jpg"
+                    cv2.imwrite(str(ziel_datei), gesicht_img)
+    else:
+        logging.info(f"✅ Gesichter vorhanden für Bild {image_path}.")
+
+    return None
+
+
+def get_extra_thumbnails(image_name: str) -> list[dict]:
+    full_path = Path(os.path.join(IMAGE_FILE_CACHE_DIR, image_name))
+    gesichter(full_path, GESICHTER_FILE_CACHE_DIR)
+
+    stem = full_path.stem
+    face_dir = Path(GESICHTER_FILE_CACHE_DIR)
+    base_url = "/static/facefiles"
+    return [
+        {
+            "src": f"/gallery{base_url}/{thumb.name}",
+            "link": f"/gallery{base_url}/{thumb.name}",
+            "image_name": f"{thumb.name}"
+        }
+        for thumb in sorted(face_dir.glob(f"{stem}_*.jpg"))
+    ]  # Beispiel
+
+
+def scale_score_to_0_100(score):
+    """Skaliert den LBP-Score präzise auf 0–100."""
+    scaled = (score / 5.0) * 100  # 5.0 ist ein erfahrener Maximalwert für LBP-std
+    scaled = max(0, min(100, scaled))  # Clamping
+    return int(round(scaled))
+
+
+def load_quality(image_name: str) -> int | None | Any:
+    """Lädt die Qualitätsbewertung (0-100) eines Bildes aus der Datenbank, case-insensitiv."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            result = conn.execute("""
+                                  SELECT quality
+                                  FROM image_quality
+                                  WHERE LOWER(image_name) = LOWER(?)
+                                  """, (image_name,)).fetchone()
+            if result:
+                return result[0]
+            else:
+                logging.info(f"[load_quality] nicht in DB für {image_name}")
+                full_path = os.path.join(IMAGE_FILE_CACHE_DIR, image_name)
+                score = calculate_simple_brisque(full_path)
+                if score is not None:
+                    quality_score = scale_score_to_0_100(score)
+                    save_image_quality(image_name, quality_score)
+                    return quality_score
+    except Exception as e:
+        logging.error(f"[load_quality] Fehler bei {image_name}: {e}")
+
+    return None
+
+
+def save_image_quality(image_name, quality_score):
+    """Speichert Bildname + Qualitätsscore in die Datenbank."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO image_quality (image_name, quality)
+            VALUES (?, ?)
+        """, (image_name, quality_score))
+
+
+if __name__ == "__main__":
+    GESICHTER_FILE_CACHE_DIR = '../cache/facefiles'
+    IMAGE_FILE_CACHE_DIR = '../cache/imagefiles'
+    image_name = "img_5033.jpeg"
+    full_path = Path(os.path.join(IMAGE_FILE_CACHE_DIR, image_name))
+    gesichter(full_path, GESICHTER_FILE_CACHE_DIR)

@@ -122,40 +122,6 @@
             color: #007bff;
         }
 
-        .quality-good {
-            color: green;
-            font-weight: bold;
-            text-align: left;
-            margin-top: 8px;
-            margin-right: 30px;
-            font-size: 0.7em;
-        }
-
-        .quality-medium {
-            color: orange;
-            text-align: left;
-            margin-top: 8px;
-            margin-right: 30px;
-            font-size: 0.7em;
-        }
-
-        .quality-bad {
-            color: red;
-            text-align: left;
-            margin-top: 8px;
-            margin-right: 30px;
-            font-size: 0.7em;
-        }
-
-        .quality-unknown {
-            color: gray;
-            font-style: italic;
-            text-align: left;
-            margin-top: 8px;
-            margin-right: 30px;
-            font-size: 0.7em;
-        }
-
         .modal {
             position: fixed;
             z-index: 9999;
@@ -233,6 +199,56 @@
             100% {
                 transform: translate(-50%, -50%) rotate(360deg);
             }
+        }
+        .thumbnail-mini {
+            width: 50px;
+            height: 20px;
+            object-fit: cover;
+            margin-right: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .thumbnails-row {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            gap: 4px;
+            margin-top: 6px;
+            overflow-x: auto;
+        }
+
+        .quality-bar {
+            margin-top: 0px;
+            position: relative;
+            height: 20px;
+            background: linear-gradient(to right, red, yellow, green);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .quality-bar .bar {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .quality-bar .marker {
+            position: absolute;
+            top: 0;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.8);
+            color: #000;
+            padding: 0 4px;
+            font-size: 12px;
+            border-radius: 2px;
+            line-height: 20px;
+            font-weight: bold;
+        }
+
+        .quality.fehlend {
+            margin-top: 10px;
+            font-style: italic;
+            color: #999;
         }
     </style>
 </head>
@@ -360,7 +376,7 @@
 <script>
     let panzoomInstance;
 
-    function openModal(imagePath) {
+    function openModal(image_name) {
         const modal = document.getElementById("meinModal");
         const img = document.getElementById("zoomImage");
         const spinner = document.getElementById("spinner");
@@ -382,7 +398,32 @@
             img.addEventListener('dblclick', () => panzoomInstance.reset());
         };
 
-        img.src = "/gallery/static/imagefiles/" + imagePath;
+        img.src = "/gallery/static/imagefiles/" + image_name;
+    }
+
+    function openModalThumb(image_name) {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        const spinner = document.getElementById("spinner");
+
+        spinner.style.display = "block"; // Spinner zeigen
+
+        img.onload = () => {
+            spinner.style.display = "none"; // Spinner verstecken
+            modal.style.display = "flex";
+
+            if (panzoomInstance) panzoomInstance.destroy();
+            panzoomInstance = Panzoom(img, {
+                maxScale: 5,
+                minScale: 1,
+                contain: 'outside'
+            });
+
+            img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+            img.addEventListener('dblclick', () => panzoomInstance.reset());
+        };
+
+        img.src = "/gallery/static/facefiles/" + image_name;
     }
 
     function closeModal() {

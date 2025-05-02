@@ -14,13 +14,28 @@
                         src="{{ thumbnail_src }}"
                         style="cursor: pointer; max-width: 100%"
                 />
-                <div colspan="2" class="quality {{ quality_class }}">
-                    {% if quality is not none %}
-                        Qualität: {{ quality }}/100
-                    {% else %}
-                        Qualität: fehlt
-                    {% endif %}
+
+                <!-- Zusätzliche Thumbnails -->
+                <div class="thumbnails-row">
+                    {% for thumb in extra_thumbnails %}
+                        <img
+                                src="{{ thumb.src }}"
+                                alt="extra"
+                                class="thumbnail-mini"
+                                onclick="openModalThumb('{{ thumb.image_name }}')"
+                                style="cursor: pointer"/>
+                    {% endfor %}
                 </div>
+
+                {% if quality is not none %}
+                    <div class="quality-bar">
+                        <div class="bar" style="width: 100%">
+                            <div class="marker" style="left: {{ quality }}%">{{ quality }}</div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="quality fehlend">Qualität: fehlt</div>
+                {% endif %}
             </td>
             <td style="width: 40%; vertical-align: top; padding-left: 10px">
                 <div id="checkboxes-{{ image_id }}">
