@@ -12,7 +12,8 @@ SECRET_PATH = "../secrets"
 CRED_FILE = os.path.abspath(os.path.join(SECRET_PATH, "credentials.json"))
 TOKEN_FILE = os.path.abspath(os.path.join(SECRET_PATH, "token.json"))
 FOLDER_ID = "13U8wUpisnRJpQLNb0ecbnEcDlrz-bTzV"
-DEST_DIR = os.path.abspath("../cache/textfiles")
+DEST_DIR = os.path.abspath("../cache/imagefiles/real")
+__SUFFIX = (".jpg", ".jpeg", ".png", ".gif")
 
 
 def load_drive_service():
@@ -20,10 +21,10 @@ def load_drive_service():
     return build("drive", "v3", credentials=creds)
 
 
-def list_all_txt_files(service):
+def list_all_image_files(service):
     files = []
     page_token = None
-    query = f"'{FOLDER_ID}' in parents and trashed = false and name contains '.txt'"
+    query = f"'{FOLDER_ID}' in parents and trashed = false"
     while True:
         response = service.files().list(
             q=query,
@@ -34,7 +35,7 @@ def list_all_txt_files(service):
             includeItemsFromAllDrives=True,
             pageToken=page_token
         ).execute()
-        files.extend(response.get('files', []))
+        files.extend([f for f in response.get('files', []) if f['name'].lower().endswith(__SUFFIX)])
         page_token = response.get('nextPageToken', None)
         if not page_token:
             break
@@ -43,7 +44,7 @@ def list_all_txt_files(service):
 
 def sanitize_filename(name: str) -> str:
     name = name.strip().lower()
-    name = re.sub(r'[\\/:*?"<>|\n\r\t]', '_', name)  # ersetzt unzulässige Zeichen
+    name = re.sub(r'[\\/:*?"<>|\n\r\t]', '_', name)
     return name
 
 
@@ -95,6 +96,6 @@ def download_files(service, files):
 
 if __name__ == "__main__":
     service = load_drive_service()
-    files = list_all_txt_files(service)
-    print(f"Gefundene Dateien: {len(files)}")
+    files = list_all_image_files(service)
+    print(f"Gefundene Bilddateien: {len(files)}")
     download_files(service, files)
