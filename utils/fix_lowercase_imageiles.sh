@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Verzeichnis, in dem die Textfiles liegen
-TEXTFILE_CACHE_DIR="./cache/imagefiles/double/"
+TEXTFILE_CACHE_DIR="../cache/imagefiles/gesichter/"
 
 # Wechsel ins Verzeichnis
 cd "$TEXTFILE_CACHE_DIR" || exit 1

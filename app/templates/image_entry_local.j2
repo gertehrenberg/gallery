@@ -10,7 +10,7 @@
                 <img
                         alt="{{ image_name }}"
                         class="bild"
-                        onclick="openModal('{{ image_name }}')"
+                        onclick="openModal('{{ folder_name }}/{{ image_name }}')"
                         src="{{ thumbnail_src }}"
                         style="cursor: pointer; max-width: 100%"
                 />
@@ -35,6 +35,15 @@
                     </div>
                 {% else %}
                     <div class="quality fehlend">Qualität: fehlt</div>
+                {% endif %}
+                {% if totality is not none %}
+                    <div class="quality-bar">
+                        <div class="bar" style="width: 100%">
+                            <div class="marker" style="left: {{ totality }}%">{{ totality }}</div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="quality fehlend">Totality: fehlt</div>
                 {% endif %}
             </td>
             <td style="width: 40%; vertical-align: top; padding-left: 10px">
