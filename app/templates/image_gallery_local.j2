@@ -324,11 +324,12 @@
             ➖
         </button>
     </div>
-    <a
-            href="#"
-            onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count }}, '{{ current_folder }}')"
-    >Seite {{ page }} von {{ total_pages }}</a
-    >
+    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
+        <button style="padding: 4px 8px; font-size: 12px;"
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count }}, '{{ current_folder }}')">
+            Seite {{ page }} von {{ total_pages }}
+        </button>
+    </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
                 onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count + 1 }}, '{{ current_folder }}')">

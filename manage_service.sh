@@ -47,4 +47,4 @@ docker run -d \
   -v "$PWD/cache/facefiles:/app/facefiles" \
   gallery
 
-echo "[Fertig] läuft unter: https://levellevel.me/gallery/?page=1&count=3&folder=real"
+echo "[Fertig] läuft unter: https://levellevel.me/gallery/?page=1&count=27&folder=real"
