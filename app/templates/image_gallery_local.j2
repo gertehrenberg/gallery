@@ -222,9 +222,9 @@
         .quality-bar {
             margin-top: 0px;
             position: relative;
-            height: 20px;
+            height: 10px;
             background: linear-gradient(to right, red, yellow, green);
-            border-radius: 4px;
+            border-radius: 5px;
             overflow: hidden;
         }
 
@@ -241,9 +241,9 @@
             background: rgba(255, 255, 255, 0.8);
             color: #000;
             padding: 0 4px;
-            font-size: 11px;
+            font-size: 6px;
             border-radius: 2px;
-            line-height: 20px;
+            line-height: 8px;
             font-weight: bold;
         }
 
@@ -300,12 +300,12 @@
     {% if page > 1 %}
         <a
                 href="#"
-                onclick="saveAndGoWithOut( 1, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGo({{ kategorien }}, 1, {{ count }}, '{{ current_folder }}')"
         >⏮ Anfang</a
         >
         <a
                 href="#"
-                onclick="saveAndGoWithOut( {{ page - 1 }}, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGo({{ kategorien }}, {{ page - 1 }}, {{ count }}, '{{ current_folder }}')"
         >⬅ Zurück</a
         >
     {% else %}
@@ -314,42 +314,42 @@
     {% endif %}
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGoWithOut( {{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ current_folder }}')">
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ current_folder }}')">
             ➗2
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGoWithOut( {{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ current_folder }}')">
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ current_folder }}')">
             ➖
         </button>
     </div>
     <a
             href="#"
-            onclick="saveAndGoWithOut( {{ page }}, {{ count }}, '{{ current_folder }}')"
+            onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count }}, '{{ current_folder }}')"
     >Seite {{ page }} von {{ total_pages }}</a
     >
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGoWithOut( {{ page }}, {{ count + 1 }}, '{{ current_folder }}')">
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count + 1 }}, '{{ current_folder }}')">
             ➕
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGoWithOut( {{ page }}, {{ count * 2 }}, '{{ current_folder }}')">
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count * 2 }}, '{{ current_folder }}')">
             ✖️2
         </button>
     </div>
     {% if page < total_pages %}
         <a
                 href="#"
-                onclick="saveAndGoWithOut( {{ page + 1 }}, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGo({{ kategorien }}, {{ page + 1 }}, {{ count }}, '{{ current_folder }}')"
         >Weiter ➡</a
         >
         <a
                 href="#"
-                onclick="saveAndGoWithOut( {{ total_pages }}, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGo({{ kategorien }}, {{ total_pages }}, {{ count }}, '{{ current_folder }}')"
         >⏭ Ende</a
         >
     {% else %}

@@ -161,32 +161,77 @@ def init_db(db_path):
                          )
                      """)
 
-        conn.execute("""
-                     CREATE TABLE IF NOT EXISTS image_folder_status
-                     (
-                         image_id
-                         TEXT
-                         PRIMARY
-                         KEY,
-                         folder_id
-                         TEXT
-                     )
-                     """)
+        # image_quality(conn) # ist alt wurde mit migrate_score migriert
+        # migrate_score()
 
-        conn.execute("""
-                     CREATE TABLE IF NOT EXISTS image_quality
-                     (
-                         image_name
-                         TEXT
-                         PRIMARY
-                         KEY,
-                         scoreq1
-                         INTEGER,
-                         scoreq2
-                         INTEGER
-                     )
-                     """)
+        image_quality_scores(conn)
 
+
+def image_quality(conn):
+    conn.execute("""
+                 CREATE TABLE IF NOT EXISTS image_quality
+                 (
+                     image_name
+                     TEXT
+                     PRIMARY
+                     KEY,
+                     scoreq1
+                     INTEGER,
+                     scoreq2
+                     INTEGER
+                 )
+                 """)
+
+
+def image_quality_scores(conn):
+    conn.execute("""
+                 CREATE TABLE IF NOT EXISTS image_quality_scores
+                 (
+                     image_name
+                     TEXT,
+                     score_type
+                     INTEGER,
+                     score
+                     INTEGER,
+                     PRIMARY
+                     KEY
+                 (
+                     image_name,
+                     score_type
+                 )
+                     )
+                 """)
+
+
+def migrate_score():
+    """Migriert Daten aus image_quality nach image_quality_scores."""
+    with sqlite3.connect(DB_PATH) as conn:
+        # Neue Tabelle anlegen
+        image_quality_scores(conn)
+        conn.execute("DELETE FROM image_quality_scores")  # <<< Sauber löschen
+
+        # Alte Daten lesen
+        rows = conn.execute("SELECT image_name, scoreq1, scoreq2 FROM image_quality").fetchall()
+
+        for image_name, scoreq1, scoreq2 in rows:
+            conn.execute("""
+                INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+                VALUES (?, ?, ?)
+            """, (image_name, 1, scoreq1))
+
+            conn.execute("""
+                INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+                VALUES (?, ?, ?)
+            """, (image_name, 2, scoreq2))
+
+        conn.commit()
+        logging.info(f"[migrate_score] ✅ {len(rows)} Einträge migriert.")
+
+    """Löscht die alte image_quality-Tabelle dauerhaft."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DROP TABLE IF EXISTS image_quality")
+        conn.commit()
+        logging.info("[drop_old_quality_table] 🗑️ Tabelle image_quality gelöscht.")
 
 def fillcache_local(
         pair_cache_path_local,
@@ -387,8 +432,8 @@ def show_images(request: Request):
                 folder_name=folder_name,
                 image_id=image_id,
                 status={},
-                quality=image_data["quality"],
-                totality=image_data["totality"],
+                scoreq1=image_data["scoreq1"],
+                scoreq2=image_data["scoreq2"],
                 kategorien=kategorien,
                 extra_thumbnails=image_data["extra_thumbnails"]
             )
@@ -463,8 +508,8 @@ def prepare_image_data(folder_name: str, image_name: str):
     return {
         "thumbnail_src": thumbnail_src,
         "image_id": image_id,
-        "quality": scoreq1,
-        "totality": scoreq2,
+        "scoreq1": scoreq1,
+        "scoreq2": scoreq2,
         "extra_thumbnails": extra_thumbnails
     }
 
@@ -1142,25 +1187,26 @@ import sqlite3, logging
 
 
 def load_quality(folder_name: str, image_name: str):
-    """Lädt die Qualitätsbewertung (0-100) eines Bildes aus der Datenbank, case-insensitiv."""
+    """Lädt die Qualitätsbewertung (0–100) eines Bildes aus der neuen Tabelle image_quality_scores."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
-            result = conn.execute("""
-                                  SELECT scoreq1, scoreq2
-                                  FROM image_quality
-                                  WHERE LOWER(image_name) = LOWER(?)
-                                  """, (image_name,)).fetchone()
+            rows = conn.execute("""
+                                SELECT score_type, score
+                                FROM image_quality_scores
+                                WHERE LOWER(image_name) = LOWER(?)
+                                """, (image_name,)).fetchall()
 
-            if result:
-                return result[0], result[1]
+            scores = {score_type: score for score_type, score in rows}
+            if 1 in scores and 2 in scores:
+                return scores[1], scores[2]
 
-            logging.info(f"[load_quality] nicht in DB für {image_name}")
-            full_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+            logging.info(f"[load_quality] nicht vollständig in DB für {image_name}")
 
-            scoreq1, scoreq2 = calculateq1andq2(full_path)
-            if scoreq1 is not None and scoreq2 is not None:
-                save_image_quality(image_name, scoreq1, scoreq2)
-                return scoreq1, scoreq2
+        full_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+        scoreq1, scoreq2 = calculateq1andq2(full_path)
+        if scoreq1 is not None and scoreq2 is not None:
+            save_image_quality(image_name, scoreq1, scoreq2)
+            return scoreq1, scoreq2
 
     except Exception as e:
         logging.error(f"[load_quality] Fehler bei {image_name}: {e}")
@@ -1169,12 +1215,17 @@ def load_quality(folder_name: str, image_name: str):
 
 
 def save_image_quality(image_name, scoreq1, scoreq2):
-    """Speichert Bildname + Qualitätsscore in die Datenbank."""
+    """Speichert die Qualitätswerte als separate Zeilen in der neuen Tabelle."""
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
-            INSERT OR REPLACE INTO image_quality (image_name, scoreq1, scoreq2)
+            INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
             VALUES (?, ?, ?)
-        """, (image_name, scoreq1, scoreq2))
+        """, (image_name, 1, scoreq1))
+
+        conn.execute("""
+            INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+            VALUES (?, ?, ?)
+        """, (image_name, 2, scoreq2))
 
 
 def ensure_category_dirs(image_file_cache_dir, kategorien):

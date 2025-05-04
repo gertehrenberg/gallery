@@ -15,6 +15,24 @@
                         style="cursor: pointer; max-width: 100%"
                 />
 
+                {% if quality is not none %}
+                    <div class="quality-bar">
+                        <div class="bar" style="width: 100%">
+                            <div class="marker" style="left: {{ scoreq1 }}%">{{ scoreq1 }}</div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="quality fehlend">Qualität: fehlt</div>
+                {% endif %}
+                {% if totality is not none %}
+                    <div class="quality-bar">
+                        <div class="bar" style="width: 100%">
+                            <div class="marker" style="left: {{ scoreq2 }}%">{{ scoreq2 }}</div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="quality fehlend">Totality: fehlt</div>
+                {% endif %}
                 <!-- Zusätzliche Thumbnails -->
                 <div class="thumbnails-row">
                     {% for thumb in extra_thumbnails %}
@@ -26,25 +44,6 @@
                                 style="cursor: pointer"/>
                     {% endfor %}
                 </div>
-
-                {% if quality is not none %}
-                    <div class="quality-bar">
-                        <div class="bar" style="width: 100%">
-                            <div class="marker" style="left: {{ quality }}%">{{ quality }}</div>
-                        </div>
-                    </div>
-                {% else %}
-                    <div class="quality fehlend">Qualität: fehlt</div>
-                {% endif %}
-                {% if totality is not none %}
-                    <div class="quality-bar">
-                        <div class="bar" style="width: 100%">
-                            <div class="marker" style="left: {{ totality }}%">{{ totality }}</div>
-                        </div>
-                    </div>
-                {% else %}
-                    <div class="quality fehlend">Totality: fehlt</div>
-                {% endif %}
             </td>
             <td style="width: 40%; vertical-align: top; padding-left: 10px">
                 <div id="checkboxes-{{ image_id }}">
