@@ -200,6 +200,7 @@
                 transform: translate(-50%, -50%) rotate(360deg);
             }
         }
+
         .thumbnail-mini {
             width: 50px;
             height: 20px;
@@ -208,6 +209,7 @@
             border: 1px solid #ccc;
             border-radius: 4px;
         }
+
         .thumbnails-row {
             display: flex;
             flex-direction: row;
@@ -298,12 +300,12 @@
     {% if page > 1 %}
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, 1, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGoWithOut( 1, {{ count }}, '{{ current_folder }}')"
         >⏮ Anfang</a
         >
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, {{ page - 1 }}, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGoWithOut( {{ page - 1 }}, {{ count }}, '{{ current_folder }}')"
         >⬅ Zurück</a
         >
     {% else %}
@@ -312,42 +314,42 @@
     {% endif %}
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ current_folder }}')">
+                onclick="saveAndGoWithOut( {{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ current_folder }}')">
             ➗2
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ current_folder }}')">
+                onclick="saveAndGoWithOut( {{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ current_folder }}')">
             ➖
         </button>
     </div>
     <a
             href="#"
-            onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count }}, '{{ current_folder }}')"
+            onclick="saveAndGoWithOut( {{ page }}, {{ count }}, '{{ current_folder }}')"
     >Seite {{ page }} von {{ total_pages }}</a
     >
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count + 1 }}, '{{ current_folder }}')">
+                onclick="saveAndGoWithOut( {{ page }}, {{ count + 1 }}, '{{ current_folder }}')">
             ➕
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count * 2 }}, '{{ current_folder }}')">
+                onclick="saveAndGoWithOut( {{ page }}, {{ count * 2 }}, '{{ current_folder }}')">
             ✖️2
         </button>
     </div>
     {% if page < total_pages %}
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, {{ page + 1 }}, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGoWithOut( {{ page + 1 }}, {{ count }}, '{{ current_folder }}')"
         >Weiter ➡</a
         >
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, {{ total_pages }}, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGoWithOut( {{ total_pages }}, {{ count }}, '{{ current_folder }}')"
         >⏭ Ende</a
         >
     {% else %}
@@ -374,6 +376,9 @@
 
 <script src="https://unpkg.com/@panzoom/panzoom/dist/panzoom.min.js"></script>
 <script>
+    const kategorien = {{ kategorien | tojson }}
+    ;
+
     let panzoomInstance;
 
     function openModal(image_name) {
@@ -483,8 +488,68 @@
             });
     }
 
-    const kategorien = {{ kategorien | tojson }}
-    ;
+    function saveAndGoWithOut(targetPage, count, folder, done) {
+        const data = Array.from(document.querySelectorAll("form")).map(
+            (form) => {
+                const entry = {};
+                // Extrahiere image_id aus dem Formular
+                entry.image_id = form.querySelector('[name="image_id"]').value;
+
+                // Gehe durch alle Kategorien und speichere die Checkbox-Werte
+                kategorien.forEach((cat) => {
+                    // Name der Checkbox angepasst an das Format img_5242.jpg_<key>
+                    const box = form.querySelector(
+                        `[name="${entry.image_id}_${cat.key}"]`
+                    );
+                    entry[cat.key] = box && box.checked ? "on" : ""; // 'on' wenn angekreuzt, sonst leer
+                });
+
+                // Notiz extrahieren
+                entry.notiz = form.querySelector('[name="notiz"]')?.value || "";
+                return entry;
+            }
+        );
+
+        // Sende die Daten an den Server
+        Promise.all(
+            data.map((entry) =>
+                fetch("/gallery/save", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    body: new URLSearchParams(entry),
+                })
+            )
+        )
+            .then(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.set("page", targetPage);
+                url.searchParams.set("count", count);
+                url.searchParams.set("folder", folder);
+                window.location.href = url.toString();
+            })
+            .catch((err) => {
+                alert("Fehler beim Speichern!");
+                console.error(err);
+            });
+    }
+
+    function gotoPage() {
+        const input = document.getElementById("gotoPageInput");
+        const page = parseInt(input.value);
+        if (!page || page < 1 || page > {{ total_pages }}) {
+            alert("Ungültige Seitenzahl (1–{{ total_pages }})");
+            return;
+        }
+        toggleMenu();
+        saveAndGoWithOut(page, {{ count }}, "{{ current_folder }}");
+    }
+
+    document.getElementById("gotoPageInput").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            gotoPage();
+        }
+    });
 
     function toggleMenu() {
         const menu = document.getElementById("menu");

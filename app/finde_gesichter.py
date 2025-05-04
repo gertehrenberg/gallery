@@ -1,7 +1,8 @@
-import cv2
 import os
 import sys
 from pathlib import Path
+
+import cv2
 from tqdm import tqdm
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -9,6 +10,7 @@ if script_dir not in sys.path:
     sys.path.insert(0, script_dir)
 
 from config import PFAD_SAVE
+
 
 def gesichter_erkennen_in_ordner(bilder_ordner: Path, ergebnis_datei: Path, min_gesichtsgroesse=(300, 400)) -> int:
     """
@@ -58,7 +60,7 @@ def gesichter_erkennen_in_ordner(bilder_ordner: Path, ergebnis_datei: Path, min_
                     f.flush()
 
                     for i, (x, y, w, h) in enumerate(gefilterte_gesichter):
-                        gesicht_img = img[y:y+h, x:x+w]
+                        gesicht_img = img[y:y + h, x:x + w]
                         ziel_datei = gesichter_ordner / f"{bild_pfad.stem}_{i}.jpg"
                         cv2.imwrite(str(ziel_datei), gesicht_img)
                         gesichtsbilder.append(ziel_datei.relative_to(gesichter_ordner))
@@ -69,7 +71,8 @@ def gesichter_erkennen_in_ordner(bilder_ordner: Path, ergebnis_datei: Path, min_
     # HTML-Galerie erstellen
     galerie_datei = gesichter_ordner / "gesichter_galerie.html"
     with open(galerie_datei, "w", encoding="utf-8") as html:
-        html.write("<html><head><title>Gesichtergalerie</title><style>img{margin:4px;max-height:200px;}</style></head><body>")
+        html.write(
+            "<html><head><title>Gesichtergalerie</title><style>img{margin:4px;max-height:200px;}</style></head><body>")
         html.write("<h1>Gesichtsausschnitte</h1>")
         for pfad in gesichtsbilder:
             html.write(f'<img src="{pfad.as_posix()}" alt="Gesicht">\n')

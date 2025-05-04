@@ -1,5 +1,6 @@
-import sys
 import os
+import sys
+
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
@@ -8,12 +9,14 @@ SECRET_PATH = "../secrets"
 CRED_FILE = os.path.join(SECRET_PATH, "credentials.json")
 TOKEN_FILE = os.path.join(SECRET_PATH, "token.json")
 
+
 def load_drive_service():
     if not os.path.exists(TOKEN_FILE):
         raise RuntimeError("Kein Token vorhanden. Bitte authentifizieren.")
     creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
     service = build("drive", "v3", credentials=creds)
     return service
+
 
 def find_text_file(service, image_name):
     # Bildname wird erwartet wie "dsc01234.jpg"
@@ -40,6 +43,7 @@ def find_text_file(service, image_name):
     request = service.files().get_media(fileId=file_id)
     content = request.execute().decode("utf-8")
     return content
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:

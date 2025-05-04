@@ -28,11 +28,10 @@
                         <input name="image_name" type="hidden" value="{{ image_name }}"/>
                         <!-- Verstecktes Eingabefeld für image_name -->
                         {% for k in kategorien %}
-                        <label>
-                            <input name="{{ image_name }}_{{ k.key }}" type="checkbox" {{
-                            'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label
-                            }}
-                        </label>
+                            <label>
+                                <input name="{{ image_name }}_{{ k.key }}"
+                                       type="checkbox" {{ 'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label }}
+                            </label>
                         {% endfor %}
                     </form>
                 </div>

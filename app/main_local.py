@@ -6,19 +6,17 @@ import os
 import re
 import shutil
 import socket
-import sqlite3
 import ssl
 import threading
 import time
 from pathlib import Path
-from typing import Any
 
 import cv2
 import numpy as np
 from PIL import Image, ImageOps
 from fastapi import FastAPI, Request
 from fastapi import Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -35,6 +33,7 @@ logging.basicConfig(level=logging.INFO)
 app = FastAPI()
 
 from app.auth import router as auth_router
+
 app.include_router(auth_router)
 
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
@@ -81,6 +80,7 @@ app_ready = False
 folders_total = len(kategorien)
 current_loading_folder = ""
 folders_loaded = 0
+
 
 @app.on_event("startup")
 def init_service():
@@ -180,7 +180,9 @@ def init_db(db_path):
                          TEXT
                          PRIMARY
                          KEY,
-                         quality
+                         scoreq1
+                         INTEGER,
+                         scoreq2
                          INTEGER
                      )
                      """)
@@ -202,17 +204,24 @@ def fillcache_local(
         except Exception as e:
             logging.warning(f"[fillcache_local] Fehler beim Laden von pair_cache.json: {e}")
 
-    image_name_cache = {}
+    image_paths = []
+
     for name in os.listdir(image_file_cache_dir):
         full_path = os.path.join(image_file_cache_dir, name)
         if os.path.isfile(full_path) and name.lower().endswith(__SUFFIX):
-            image_name_cache[name.lower()] = (full_path, "")
+            image_paths.append(full_path)
         elif os.path.isdir(full_path):
-            # Eine Ebene tiefer
             for subname in os.listdir(full_path):
                 subpath = os.path.join(full_path, subname)
                 if os.path.isfile(subpath) and subname.lower().endswith(__SUFFIX):
-                    image_name_cache[subname.lower()] = (subpath, "")
+                    image_paths.append(subpath)
+
+    # Nach Anlegedatum sortieren (ctime)
+    image_paths.sort(key=lambda p: os.path.getctime(p), reverse=True)
+
+    image_name_cache = {
+        os.path.basename(p).lower(): (p, "") for p in image_paths
+    }
 
     logging.info(f"[image_name_cache] 📂 Gelesen Bilder aus: {len(image_name_cache)}")
 
@@ -354,7 +363,6 @@ def show_images(request: Request):
     recheck = next((k["key"] for k in kategorien if k["key"] == "recheck"), None)
 
     for image_name in image_keys:
-
         pair = pair_cache[image_name]
         image_id = pair['image_id']
 
@@ -448,16 +456,15 @@ def prepare_image_data(folder_name: str, image_name: str):
     else:
         thumbnail_src = "https://via.placeholder.com/150?text=Kein+Bild"
 
-    quality = load_quality(folder_name, image_name)
-    totality = evaluate_image(folder_name, image_name)
+    scoreq1, scoreq2 = load_quality(folder_name, image_name)
 
     extra_thumbnails = get_extra_thumbnails(folder_name, image_name)
 
     return {
         "thumbnail_src": thumbnail_src,
         "image_id": image_id,
-        "quality": quality,
-        "totality": totality,
+        "quality": scoreq1,
+        "totality": scoreq2,
         "extra_thumbnails": extra_thumbnails
     }
 
@@ -866,16 +873,72 @@ def show_grid_view(request: Request):
     })
 
 
-def calculate_simple_brisque(image_path):
-    """Berechnet die Fake-BRISQUE (LBP-Standardabweichung)."""
+def calculateq1andq2(image_path):
+    """Berechnet die Fake-BRISQUE (LBP-Standardabweichung und einfache Bildästhetik).
+    :return: Tuple[int, int] → (scoreq1, scoreq2), oder (None, None) bei Fehler
+    """
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if image is None:
         print(f"Bild {image_path} konnte nicht geladen werden.")
-        return None
+        return None, None
+
+    if image.shape[0] < 16 or image.shape[1] < 16:
+        print(f"Bild zu klein für Analyse: {image_path}")
+        return None, None
 
     lbp = feature.local_binary_pattern(image, P=8, R=1, method="uniform")
-    score = np.std(lbp)
-    return score
+    scoreq1 = min(scale_score_to_0_100(np.std(lbp)), 100)
+
+    image = cv2.imread(image_path)
+    h, w = image.shape[:2]
+    if h < 16 or w < 16:
+        print(f"Bild zu klein für Analyse: {image_path}")
+        return None, None
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, thresh = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        print("Keine Konturen erkannt.")
+        return None, None
+
+    largest = max(contours, key=cv2.contourArea)
+    M = cv2.moments(largest)
+    if M["m00"] == 0:
+        print("Ungültige Momentberechnung.")
+        return None, None
+
+    cx = int(M["m10"] / M["m00"])
+    cy = int(M["m01"] / M["m00"])
+
+    # Goldener Schnitt
+    gx, gy = int(w * 0.618), int(h * 0.618)
+    dist_golden = np.hypot(cx - gx, cy - gy) / np.hypot(w, h)
+    score_golden = max(0, 1 - dist_golden)
+
+    # Drittelregel
+    thirds_x = [w // 3, 2 * w // 3]
+    thirds_y = [h // 3, 2 * h // 3]
+    min_dist_thirds = min([abs(cx - x) for x in thirds_x]) + min([abs(cy - y) for y in thirds_y])
+    score_thirds = max(0, 1 - (min_dist_thirds / max(w, h)))
+
+    # Symmetrie (vertikal)
+    left = image[:, :w // 2]
+    right = cv2.flip(image[:, w - w // 2:], 1)
+    diff = cv2.absdiff(left, right)
+    denom = h * w * 3 * 255
+    score_symmetry = 1 - (np.sum(diff) / denom) if denom > 0 else 0
+
+    # Kontrast
+    contrast = gray.std() / 128
+    score_contrast = min(contrast, 1.0)
+
+    # Gesamtbewertung (q2)
+    scoreq2 = int(round(np.mean([score_golden, score_thirds, score_symmetry, score_contrast]), 2) * 100)
+
+    return scoreq1, scoreq2
 
 
 def download_and_save_image(folder_name: str, image_name: str) -> str | None:
@@ -1074,87 +1137,44 @@ def scale_score_to_0_100(score):
     return int(round(scaled))
 
 
-def load_quality(folder_name: str, image_name: str) -> int | None | Any:
+from pathlib import Path
+import sqlite3, logging
+
+
+def load_quality(folder_name: str, image_name: str):
     """Lädt die Qualitätsbewertung (0-100) eines Bildes aus der Datenbank, case-insensitiv."""
     try:
         with sqlite3.connect(DB_PATH) as conn:
             result = conn.execute("""
-                                  SELECT quality
+                                  SELECT scoreq1, scoreq2
                                   FROM image_quality
                                   WHERE LOWER(image_name) = LOWER(?)
                                   """, (image_name,)).fetchone()
+
             if result:
-                return result[0]
-            else:
-                logging.info(f"[load_quality] nicht in DB für {image_name}")
-                full_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
-                score = calculate_simple_brisque(full_path)
-                if score is not None:
-                    quality_score = scale_score_to_0_100(score)
-                    save_image_quality(image_name, quality_score)
-                    return quality_score
+                return result[0], result[1]
+
+            logging.info(f"[load_quality] nicht in DB für {image_name}")
+            full_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+
+            scoreq1, scoreq2 = calculateq1andq2(full_path)
+            if scoreq1 is not None and scoreq2 is not None:
+                save_image_quality(image_name, scoreq1, scoreq2)
+                return scoreq1, scoreq2
+
     except Exception as e:
         logging.error(f"[load_quality] Fehler bei {image_name}: {e}")
 
-    return None
+    return None, None
 
 
-def save_image_quality(image_name, quality_score):
+def save_image_quality(image_name, scoreq1, scoreq2):
     """Speichert Bildname + Qualitätsscore in die Datenbank."""
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("""
-            INSERT OR REPLACE INTO image_quality (image_name, quality)
-            VALUES (?, ?)
-        """, (image_name, quality_score))
-
-
-def evaluate_image(folder_name, image_name):
-    image_path = str(Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name)
-    img = cv2.imread(image_path)
-    if img is None:
-        return {"error": "Bild nicht gefunden."}
-
-    h, w = img.shape[:2]
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, thresh = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours:
-        return {"error": "Keine Konturen erkannt."}
-
-    largest = max(contours, key=cv2.contourArea)
-    M = cv2.moments(largest)
-    if M["m00"] == 0:
-        return {"error": "Ungültige Momentberechnung."}
-    cx = int(M["m10"] / M["m00"])
-    cy = int(M["m01"] / M["m00"])
-
-    # Goldener Schnitt
-    gx, gy = int(w * 0.618), int(h * 0.618)
-    dist_golden = np.hypot(cx - gx, cy - gy) / np.hypot(w, h)
-    score_golden = max(0, 1 - dist_golden)
-
-    # Drittelregel
-    thirds_x = [w // 3, 2 * w // 3]
-    thirds_y = [h // 3, 2 * h // 3]
-    min_dist_thirds = min([abs(cx - x) for x in thirds_x]) + min([abs(cy - y) for y in thirds_y])
-    score_thirds = max(0, 1 - (min_dist_thirds / max(w, h)))
-
-    # Symmetrie (vertikal)
-    left = img[:, :w // 2]
-    right = cv2.flip(img[:, w - w // 2:], 1)
-    diff = cv2.absdiff(left, right)
-    score_symmetry = 1 - (np.sum(diff) / (h * w * 3 * 255))
-
-    # Kontrast
-    contrast = gray.std() / 128
-    score_contrast = min(contrast, 1.0)
-
-    # Gesamt
-    score_total = int(round(np.mean([score_golden, score_thirds, score_symmetry, score_contrast]), 2) * 100)
-
-    return score_total
+            INSERT OR REPLACE INTO image_quality (image_name, scoreq1, scoreq2)
+            VALUES (?, ?, ?)
+        """, (image_name, scoreq1, scoreq2))
 
 
 def ensure_category_dirs(image_file_cache_dir, kategorien):

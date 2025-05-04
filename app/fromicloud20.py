@@ -2,14 +2,14 @@ import hashlib
 import os
 import shutil
 import sys
-import time
 from datetime import datetime
 from pathlib import Path
 
 try:
     from tqdm import tqdm
 except ImportError:
-    print("[Hinweis] Modul 'tqdm' nicht installiert. Bitte mit 'pip install tqdm' nachinstallieren für Fortschrittsanzeige.")
+    print(
+        "[Hinweis] Modul 'tqdm' nicht installiert. Bitte mit 'pip install tqdm' nachinstallieren für Fortschrittsanzeige.")
     exit(1)
 
 # Eigene Imports
@@ -72,7 +72,8 @@ def speichere_neue_hashes(pfad: Path, neue_hashes: set[str]) -> None:
             f.write(h + "\n")
 
 
-def kopiere_neue_bilder(quell: Path, ziel: Path, bekannte_hashes: set[str], ab_timestamp: float, anzahl: int = 15000) -> set[str]:
+def kopiere_neue_bilder(quell: Path, ziel: Path, bekannte_hashes: set[str], ab_timestamp: float, anzahl: int = 15000) -> \
+set[str]:
     ziel.mkdir(parents=True, exist_ok=True)
     neue_hashes = set()
     kopiert = 0
@@ -109,7 +110,8 @@ def kopiere_neue_bilder(quell: Path, ziel: Path, bekannte_hashes: set[str], ab_t
 if __name__ == "__main__":
     # Lade Zeitstempel
     letzter_timestamp = lade_letzten_timestamp(PFAD_TIMESTAMP)
-    print(f"[Info] Letzter erfolgreicher Kopierlauf: {datetime.fromtimestamp(letzter_timestamp).strftime(DATUMSFORMAT)}")
+    print(
+        f"[Info] Letzter erfolgreicher Kopierlauf: {datetime.fromtimestamp(letzter_timestamp).strftime(DATUMSFORMAT)}")
 
     # Initialisiere und lade Hashes
     initialisiere_hashdatei(PFAD_REAL, PFAD_HASHES)
