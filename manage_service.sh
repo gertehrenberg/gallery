@@ -31,8 +31,10 @@ fi
 echo "[Info] Baue Docker-Image '${IMAGE_NAME}'..."
 docker build -t "${IMAGE_NAME}" .
 
-# 4. Container starten
+sudo rm file_logger.log
+sudo rm ./cache/progress/*
 
+# 4. Container starten
 echo "[Info] Starte neuen Container '${CONTAINER_NAME}'..."
 docker run -d \
   --name "${CONTAINER_NAME}" \
@@ -47,4 +49,4 @@ docker run -d \
   -v "$PWD/cache/facefiles:/app/facefiles" \
   gallery
 
-echo "[Fertig] läuft unter: https://levellevel.me/gallery/?page=1&count=27&folder=real"
+echo "[Fertig] läuft unter: https://levellevel.me/gallery/?page=1&count=6&folder=real&textflag=1"

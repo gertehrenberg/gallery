@@ -252,6 +252,25 @@
             font-style: italic;
             color: #999;
         }
+        .config-section {
+            display: none;
+            margin-top: 1rem;
+            border-top: 1px solid #ccc;
+            padding-top: 0.5rem;
+        }
+        .config-section.show {
+            display: block;
+        }
+        button.section-toggle {
+            background: none;
+            border: none;
+            color: #007BFF;
+            text-align: left;
+            padding: 0;
+            margin-top: 0.5rem;
+            cursor: pointer;
+        }
+
     </style>
 </head>
 <body>
@@ -294,6 +313,18 @@
                 </div>
             {% endfor %}
         </div>
+            <button class="section-toggle" onclick="toggleConfigSection()">▶ Configuration</button>
+            <div id="configSection" class="config-section">
+                <form id="configForm">
+                    <fieldset>
+                        <legend>Textanzeige</legend>
+                        <label><input type="radio" name="textOption" value="1"{% if textflag == '1' %} checked{% endif %}> keine Anzeige</label><br>
+                        <label><input type="radio" name="textOption" value="2"{% if textflag == '2' %} checked{% endif %}> ganzer Text</label><br>
+                        <label><input type="radio" name="textOption" value="3"{% if textflag == '3' %} checked{% endif %}> nur erste Zeile</label><br>
+                        <label><input type="radio" name="textOption" value="4"{% if textflag == '4' %} checked{% endif %}> kein Englisch</label><br>
+                    </fieldset>
+                </form>
+            </div>
     </div>
 </div>
 <div class="sticky-nav">
@@ -377,8 +408,24 @@
 
 <script src="https://unpkg.com/@panzoom/panzoom/dist/panzoom.min.js"></script>
 <script>
-    const kategorien = {{ kategorien | tojson }}
-    ;
+    const TEXTFLAG = "{{ textflag }}";
+    const kategorien = {{ kategorien | tojson }};
+
+    function toggleConfigSection() {
+        const section = document.getElementById("configSection");
+        if (!section) return;
+        section.classList.toggle("show");
+    }
+
+    document.getElementById("configForm").addEventListener("change", function(e) {
+        if (e.target.name === "textOption") {
+            const newFlag = e.target.value;
+            const url = new URL(window.location.href);
+            url.searchParams.set("textflag", newFlag);
+            url.searchParams.set("page", "1");
+            window.location.href = url.toString();
+        }
+    });
 
     let panzoomInstance;
 
@@ -445,7 +492,7 @@
     });
 
     function saveAndGo(kategorien, targetPage, count, folder, done) {
-        const data = Array.from(document.querySelectorAll("form")).map(
+        const data = Array.from(document.querySelectorAll("form.checkbox-container")).map(
             (form) => {
                 const entry = {};
                 // Extrahiere image_id aus dem Formular
@@ -478,9 +525,17 @@
         )
             .then(() => {
                 const url = new URL(window.location.href);
+
+                // Pfad auf '/gallery/' setzen
+                url.pathname = '/gallery/';
+
+                // Alle vorhandenen Suchparameter entfernen
+                url.search = '';
+
                 url.searchParams.set("page", targetPage);
                 url.searchParams.set("count", count);
                 url.searchParams.set("folder", folder);
+                url.searchParams.set("textflag", TEXTFLAG);
                 window.location.href = url.toString();
             })
             .catch((err) => {
@@ -490,7 +545,7 @@
     }
 
     function saveAndGoWithOut(targetPage, count, folder, done) {
-        const data = Array.from(document.querySelectorAll("form")).map(
+        const data = Array.from(document.querySelectorAll("form.checkbox-container")).map(
             (form) => {
                 const entry = {};
                 // Extrahiere image_id aus dem Formular
@@ -523,9 +578,17 @@
         )
             .then(() => {
                 const url = new URL(window.location.href);
+
+                // Pfad auf '/gallery/' setzen
+                url.pathname = '/gallery/';
+
+                // Alle vorhandenen Suchparameter entfernen
+                url.search = '';
+
                 url.searchParams.set("page", targetPage);
                 url.searchParams.set("count", count);
                 url.searchParams.set("folder", folder);
+                url.searchParams.set("textflag", TEXTFLAG);
                 window.location.href = url.toString();
             })
             .catch((err) => {
@@ -572,6 +635,7 @@
         url.searchParams.set("page", 1); // beim Ordnerwechsel immer auf Seite 1
         url.searchParams.set("count", count); // kannst du ggf. anpassen
         url.searchParams.set("folder", cat); // der neue Folder
+        url.searchParams.set("textflag", TEXTFLAG);
 
         window.location.href = url.toString(); // Seite neu laden
     }

@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Gallery lädt...</title>
+    <style>
+        body {
+            background: #f7f7f7;
+            color: #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: sans-serif;
+            flex-direction: column;
+            text-align: center;
+        }
+
+        .spinner {
+            margin: 20px;
+            width: 40px;
+            height: 40px;
+            border: 5px solid #ccc;
+            border-top: 5px solid #09f;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #progress {
+            margin-top: 20px;
+            font-size: 1.2em;
+        }
+    </style>
+    <script>
+        const PROGRESS_ID = "{{ progress_id }}";
+        let dots = 0;
+
+        function checkStatus() {
+            if (!PROGRESS_ID || PROGRESS_ID === "None") {
+                document.getElementById('progress').innerText = "Fehler: Kein Fortschritts-ID erhalten.";
+                return;
+            }
+            fetch("/gallery/progress?progress_id=" + PROGRESS_ID)
+                .then(response => response.json())
+                .then(data => {
+                    const {current, total, running} = data;
+                    if (current === total && !running) {
+                        window.location.href = window.location.href = "/gallery/result?progress_id=" + PROGRESS_ID;
+                    } else {
+                        dots = (dots + 1) % 4; // 0, 1, 2, 3 Punkte
+                        let dotString = '.'.repeat(dots);
+                        document.getElementById('progress').innerText =
+                            `🔹 ${current} Bilder von ${total} Bildern geladen${dotString}`;
+                    }
+                })
+                .catch(err => {
+                    console.error('Statusabfrage fehlgeschlagen', err);
+                });
+        }
+
+        setInterval(checkStatus, 2000); // Alle 2 Sekunden neuen Status abrufen
+        window.onload = checkStatus;
+    </script>
+</head>
+<body>
+<h1>🔄 Gallery wird vorbereitet...</h1>
+<div class="spinner"></div>
+<p id="progress">Initialisiere...</p>
+</body>
+</html>

@@ -1,14 +1,19 @@
 
-fastapi
+fastapi~=0.115.12
 uvicorn
-google-api-python-client
+google-api-python-client~=2.166.0
 google-auth-httplib2
-google-auth-oauthlib
+google-auth-oauthlib~=1.2.1
 jinja2
 python-multipart
-pillow
+pillow~=11.2.1
 
-opencv-python
-scikit-image
-numpy
-geopy
+opencv-python~=4.11.0.86
+scikit-image~=0.25.2
+numpy~=2.2.5
+geopy~=2.4.1
+itsdangerous
+
+protobuf~=6.30.2
+starlette~=0.46.1
+tqdm~=4.67.1

@@ -10,8 +10,13 @@ import ssl
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime
 from pathlib import Path
+
+from uuid import uuid4
+from fastapi.responses import HTMLResponse
+from fastapi import Request
 
 import cv2
 import numpy as np
@@ -21,12 +26,18 @@ from fastapi import FastAPI, Request
 from fastapi import Query
 from fastapi.responses import HTMLResponse
 from fastapi.responses import JSONResponse
+from fastapi import HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from geopy.geocoders import Nominatim
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from skimage import feature
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.auth import router as auth_router
+
+TEXT_MAX = 27
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 if script_dir not in sys.path:
@@ -36,11 +47,8 @@ from config import IMAGE_EXTENSIONS, CACHE_DATEI_NAME
 
 KEIN_TEXT_GEFUNDEN = "Kein Text gefunden"
 
-logging.basicConfig(level=logging.INFO)
-
 app = FastAPI()
-
-from app.auth import router as auth_router
+app.add_middleware(SessionMiddleware, secret_key="irgendwas-sicheres123")
 
 app.include_router(auth_router)
 
@@ -84,10 +92,29 @@ file_parents_cache = {}
 rendered_image_cache = {}
 
 app_ready = False
+progress_id_global = None
+
+from typing import Dict
+
+html_cache: Dict[str, str] = {}
 
 folders_total = len(kategorien)
 current_loading_folder = ""
 folders_loaded = 0
+
+logging.basicConfig(level=logging.INFO)
+
+# Eigener Logger mit Namen
+file_logger = logging.getLogger("mein_logger")
+file_logger.setLevel(logging.INFO)
+
+# Handler für Datei
+file_handler = logging.FileHandler("file_logger.log", mode='a')
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# Handler hinzufügen
+file_logger.addHandler(file_handler)
 
 
 @app.on_event("startup")
@@ -387,15 +414,78 @@ def fill_folder_cache(db_path):
     conn.commit()
 
 
-@app.get("/", response_class=HTMLResponse)
-def show_images(request: Request):
-    if not app_ready:
-        return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
+PROGRESS_DIR = '/data/progress'
 
+def load_progress(progress_id_local):
+    progress_file = Path(PROGRESS_DIR) / f"{progress_id_local}.json"
+    if progress_file.exists():
+        with open(progress_file, "r") as f:
+            return json.load(f)
+    return {"running": False, "current": 0, "total": 0}
+
+def save_progress(progress_id_local, new_data):
+    progress_file = Path(PROGRESS_DIR) / f"{progress_id_local}.json"
+    progress_file.parent.mkdir(parents=True, exist_ok=True)
+
+    old_data = load_progress(progress_id_local)
+
+    # Debug-Log: Alt vs. Neu
+    file_logger.info(f"🔄 save_progress({progress_id_local})")
+    file_logger.info(f"   OLD: {old_data}")
+    file_logger.info(f"   NEW: {new_data}")
+
+    if False:
+        # Schutz: current darf nicht zurückgehen
+        if new_data["current"] < old_data.get("current", 0):
+            file_logger.warning(f"⚠️ current rückwärts – NICHT gespeichert: {new_data['current']} < {old_data['current']}")
+            return
+
+        # Schutz: total darf nicht kleiner werden
+        if new_data["total"] < old_data.get("total", 0):
+            file_logger.warning(f"⚠️ total kleiner – NICHT gespeichert: {new_data['total']} < {old_data['total']}")
+            return
+
+    # Speichern
+    with open(progress_file, "w") as f:
+        json.dump(new_data, f)
+    file_logger.info(f"✅ Fortschritt gespeichert: {progress_id_local} → {new_data}")
+
+@app.get("/", response_class=HTMLResponse)
+async def generate_images(request: Request):
     page = int(request.query_params.get('page', '1') or 1)
     count = int(request.query_params.get('count', '1') or 1)
     folder_name = request.query_params.get('folder', 'real')
-    textflag =  request.query_params.get('textflag', '1')
+
+    # progress_id aus Cookie oder neu erzeugen
+    progress_id = request.cookies.get("progress_id")
+    if not progress_id:
+        progress_id = str(uuid4())
+
+    # Initialen Fortschritt setzen
+    save_progress(progress_id, {"running": True, "current": 0, "total": count})
+
+    # Bilder anzeigen/generieren
+    await show_images(request, page, count, folder_name, progress_id)
+
+    # Ladeanzeige rendern
+    response = templates.TemplateResponse(
+        "showimages.html",
+        {
+            "request": request,
+            "progress_id": progress_id,
+            "page": page,
+            "count": count,
+            "folder": folder_name
+        },
+        status_code=200
+    )
+    response.set_cookie("progress_id", progress_id)
+    return response
+
+async def show_images(request: Request, page, count, folder_name, progress_id_local):
+
+    if not app_ready:
+        return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
 
     start = (page - 1) * count
     end = start + count
@@ -419,30 +509,29 @@ def show_images(request: Request):
         pair = pair_cache[image_name]
         image_id = pair['image_id']
 
-        image_id_text = f"{image_id}_{textflag}"
-        if image_id_text in rendered_image_cache:
-            images_html_parts.append(rendered_image_cache[image_id_text])
+        if count > TEXT_MAX and image_id in rendered_image_cache:
+            images_html_parts.append(rendered_image_cache[image_id])
+        elif count <= TEXT_MAX and image_id + "_T" in rendered_image_cache:
+            images_html_parts.append(rendered_image_cache[image_id + "_T"])
         else:
             image_data = prepare_image_data(folder_name, image_name)
 
-            match textflag:
-                case '1':
-                    # keine Anzeige
-                    text_content = ""
-                    textmode = "none"
-                case '2':
-                    # ganzer Text
-                    text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
-                    if KEIN_TEXT_GEFUNDEN == text_content:
-                        set_status(image_name, recheck)
-                case '3':
-                    # nur erste Zeile
-                    text_content = ""
-                    textmode = "first_line"
-                case '4':
-                    # kein Englisch
-                    text_content = ""
-                    textmode = "no_english"
+            if count > TEXT_MAX:
+                text_content = ""
+            else:
+                text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                if KEIN_TEXT_GEFUNDEN == text_content:
+                    set_status(image_name, recheck)
+
+            data = load_progress(progress_id_local)
+            data["running"] = True
+            data["current"] += 1
+            data["total"] = count
+            save_progress(progress_id_local, data)
+
+            now = datetime.now()
+            german_date_with_ms = now.strftime("%d.%m.%Y %H:%M:%S") + f".{int(now.microsecond / 1000):03d}"
+            text_content = f"{german_date_with_ms}\n{text_content}"
 
             rendered_html = templates.get_template("image_entry_local.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
@@ -457,7 +546,10 @@ def show_images(request: Request):
                 extra_thumbnails=image_data["extra_thumbnails"]
             )
 
-            rendered_image_cache[image_id_text] = rendered_html
+            if count > TEXT_MAX:
+                rendered_image_cache[image_id] = rendered_html
+            else:
+                rendered_image_cache[image_id + "_T"] = rendered_html
 
             images_html_parts.append(rendered_html)
 
@@ -480,16 +572,39 @@ def show_images(request: Request):
     # Berechnung total_pages
     total_pages = max(1, math.ceil(total_images / count))
 
-    return templates.TemplateResponse("image_gallery_local.j2", {
+    html_string = templates.env.get_template("image_gallery_local.j2").render({
         "request": request,
         "page": page,
         "total_pages": total_pages,
         "current_folder": folder_name,
         "count": count,
-        "textflag" : textflag,
         "kategorien": kategorien,
-        "images_html": ''.join(images_html_parts)
+        "images_html": ''.join(images_html_parts),
     })
+
+    html_cache[progress_id_local] = html_string
+
+    data = load_progress(progress_id_local)
+    data["running"] = False
+    save_progress(progress_id_local, data)
+
+    return HTMLResponse(content=html_string)
+
+
+@app.get("/result", response_class=HTMLResponse)
+async def gallery_result(request: Request, progress_id: str):
+    html = html_cache.get(progress_id)
+    if not html:
+        raise HTTPException(status_code=404, detail="Kein gerendertes HTML gefunden.")
+    return HTMLResponse(content=html)
+
+@app.get("/progress")
+def get_progress(request: Request):
+    progress_id = request.query_params.get("progress_id")
+    data = load_progress(progress_id)
+    file_logger.info(f"get  {progress_id} {data}")
+    return JSONResponse(load_progress(progress_id))
+
 
 def is_file_in_folder(image_id: str, folder_name: str) -> bool:
     """Prüft nur lokal im Cache, ob eine Datei in einem Ordner ist."""
