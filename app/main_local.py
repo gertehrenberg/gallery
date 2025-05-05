@@ -53,6 +53,7 @@ SCOPES = [
 
 kategorien = [
     {"key": "real", "label": "Alle Bilder", "icon": "💾", "folderid": "1fyE_ZYoVoGZ7ehjuWrS9Kd6WW4w2UZWy"},
+    {"key": "top", "label": "Fast Perfekt", "icon": "💎", "folderid": "1oKNY7jB8hEFMEn7amA6Osrbo8K9z5jAX"},
     {"key": "delete", "label": "Löschen", "icon": "❌", "folderid": "1wjUj6NHZ_ZHwlahQuJUbCTf_HplqePVw"},
     {"key": "recheck", "label": "Neu", "icon": "🔄", "folderid": "1EyrM6LLv_nEyB8s6zzGDGzf-hcPC76dg"},
     {"key": "bad", "label": "Schlecht", "icon": "⛔", "folderid": "1EkX7TxoRJlYUyeNA10T3Gzdt5Nd7yRRf"},
@@ -438,17 +439,27 @@ def show_images(request: Request):
                         set_status(image_name, recheck)
                 case '3':
                     # nur erste Zeile
+                    text_content = ""
+                    textmode = "first_line"
                     text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
                     if KEIN_TEXT_GEFUNDEN == text_content:
                         set_status(image_name, recheck)
+                    lines = text_content.splitlines()
+                    if lines and lines[0].startswith("Aufgenommen:"):
+                        text_content = lines[0]
                 case '4':
                     # kein Englisch
                     text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
                     if KEIN_TEXT_GEFUNDEN == text_content:
                         set_status(image_name, recheck)
-                    lines = re.split(r"\n\s*\nThe", text_content)
-                    if lines and len(lines)>=2:
-                        text_content = lines[0]
+
+                    index1 = text_content.find("\n\nThe")
+                    index2 = text_content.find("\n\nClose")
+
+                    indices = [i for i in (index1, index2) if i != -1]
+
+                    if indices:
+                        text_content = text_content[:min(indices)]
 
             rendered_html = templates.get_template("image_entry_local.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
