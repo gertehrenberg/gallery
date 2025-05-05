@@ -60,7 +60,7 @@ kategorien = [
     {"key": "ki", "label": "KI", "icon": "🤖", "folderid": "1LWF_V26zvX-W9vRNwscmeQ6U7YeJxOuL"},
     {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️", "folderid": "1UjmQV-dO3y8uhqmWjSIzU1t7w6-rQEqG"},
     {"key": "document", "label": "Dokumente", "icon": "📄", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAW"},
-    {"key": "double", "label": "Doppelt?", "icon": "👯", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAW"},
+    {"key": "double", "label": "Doppelt?", "icon": "👯", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAX"},
 ]
 
 FOLDER_NAME = next((k["key"] for k in kategorien if k["key"] == "real"), None)
@@ -441,14 +441,14 @@ def show_images(request: Request):
                     text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
                     if KEIN_TEXT_GEFUNDEN == text_content:
                         set_status(image_name, recheck)
-                    lines = text_content.splitlines()
-                    if lines and lines[0].startswith("Aufgenommen:"):
-                        text_content = lines[0]
                 case '4':
                     # kein Englisch
                     text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
                     if KEIN_TEXT_GEFUNDEN == text_content:
                         set_status(image_name, recheck)
+                    lines = re.split(r"\n\s*\nThe", text_content)
+                    if lines and len(lines)>=2:
+                        text_content = lines[0]
 
             rendered_html = templates.get_template("image_entry_local.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
@@ -841,6 +841,7 @@ def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -> int:
                     current_folder_path = Path(IMAGE_FILE_CACHE_DIR) / current_folder / image_name
                     new_folder_path = Path(IMAGE_FILE_CACHE_DIR) / new_folder / image_name
                     try:
+                        (Path(IMAGE_FILE_CACHE_DIR) / new_folder).mkdir(parents=True, exist_ok=True)
                         shutil.move(current_folder_path, new_folder_path)
                     except:
                         logging.error(
@@ -1046,7 +1047,11 @@ def download_and_save_image(folder_name: str, image_name: str) -> str | None:
     if not os.path.exists(image_path):
         treffer = find_file_by_name(Path(IMAGE_FILE_CACHE_DIR), image_name)
         for path in treffer:
-            shutil.move(path, image_path)
+            try:
+                shutil.move(path, image_path)
+            except Exception as e:
+                logging.warning(f"[download_and_save_image] Originalbild nicht gefunden: {image_path}")
+                return None
             break
 
     if not os.path.exists(image_path):
