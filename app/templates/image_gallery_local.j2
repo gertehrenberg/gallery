@@ -307,7 +307,7 @@
                     </button>
                     <button
                             onclick="navigateToFolder({{ kategorien }}, '{{ k.key }}', {{ count }})"
-                            style="padding: 6px 10px; border-radius: 5px; width: 40px; {{ 'background: #eef;' if current_folder == k.key else '' }}">
+                            style="padding: 6px 10px; border-radius: 5px; width: 40px; {{ 'background: #eef;' if folder_name == k.key else '' }}">
                         📂
                     </button>
                 </div>
@@ -331,12 +331,12 @@
     {% if page > 1 %}
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, 1, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGo({{ kategorien }}, 1, {{ count }}, '{{ folder_name }}')"
         >⏮ Anfang</a
         >
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, {{ page - 1 }}, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGo({{ kategorien }}, {{ page - 1 }}, {{ count }}, '{{ folder_name }}')"
         >⬅ Zurück</a
         >
     {% else %}
@@ -345,43 +345,43 @@
     {% endif %}
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ current_folder }}')">
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ folder_name }}')">
             ➗2
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ current_folder }}')">
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ folder_name }}')">
             ➖
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count }}, '{{ current_folder }}')">
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count }}, '{{ folder_name }}')">
             Seite {{ page }} von {{ total_pages }}
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count + 1 }}, '{{ current_folder }}')">
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count + 1 }}, '{{ folder_name }}')">
             ➕
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count * 2 }}, '{{ current_folder }}')">
+                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count * 2 }}, '{{ folder_name }}')">
             ✖️2
         </button>
     </div>
     {% if page < total_pages %}
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, {{ page + 1 }}, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGo({{ kategorien }}, {{ page + 1 }}, {{ count }}, '{{ folder_name }}')"
         >Weiter ➡</a
         >
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, {{ total_pages }}, {{ count }}, '{{ current_folder }}')"
+                onclick="saveAndGo({{ kategorien }}, {{ total_pages }}, {{ count }}, '{{ folder_name }}')"
         >⏭ Ende</a
         >
     {% else %}
@@ -409,6 +409,10 @@
 <script src="https://unpkg.com/@panzoom/panzoom/dist/panzoom.min.js"></script>
 <script>
     const TEXTFLAG = "{{ textflag }}";
+    const PAGE = "{{ page }}";
+    const COUNT = "{{ count }}";
+    const FOLDER = "{{ folder_name }}";
+
     const kategorien = {{ kategorien | tojson }};
 
     function toggleConfigSection() {
@@ -421,8 +425,10 @@
         if (e.target.name === "textOption") {
             const newFlag = e.target.value;
             const url = new URL(window.location.href);
+            url.searchParams.set("page", PAGE);
+            url.searchParams.set("count", COUNT);
+            url.searchParams.set("folder", FOLDER);
             url.searchParams.set("textflag", newFlag);
-            url.searchParams.set("page", "1");
             window.location.href = url.toString();
         }
     });
@@ -605,7 +611,7 @@
             return;
         }
         toggleMenu();
-        saveAndGoWithOut(page, {{ count }}, "{{ current_folder }}");
+        saveAndGoWithOut(page, {{ count }}, "{{ folder_name }}");
     }
 
     document.getElementById("gotoPageInput").addEventListener("keydown", function (e) {
@@ -664,14 +670,14 @@
                     const countValue = currentParams.get("count") || "6";
                     const orgfolder = currentParams.get("folder") || "real";
 
-                    fetch(`/gallery/moveToFolder/${cat}?count=${countValue}&folder=${orgfolder}`, {
+                    fetch(`/gallery/moveToFolder/${cat}?count=${countValue}&folder=${orgfolder}&textflag=${TEXTFLAG}`, {
                         method: "POST"
                     })
                         .then((res) => res.json())
                         .then((response) => {
                             localStorage.setItem("menuOpen", "false");
                             const moved = response.moved || 0;
-                            const targetUrl = `?page=1&count=${countValue}&folder=${cat}&done=${cat}&moved=${moved}`;
+                            const targetUrl = `?page=1&count=${countValue}&folder=${cat}&textflag=${TEXTFLAG}&done=${cat}&moved=${moved}`;
                             window.location.href = targetUrl;
                         })
                         .catch((err) => {

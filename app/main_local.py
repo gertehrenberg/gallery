@@ -60,6 +60,7 @@ kategorien = [
     {"key": "ki", "label": "KI", "icon": "🤖", "folderid": "1LWF_V26zvX-W9vRNwscmeQ6U7YeJxOuL"},
     {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️", "folderid": "1UjmQV-dO3y8uhqmWjSIzU1t7w6-rQEqG"},
     {"key": "document", "label": "Dokumente", "icon": "📄", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAW"},
+    {"key": "double", "label": "Doppelt?", "icon": "👯", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAW"},
 ]
 
 FOLDER_NAME = next((k["key"] for k in kategorien if k["key"] == "real"), None)
@@ -437,12 +438,17 @@ def show_images(request: Request):
                         set_status(image_name, recheck)
                 case '3':
                     # nur erste Zeile
-                    text_content = ""
-                    textmode = "first_line"
+                    text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                    if KEIN_TEXT_GEFUNDEN == text_content:
+                        set_status(image_name, recheck)
+                    lines = text_content.splitlines()
+                    if lines and lines[0].startswith("Aufgenommen:"):
+                        text_content = lines[0]
                 case '4':
                     # kein Englisch
-                    text_content = ""
-                    textmode = "no_english"
+                    text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                    if KEIN_TEXT_GEFUNDEN == text_content:
+                        set_status(image_name, recheck)
 
             rendered_html = templates.get_template("image_entry_local.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
@@ -484,7 +490,7 @@ def show_images(request: Request):
         "request": request,
         "page": page,
         "total_pages": total_pages,
-        "current_folder": folder_name,
+        "folder_name": folder_name,
         "count": count,
         "textflag" : textflag,
         "kategorien": kategorien,
@@ -768,7 +774,7 @@ def clear_folder_parents_cache(folder_id: str):
 def loading_status():
     return {
         "ready": app_ready,
-        "current_folder": current_loading_folder,
+        "folder_name": current_loading_folder,
         "folders_loaded": folders_loaded,
         "folders_total": folders_total
     }
