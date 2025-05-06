@@ -1,0 +1,10 @@
+<component name="libraryTable">
+  <library name="zips">
+    <CLASSES>
+      <root url="jar://$PROJECT_DIR$/cache/zips/extern.zip!/" />
+      <root url="jar://$PROJECT_DIR$/cache/zips/gallery_export.zip!/" />
+    </CLASSES>
+    <JAVADOC />
+    <SOURCES />
+  </library>
+</component>
