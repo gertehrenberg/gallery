@@ -3,7 +3,6 @@ import json
 import logging
 import math
 import os
-import re
 import shutil
 import socket
 import sqlite3
@@ -36,6 +35,8 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from app.auth import router as auth_router
 from app.login import router as login_router
+
+GESICHTER_TYPE = 3
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 if script_dir not in sys.path:
@@ -1228,57 +1229,9 @@ def egal():
     sync_out()
 
 
-def has_numbered_gesichter(image_path: Path, gesichter_file_cache_dir: Path) -> bool:
-    stem = image_path.stem  # z. B. "img_1952"
-    pattern = f"{stem}_*.jpg"
-    regex = re.compile(rf"^{re.escape(stem)}_(\d+)\.jpg$")
-
-    for file in Path(gesichter_file_cache_dir).glob(pattern):
-        if regex.match(file.name):
-            return True
-    return False
-
-
-def gesichter(image_path: Path, gesichter_file_cache_dir: str, min_gesichtsgroesse=(200, 300)) -> None:
-    gesichter_file_cache_dir_path = Path(gesichter_file_cache_dir)
-    gesichter_file_cache_dir_path.mkdir(parents=True, exist_ok=True)
-
-    if not has_numbered_gesichter(image_path, gesichter_file_cache_dir_path):
-        ergebnisse = []
-
-        img = cv2.imread(str(image_path))
-        if img is None:
-            return None
-
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        gesichter = face_cascade.detectMultiScale(
-            gray, scaleFactor=1.3, minNeighbors=8, minSize=min_gesichtsgroesse
-        )
-
-        # Keine Filterung nach Seitenverhältnis
-        gefilterte_gesichter = list(gesichter)
-        for (x, y, w, h) in gesichter:
-            verhaeltnis = w / h
-            if 0.6 < verhaeltnis < 1.0 and w >= min_gesichtsgroesse[0] and h >= min_gesichtsgroesse[1]:
-                gefilterte_gesichter.append((x, y, w, h))
-
-            if len(gefilterte_gesichter) > 0:
-                eintrag = f"{image_path} -> {len(gefilterte_gesichter)} Gesicht(er)"
-                ergebnisse.append(eintrag)
-
-                for i, (x, y, w, h) in enumerate(gefilterte_gesichter):
-                    gesicht_img = img[y:y + h, x:x + w]
-                    ziel_datei = Path(gesichter_file_cache_dir) / f"{image_path.stem}_{i}.jpg"
-                    cv2.imwrite(str(ziel_datei), gesicht_img)
-    else:
-        logging.info(f"✅ Gesichter vorhanden für Bild {image_path}.")
-
-    return None
-
-
 def get_extra_thumbnails(folder_name: str, image_name: str) -> list[dict]:
     full_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
-    gesichter(full_path, GESICHTER_FILE_CACHE_DIR)
+    faces(folder_name, image_name)
 
     stem = full_path.stem
     face_dir = Path(GESICHTER_FILE_CACHE_DIR)
@@ -1326,6 +1279,87 @@ def load_quality(folder_name: str, image_name: str):
         logging.error(f"[load_quality] Fehler bei {image_name}: {e}")
 
     return None, None
+
+
+def faces(folder_name: str, image_name: str) -> int | None:
+    """
+    Analysiert ein Bild, erkennt Gesichter und speichert die Anzahl der erkannten Gesichter
+    in der Datenbank. Zusätzlich werden die erkannten Gesichter als separate Bilddateien gespeichert.
+
+    Args:
+        folder_name (str): Name des Unterordners im Bild-Cache-Verzeichnis.
+        image_name (str): Name der Bilddatei.
+
+    Returns:
+        int | None: Anzahl der erkannten Gesichter oder None bei einem Fehler.
+    """
+    try:
+        # Bildpfad erstellen
+        image_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+        if not image_path.is_file():
+            logging.warning(f"[gesichter] Datei nicht gefunden: {image_path}")
+            return None
+
+        # Datenbankverbindung herstellen
+        with sqlite3.connect(DB_PATH) as conn:
+            # cursor = conn.cursor()
+            # cursor.execute("DELETE FROM image_quality_scores WHERE score_type=3")  # <<< Sauber löschen
+
+            # Überprüfen, ob bereits ein Eintrag existiert
+            cursor = conn.cursor()
+            cursor.execute("""
+                           SELECT score
+                           FROM image_quality_scores
+                           WHERE score_type = 3
+                             AND LOWER(image_name) = LOWER(?)
+                           """, (image_name,))
+            row = cursor.fetchone()
+            if row:
+                return row[0]
+
+            # Bild laden
+            img = cv2.imread(str(image_path))
+            if img is None:
+                logging.warning(f"[gesichter] Bild konnte nicht geladen werden: {image_path}")
+                return None
+
+            # Bild in Graustufen konvertieren
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+            # Gesichter erkennen
+            min_gesichtsgroesse = (200, 300)
+            gesichter = face_cascade.detectMultiScale(
+                gray,
+                scaleFactor=1.1,
+                minNeighbors=5,
+                minSize=min_gesichtsgroesse,
+                flags=cv2.CASCADE_SCALE_IMAGE
+            )
+
+            # Anzahl der erkannten Gesichter
+            count = len(gesichter)
+
+            # Gesichter extrahieren und speichern
+            ziel_verzeichnis = Path(GESICHTER_FILE_CACHE_DIR)
+            ziel_verzeichnis.mkdir(parents=True, exist_ok=True)
+
+            for i, (x, y, w, h) in enumerate(gesichter):
+                gesicht_img = img[y:y + h, x:x + w]
+                ziel_datei = ziel_verzeichnis / f"{image_path.stem}_{i}.jpg"
+                cv2.imwrite(str(ziel_datei), gesicht_img)
+
+            # Ergebnis in der Datenbank speichern
+            cursor.execute("""
+                INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+                VALUES (?, ?, ?)
+            """, (image_name, 3, count))
+            conn.commit()
+
+            return count
+
+    except Exception as e:
+        logging.exception(f"[gesichter] Fehler bei der Verarbeitung von {image_name}: {e}")
+        return None
 
 
 def save_image_quality(image_name, scoreq1, scoreq2):
@@ -1430,10 +1464,54 @@ def mmmm():
     logging.info(f"✅ Rest {alle}.")
 
 
+def batch_generate_thumbnails(cats):
+    global THUMBNAIL_CACHE_DIR_300
+
+    from tqdm import tqdm
+
+    THUMBNAIL_CACHE_DIR_300 = '../cache/thumbnailfiles300'
+
+    for k in kategorien:
+        folder_name = k["key"]
+        folder_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name
+
+        if not folder_path.exists():
+            print("Ordner nicht gefunden:", folder_path)
+            return
+
+        image_files = [f.name for f in folder_path.iterdir() if f.is_file()]
+
+        for image in tqdm(image_files):
+            result = download_and_save_image(folder_name, image)
+            if not result:
+                print("Fehler bei batch_generate_thumbnails:", image)
+
+
+def batch_generate_faces(cats):
+    from tqdm import tqdm
+
+    for k in kategorien:
+        folder_name = k["key"]
+        folder_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name
+
+        if not folder_path.exists():
+            print("Ordner nicht gefunden:", folder_path)
+            return
+
+        image_files = [f.name for f in folder_path.iterdir() if f.is_file()]
+
+        for image in tqdm(image_files):
+            result = faces(folder_name, image)
+            if not result:
+                print("Fehler bei batch_generate_faces:", image)
+
+
 if __name__ == "__main__":
-    GESICHTER_FILE_CACHE_DIR = '../cache/facefiles'
     IMAGE_FILE_CACHE_DIR = '../cache/imagefiles'
-    DB_PATH = "../gallery_local.db"
-    # mmmm()
+    GESICHTER_FILE_CACHE_DIR = '../cache/facefiles'
+    DB_PATH = Path("../gallery_local.db")
 
     print_file_counts(IMAGE_FILE_CACHE_DIR, kategorien)
+
+    # batch_generate_thumbnails(kategorien)
+    batch_generate_faces(kategorien)
