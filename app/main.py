@@ -19,13 +19,14 @@ import cv2
 import numpy as np
 from PIL import Image, ImageOps
 from PIL.ExifTags import TAGS, GPSTAGS
-from fastapi import Depends, Request, HTTPException
+from fastapi import Depends, Request
 from fastapi import FastAPI
+from fastapi import HTTPException
 from fastapi import Query
+from fastapi.responses import FileResponse
 from fastapi.responses import HTMLResponse
 from fastapi.responses import JSONResponse
 from fastapi.responses import RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from geopy.geocoders import Nominatim
 from google.oauth2.credentials import Credentials
@@ -113,12 +114,39 @@ else:
     geo_cache = {}
 
 
+def require_login(request: Request):
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=307, headers={"Location": "/gallery/login"})
+    return user
+
+
+@app.get("/static/thumbnails/{file_path:path}")
+async def get_thumbnail(file_path: str, request: Request, user: str = Depends(require_login)):
+    file = Path("/app/thumbnails") / file_path
+    if file.exists() and file.is_file():
+        return FileResponse(file)
+    raise HTTPException(status_code=404)
+
+
+@app.get("/static/imagefiles/{file_path:path}")
+async def get_imagefile(file_path: str, request: Request, user: str = Depends(require_login)):
+    file = Path("/app/imagefiles") / file_path
+    if file.exists() and file.is_file():
+        return FileResponse(file)
+    raise HTTPException(status_code=404)
+
+
+@app.get("/static/facefiles/{file_path:path}")
+async def get_facefile(file_path: str, request: Request, user: str = Depends(require_login)):
+    file = Path("/app/facefiles") / file_path
+    if file.exists() and file.is_file():
+        return FileResponse(file)
+    raise HTTPException(status_code=404)
+
+
 @app.on_event("startup")
 def init_service():
-    app.mount("/static/thumbnails", StaticFiles(directory="/app/thumbnails"), name="thumbnails")
-    app.mount("/static/imagefiles", StaticFiles(directory="/app/imagefiles"), name="imagefiles")
-    app.mount("/static/facefiles", StaticFiles(directory="/app/facefiles"), name="facefiles")
-
     os.environ.pop("HTTPS_PROXY", None)
     os.environ.pop("HTTP_PROXY", None)
 
@@ -410,13 +438,6 @@ def fill_folder_cache(db_path):
     conn.commit()
 
 
-def require_login(request: Request):
-    user = request.session.get("user")
-    if not user:
-        raise HTTPException(status_code=307, headers={"Location": "/gallery/login"})
-    return user
-
-
 @app.get("/", response_class=HTMLResponse)
 def show_images(
         request: Request,
@@ -541,6 +562,109 @@ def show_images(
         "kategorien": kategorien,
         "images_html": ''.join(images_html_parts)
     })
+
+
+@app.post("/save")
+async def save(
+        request: Request,
+        user: str = Depends(require_login)):
+    form = await request.form()
+    image_id = form.get("image_id")
+    data = {key: form.get(key) for key in form if key != "image_id"}
+
+    for key in data:
+        if data[key] == "on":
+            data[key] = True
+
+    save_status(image_id, data)
+    return {"status": "ok"}
+
+
+@app.get("/status/{image_name}")
+def get_status_for_image(
+        image_name: str,
+        user: str = Depends(require_login)):
+    return load_status(image_name)
+
+
+@app.get("/loading_status")
+def loading_status(user: str = Depends(require_login)):
+    return {
+        "ready": app_ready,
+        "folder_name": current_loading_folder,
+        "folders_loaded": folders_loaded,
+        "folders_total": folders_total
+    }
+
+
+@app.get("/verarbeite/check/{checkbox}")
+def verarbeite_check_checkbox(
+        checkbox: str,
+        user: str = Depends(require_login)):
+    if checkbox not in CHECKBOX_CATEGORIES:
+        return {"error": "ungültige Kategorie"}
+    with sqlite3.connect(DB_PATH) as conn:
+        count = conn.execute("""
+                             SELECT COUNT(*)
+                             FROM checkbox_status
+                             WHERE checked = 1
+                               AND checkbox = ?
+                             """, (checkbox,)).fetchone()[0]
+    return {"count": count}
+
+
+@app.post("/moveToFolder/{checkbox}")
+async def verarbeite_checkbox(
+        checkbox: str,
+        count: str = Query("6"),
+        folder: str = Query("real"),
+        user: str = Depends(require_login)
+):
+    if checkbox not in CHECKBOX_CATEGORIES:
+        return JSONResponse(status_code=400, content={"status": "invalid checkbox"})
+
+    anzahl = move_marked_images_by_checkbox(folder, checkbox)
+
+    # Ziel-URL vorbereiten
+    redirect_url = f"/gallery?page=1&count={count}&folder={checkbox}&done={checkbox}"
+    logging.info(f"[move_file] 📂 Erfolgreich verschoben: {redirect_url}")
+    return {"status": "ok", "redirect": redirect_url, "moved": anzahl}
+
+
+@app.get("/moveToFolder/{checkbox}")
+def get_marked_images_count(
+        checkbox: str,
+        user: str = Depends(require_login)):
+    if checkbox not in CHECKBOX_CATEGORIES:
+        return {"count": 0}
+    with sqlite3.connect(DB_PATH) as conn:
+        count = conn.execute("""
+                             SELECT COUNT(*)
+                             FROM checkbox_status
+                             WHERE checked = 1
+                               AND checkbox = ?
+                             """, (checkbox,)).fetchone()[0]
+    return {"count": count}
+
+
+@app.get("/original/{file_id}")
+def show_original_image(
+        file_id: str,
+        user: str = Depends(require_login)):
+    try:
+        html = f"""
+        <html>
+        <head><title>Originalbild</title></head>
+        <body style="margin:0; padding:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#000;">
+            <img src="https://drive.google.com/uc?export=view&id={file_id}" style="max-width:100%; max-height:100%;" />
+        </body>
+        </html>
+        """
+        return HTMLResponse(content=html, status_code=200)
+
+    except Exception as e:
+        logging.error(f"[show_original_image] Fehler beim Laden des Bildes: {e}")
+        return HTMLResponse("<p>Fehler beim Laden des Bildes.</p>", status_code=500)
 
 
 def is_file_in_folder(image_id: str, folder_name: str) -> bool:
@@ -766,22 +890,6 @@ def load_status(image_name: str):
     return status
 
 
-@app.post("/save")
-async def save(
-        request: Request,
-        user: str = Depends(require_login)):
-    form = await request.form()
-    image_id = form.get("image_id")
-    data = {key: form.get(key) for key in form if key != "image_id"}
-
-    for key in data:
-        if data[key] == "on":
-            data[key] = True
-
-    save_status(image_id, data)
-    return {"status": "ok"}
-
-
 def verify_folders_exist(service, kategorien):
     valid_kategorien = kategorien
     return valid_kategorien
@@ -800,26 +908,9 @@ def retry_google_request(callable_fn, retries: int = 7):
     raise RuntimeError(f"Google Request nach {retries} Versuchen fehlgeschlagen.")
 
 
-@app.get("/status/{image_name}")
-def get_status_for_image(
-        image_name: str,
-        user: str = Depends(require_login)):
-    return load_status(image_name)
-
-
 def clear_folder_parents_cache(folder_id: str):
     if folder_id in file_parents_cache:
         del file_parents_cache[folder_id]
-
-
-@app.get("/loading_status")
-def loading_status(user: str = Depends(require_login)):
-    return {
-        "ready": app_ready,
-        "folder_name": current_loading_folder,
-        "folders_loaded": folders_loaded,
-        "folders_total": folders_total
-    }
 
 
 def render_status(status: dict) -> str:
@@ -830,76 +921,6 @@ def render_status(status: dict) -> str:
         else:
             html.append(f'<input type="checkbox" name="{key}">')
     return '\n'.join(html)
-
-
-@app.get("/verarbeite/check/{checkbox}")
-def verarbeite_check_checkbox(
-        checkbox: str,
-        user: str = Depends(require_login)):
-    if checkbox not in CHECKBOX_CATEGORIES:
-        return {"error": "ungültige Kategorie"}
-    with sqlite3.connect(DB_PATH) as conn:
-        count = conn.execute("""
-                             SELECT COUNT(*)
-                             FROM checkbox_status
-                             WHERE checked = 1
-                               AND checkbox = ?
-                             """, (checkbox,)).fetchone()[0]
-    return {"count": count}
-
-
-@app.post("/moveToFolder/{checkbox}")
-async def verarbeite_checkbox(
-        checkbox: str,
-        count: str = Query("6"),
-        folder: str = Query("real"),
-        user: str = Depends(require_login)
-):
-    if checkbox not in CHECKBOX_CATEGORIES:
-        return JSONResponse(status_code=400, content={"status": "invalid checkbox"})
-
-    anzahl = move_marked_images_by_checkbox(folder, checkbox)
-
-    # Ziel-URL vorbereiten
-    redirect_url = f"/gallery?page=1&count={count}&folder={checkbox}&done={checkbox}"
-    logging.info(f"[move_file] 📂 Erfolgreich verschoben: {redirect_url}")
-    return {"status": "ok", "redirect": redirect_url, "moved": anzahl}
-
-
-@app.get("/moveToFolder/{checkbox}")
-def get_marked_images_count(
-        checkbox: str,
-        user: str = Depends(require_login)):
-    if checkbox not in CHECKBOX_CATEGORIES:
-        return {"count": 0}
-    with sqlite3.connect(DB_PATH) as conn:
-        count = conn.execute("""
-                             SELECT COUNT(*)
-                             FROM checkbox_status
-                             WHERE checked = 1
-                               AND checkbox = ?
-                             """, (checkbox,)).fetchone()[0]
-    return {"count": count}
-
-
-@app.get("/original/{file_id}")
-def show_original_image(
-        file_id: str,
-        user: str = Depends(require_login)):
-    try:
-        html = f"""
-        <html>
-        <head><title>Originalbild</title></head>
-        <body style="margin:0; padding:0; display:flex; justify-content:center; align-items:center; height:100vh; background:#000;">
-            <img src="https://drive.google.com/uc?export=view&id={file_id}" style="max-width:100%; max-height:100%;" />
-        </body>
-        </html>
-        """
-        return HTMLResponse(content=html, status_code=200)
-
-    except Exception as e:
-        logging.error(f"[show_original_image] Fehler beim Laden des Bildes: {e}")
-        return HTMLResponse("<p>Fehler beim Laden des Bildes.</p>", status_code=500)
 
 
 def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -> int:
