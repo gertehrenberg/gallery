@@ -1,29 +1,56 @@
+import hashlib
 import json
 import logging
 import math
 import os
+import re
+import shutil
 import socket
 import sqlite3
 import ssl
+import subprocess
+import sys
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
 
 import cv2
 import numpy as np
 from PIL import Image, ImageOps
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from PIL.ExifTags import TAGS, GPSTAGS
+from fastapi import Depends, Request, HTTPException
+from fastapi import FastAPI
+from fastapi import Query
+from fastapi.responses import HTMLResponse
+from fastapi.responses import JSONResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from geopy.geocoders import Nominatim
 from google.oauth2.credentials import Credentials
-from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 from skimage import feature
+from starlette.middleware.sessions import SessionMiddleware
+
+from app.auth import router as auth_router
+from app.login import router as login_router
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+
+from config import IMAGE_EXTENSIONS, CACHE_DATEI_NAME
+
+KEIN_TEXT_GEFUNDEN = "Kein Text gefunden"
 
 logging.basicConfig(level=logging.INFO)
 
 app = FastAPI()
+app.add_middleware(SessionMiddleware, secret_key="**idefix**")
+app.include_router(auth_router)
+app.include_router(login_router)
+
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
 
 SCOPES = [
@@ -33,6 +60,7 @@ SCOPES = [
 
 kategorien = [
     {"key": "real", "label": "Alle Bilder", "icon": "💾", "folderid": "1fyE_ZYoVoGZ7ehjuWrS9Kd6WW4w2UZWy"},
+    {"key": "top", "label": "Fast Perfekt", "icon": "💎", "folderid": "1oKNY7jB8hEFMEn7amA6Osrbo8K9z5jAX"},
     {"key": "delete", "label": "Löschen", "icon": "❌", "folderid": "1wjUj6NHZ_ZHwlahQuJUbCTf_HplqePVw"},
     {"key": "recheck", "label": "Neu", "icon": "🔄", "folderid": "1EyrM6LLv_nEyB8s6zzGDGzf-hcPC76dg"},
     {"key": "bad", "label": "Schlecht", "icon": "⛔", "folderid": "1EkX7TxoRJlYUyeNA10T3Gzdt5Nd7yRRf"},
@@ -40,30 +68,34 @@ kategorien = [
     {"key": "ki", "label": "KI", "icon": "🤖", "folderid": "1LWF_V26zvX-W9vRNwscmeQ6U7YeJxOuL"},
     {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️", "folderid": "1UjmQV-dO3y8uhqmWjSIzU1t7w6-rQEqG"},
     {"key": "document", "label": "Dokumente", "icon": "📄", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAW"},
+    {"key": "double", "label": "Doppelt?", "icon": "👯", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAX"},
 ]
 
-FOLDER_ID = next((k["folderid"] for k in kategorien if k["key"] == "real"), None)
+FOLDER_NAME = next((k["key"] for k in kategorien if k["key"] == "real"), None)
 
-DB_PATH = Path("gallery.db")
+DB_PATH = Path("gallery_local.db")
 
 SECRET_PATH = 'secrets'
 CRED_FILE = os.path.join(SECRET_PATH, 'credentials.json')
 TOKEN_FILE = os.path.join(SECRET_PATH, 'token.json')
 REDIRECT_URI = "https://levellevel.me/gallery/auth/callback"
 
-PAIR_CACHE_PATH = '/data/pair_cache.json'
+PAIR_CACHE_PATH = '/data/pair_cache_local.json'
 TEXT_FILE_CACHE_DIR = '/data/textfiles'
 IMAGE_FILE_CACHE_DIR = '/data/imagefiles'
-THUMBNAIL_CACHE_DIR = '/data/thumbnailfiles300'
+GESICHTER_FILE_CACHE_DIR = '/data/facefiles'
+THUMBNAIL_CACHE_DIR_300 = '/data/thumbnailfiles300'
+
+CONTAINER = "gallery"
+DB_PATH_IN_CONTAINER = "/app/gallery_local.db"
+DUMP_FILE = "dump.sql"
+LOCAL_DB = "gallery_local.db"
 
 image_cache = {}  # file_id -> { 'thumbnail': url }
 text_cache = {}  # lowercase text filename -> content
 pair_cache = {}  # lowercase image filename -> { image_id, text_id, web_link }
-text_id_cache = {}  # lowercase text filename -> google file ID
 file_parents_cache = {}
 rendered_image_cache = {}
-
-service = None
 
 app_ready = False
 
@@ -71,13 +103,21 @@ folders_total = len(kategorien)
 current_loading_folder = ""
 folders_loaded = 0
 
-# Static mount für Thumbnails
-app.mount("/static/thumbnails", StaticFiles(directory="/app/thumbnails"), name="thumbnails")
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+
+# Cache laden oder leeres Dictionary erstellen
+if CACHE_DATEI_NAME.exists():
+    with open(CACHE_DATEI_NAME, "r", encoding="utf-8") as f:
+        geo_cache = json.load(f)
+else:
+    geo_cache = {}
 
 
 @app.on_event("startup")
 def init_service():
-    global service
+    app.mount("/static/thumbnails", StaticFiles(directory="/app/thumbnails"), name="thumbnails")
+    app.mount("/static/imagefiles", StaticFiles(directory="/app/imagefiles"), name="imagefiles")
+    app.mount("/static/facefiles", StaticFiles(directory="/app/facefiles"), name="facefiles")
 
     os.environ.pop("HTTPS_PROXY", None)
     os.environ.pop("HTTP_PROXY", None)
@@ -88,7 +128,7 @@ def init_service():
     if os.path.exists(TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
     else:
-        logging.warning("Kein Token gefunden. Bitte besuche /gallery/auth.")
+        logging.warning("Kein Token gefunden. Bitte besuche 'https://levellevel.me/gallery/auth'.")
         return
 
     service = build('drive', 'v3', credentials=creds)
@@ -107,18 +147,16 @@ def slow_start():
     logging.info("🏁 Starte langsames Initialisieren...")
 
     # erst nach dem Start langsam laden
-    init_db()
-    fillcache()
-    fill_folder_cache()
-
-    # move_all_images_to_real_folder()
+    init_db(DB_PATH)
+    fillcache_local(PAIR_CACHE_PATH, IMAGE_FILE_CACHE_DIR)
+    fill_folder_cache(DB_PATH)
 
     app_ready = True
     logging.info("🚀 Anwendung bereit!")
 
 
-def init_db():
-    with sqlite3.connect(DB_PATH) as conn:
+def init_db(db_path):
+    with sqlite3.connect(db_path) as conn:
         conn.execute("""
                      CREATE TABLE IF NOT EXISTS checkbox_status
                      (
@@ -166,21 +204,505 @@ def init_db():
                      )
                      """)
 
-        conn.execute("""
-                     CREATE TABLE IF NOT EXISTS image_quality
-                     (
-                         image_name
-                         TEXT
-                         PRIMARY
-                         KEY,
-                         quality
-                         INTEGER
+        # image_quality(conn) # ist alt wurde mit migrate_score migriert
+        # migrate_score()
+
+        image_quality_scores(conn)
+
+
+def image_quality(conn):
+    conn.execute("""
+                 CREATE TABLE IF NOT EXISTS image_quality
+                 (
+                     image_name
+                     TEXT
+                     PRIMARY
+                     KEY,
+                     scoreq1
+                     INTEGER,
+                     scoreq2
+                     INTEGER
+                 )
+                 """)
+
+
+def image_quality_scores(conn):
+    conn.execute("""
+                 CREATE TABLE IF NOT EXISTS image_quality_scores
+                 (
+                     image_name
+                     TEXT,
+                     score_type
+                     INTEGER,
+                     score
+                     INTEGER,
+                     PRIMARY
+                     KEY
+                 (
+                     image_name,
+                     score_type
+                 )
                      )
-                     """)
+                 """)
 
 
-def save_status(image_name: str, data: dict):
-    # Logge die Eingabedaten für das Speichern
+def migrate_score():
+    """Migriert Daten aus image_quality nach image_quality_scores."""
+    with sqlite3.connect(DB_PATH) as conn:
+        # Neue Tabelle anlegen
+        image_quality_scores(conn)
+        conn.execute("DELETE FROM image_quality_scores")  # <<< Sauber löschen
+
+        # Alte Daten lesen
+        rows = conn.execute("SELECT image_name, scoreq1, scoreq2 FROM image_quality").fetchall()
+
+        for image_name, scoreq1, scoreq2 in rows:
+            conn.execute("""
+                INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+                VALUES (?, ?, ?)
+            """, (image_name, 1, scoreq1))
+
+            conn.execute("""
+                INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+                VALUES (?, ?, ?)
+            """, (image_name, 2, scoreq2))
+
+        conn.commit()
+        logging.info(f"[migrate_score] ✅ {len(rows)} Einträge migriert.")
+
+    """Löscht die alte image_quality-Tabelle dauerhaft."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("DROP TABLE IF EXISTS image_quality")
+        conn.commit()
+        logging.info("[drop_old_quality_table] 🗑️ Tabelle image_quality gelöscht.")
+
+
+def fillcache_local(
+        pair_cache_path_local,
+        image_file_cache_dir):
+    global pair_cache
+    pair_cache.clear()  # Verhindert Vermischung mit alten Daten
+
+    # Falls der Cache existiert, lade ihn
+    if os.path.exists(pair_cache_path_local):
+        try:
+            with open(pair_cache_path_local, 'r') as f:
+                pair_cache.update(json.load(f))
+                logging.info(f"[fillcache_local] Pair-Cache geladen: {len(pair_cache)} Paare")
+                return
+        except Exception as e:
+            logging.warning(f"[fillcache_local] Fehler beim Laden von pair_cache.json: {e}")
+
+    image_paths = []
+
+    for name in os.listdir(image_file_cache_dir):
+        full_path = os.path.join(image_file_cache_dir, name)
+        if os.path.isfile(full_path) and name.lower().endswith(IMAGE_EXTENSIONS):
+            image_paths.append(full_path)
+        elif os.path.isdir(full_path):
+            for subname in os.listdir(full_path):
+                subpath = os.path.join(full_path, subname)
+                if os.path.isfile(subpath) and subname.lower().endswith(IMAGE_EXTENSIONS):
+                    image_paths.append(subpath)
+
+    # Nach Anlegedatum sortieren (ctime)
+    image_paths.sort(key=lambda p: os.path.getctime(p), reverse=True)
+
+    image_name_cache = {
+        os.path.basename(p).lower(): (p, "") for p in image_paths
+    }
+
+    logging.info(f"[image_name_cache] 📂 Gelesen Bilder aus: {len(image_name_cache)}")
+
+    # Verknüpfung von Bild- und Text-Datei
+    for image_name in list(image_name_cache.keys()):
+        image_path, _ = image_name_cache[image_name]
+        if not os.path.exists(image_path):
+            logging.warning(f"[fillcache_local] Bild fehlt und wird aus dem Cache entfernt: {image_name}")
+            continue
+        md5_hash = hashlib.md5(image_name.encode()).hexdigest()
+        pair_cache[image_name] = {
+            "image_id": md5_hash,
+            "text_id": "",
+            "web_link": ""
+        }
+
+    # Speichern des aktualisierten Caches
+    try:
+        with open(pair_cache_path_local, 'w') as f:
+            json.dump(pair_cache, f)
+        logging.info(f"[fillcache_local] Pair-Cache gespeichert: {len(pair_cache)} Paare")
+    except Exception as e:
+        logging.warning(f"[fillcache_local] Fehler beim Speichern von pair_cache.json: {e}")
+
+    logging.info(
+        f"[fillcache_local] Cache vollständig aktualisiert: "
+        f"{len(image_name_cache)} Bilder, "
+        f"{len(pair_cache)} Paare ")
+
+
+def fill_folder_cache(db_path):
+    global folders_loaded, current_loading_folder
+
+    file_parents_cache.clear()
+
+    with sqlite3.connect(db_path) as conn:
+        # Prüfen, ob schon Einträge existieren
+        row = conn.execute("SELECT COUNT(*) FROM image_folder_status").fetchone()
+        if row and row[0] > 0:
+            logging.info("[fill_folder_cache] 📦 Lade file_parents_cache aus der Datenbank...")
+
+            rows = conn.execute("SELECT image_id, folder_id FROM image_folder_status").fetchall()
+            for image_id, folder_id in rows:
+                if folder_id not in file_parents_cache:
+                    folders_loaded += 1
+                    file_parents_cache[folder_id] = []
+                    logging.info(
+                        f"[fill_folder_cache] ✅ Cache aus DB geladen: {folders_loaded}/{folders_total} {folder_id}")
+                file_parents_cache[folder_id].append(image_id)
+
+            if folders_loaded != folders_total:
+                folders_loaded = folders_total
+                logging.info(f"[fill_folder_cache] ✅ Cache aus DB geladen: {folders_loaded}/{folders_total}")
+            return  # <<< Fertig, nichts mehr von Google Drive laden
+
+    # Falls KEINE Daten vorhanden → API laden
+    logging.info("[fill_folder_cache] 🛰️ Keine Cache-Daten vorhanden, lade von lokal...")
+
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM image_folder_status")  # <<< Sauber löschen
+
+        for kat in kategorien:
+            folder_name = kat["key"]
+            current_loading_folder = kat["label"]
+            file_parents_cache[folder_name] = []
+
+            folder_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name
+            if not folder_path.exists():
+                logging.warning(f"[fill_folder_cache] ⚠️ Ordner nicht gefunden: {folder_path}")
+                continue
+
+            logging.info(f"[fill_folder_cache] 📂 Lese Bilder aus: {folder_name}")
+
+            for image_file in folder_path.iterdir():
+                if not image_file.is_file():
+                    continue
+                image_name = image_file.name.lower()
+                pair = pair_cache.get(image_name)
+                if not pair:
+                    logging.warning(f"[fill_folder_cache] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
+                    continue
+
+                image_id = pair["image_id"]
+                file_parents_cache[folder_name].append(image_id)
+
+                try:
+                    conn.execute("""
+                                INSERT OR REPLACE INTO image_folder_status (image_id, folder_id)
+                                VALUES (?, ?)
+                            """, (image_id, folder_name))
+                except Exception as e:
+                    logging.warning(f"[fill_folder_cache] Fehler beim Speichern von {image_id} → {folder_name}: {e}")
+
+            folders_loaded += 1
+            logging.info(f"[fill_folder_cache] ✅ {folders_loaded}/{folders_total} Ordner geladen: {folder_name}")
+
+    conn.commit()
+
+
+def require_login(request: Request):
+    user = request.session.get("user")
+    if not user:
+        raise HTTPException(status_code=307, headers={"Location": "/gallery/login"})
+    return user
+
+
+@app.get("/", response_class=HTMLResponse)
+def show_images(
+        request: Request,
+        user: str = Depends(require_login)):
+    if not app_ready:
+        return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
+
+    user = request.session.get("user")
+    if not user:
+        return RedirectResponse(url="/gallery/login")
+
+    page = int(request.query_params.get('page', '1') or 1)
+    count = int(request.query_params.get('count', '1') or 1)
+    folder_name = request.query_params.get('folder', 'real')
+    textflag = request.query_params.get('textflag', '1')
+
+    start = (page - 1) * count
+    end = start + count
+
+    image_keys = []
+    total_images = 0
+
+    for image_name in pair_cache.keys():
+        pair = pair_cache[image_name]
+        image_id = pair['image_id']
+        if is_file_in_folder(image_id, folder_name):
+            if start <= total_images < end:
+                image_keys.append(image_name.lower())
+            total_images += 1
+
+    images_html_parts = []
+
+    recheck = next((k["key"] for k in kategorien if k["key"] == "recheck"), None)
+
+    for image_name in image_keys:
+        pair = pair_cache[image_name]
+        image_id = pair['image_id']
+
+        image_id_text = f"{image_id}_{textflag}"
+        if image_id_text in rendered_image_cache:
+            images_html_parts.append(rendered_image_cache[image_id_text])
+        else:
+            image_data = prepare_image_data(folder_name, image_name)
+
+            match textflag:
+                case '1':
+                    # keine Anzeige
+                    text_content = ""
+                    textmode = "none"
+                case '2':
+                    # ganzer Text
+                    text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                    if KEIN_TEXT_GEFUNDEN == text_content:
+                        set_status(image_name, recheck)
+                case '3':
+                    # nur erste Zeile
+                    text_content = ""
+                    textmode = "first_line"
+                    text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                    if KEIN_TEXT_GEFUNDEN == text_content:
+                        set_status(image_name, recheck)
+                    lines = text_content.splitlines()
+                    if lines and lines[0].startswith("Aufgenommen:"):
+                        text_content = lines[0]
+                case '4':
+                    # kein Englisch
+                    text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                    if KEIN_TEXT_GEFUNDEN == text_content:
+                        set_status(image_name, recheck)
+
+                    index1 = text_content.find("\n\nThe")
+                    index2 = text_content.find("\n\nClose")
+
+                    indices = [i for i in (index1, index2) if i != -1]
+
+                    if indices:
+                        text_content = text_content[:min(indices)]
+
+            rendered_html = templates.get_template("image_entry_local.j2").render(
+                thumbnail_src=image_data["thumbnail_src"],
+                text_content=text_content,
+                image_name=image_name,
+                folder_name=folder_name,
+                image_id=image_id,
+                status={},
+                scoreq1=image_data["scoreq1"],
+                scoreq2=image_data["scoreq2"],
+                kategorien=kategorien,
+                extra_thumbnails=image_data["extra_thumbnails"]
+            )
+
+            rendered_image_cache[image_id_text] = rendered_html
+
+            images_html_parts.append(rendered_html)
+
+        # Status dynamisch nachschieben
+        status = load_status(image_name)
+        status_json = json.dumps({f"{image_id}_{key}": value for key, value in status.items()})
+
+        images_html_parts.append(f"""
+        <script>
+        const checkboxStatus_{image_id} = {status_json};
+        for (const key in checkboxStatus_{image_id}) {{
+            const checkbox = document.querySelector(`input[name="${{key}}"]`);
+            if (checkbox) {{
+                checkbox.checked = checkboxStatus_{image_id}[key];
+            }}
+        }}
+        </script>
+        """)
+
+    # Berechnung total_pages
+    total_pages = max(1, math.ceil(total_images / count))
+
+    return templates.TemplateResponse("image_gallery_local.j2", {
+        "request": request,
+        "page": page,
+        "total_pages": total_pages,
+        "folder_name": folder_name,
+        "count": count,
+        "textflag": textflag,
+        "kategorien": kategorien,
+        "images_html": ''.join(images_html_parts)
+    })
+
+
+def is_file_in_folder(image_id: str, folder_name: str) -> bool:
+    """Prüft nur lokal im Cache, ob eine Datei in einem Ordner ist."""
+    parents = file_parents_cache.get(folder_name, [])
+    return image_id in parents
+
+
+def prepare_image_data(folder_name: str, image_name: str):
+    """Bereitet alle Variablen für ein einzelnes Bild vor, inkl. Qualität."""
+    image_name = image_name.lower()
+    pair = pair_cache[image_name]
+    image_id = pair['image_id']
+
+    try:
+        if image_id not in text_cache:
+            content = download_text_file(folder_name, image_name, TEXT_FILE_CACHE_DIR)
+            text_cache[image_id] = content
+    except Exception as e:
+        text_cache[image_id] = f"Fehler beim Laden: {e}"
+
+    local_thumbnail_path = download_and_save_image(folder_name, image_name)
+
+    if local_thumbnail_path and os.path.exists(local_thumbnail_path):
+        thumbnail_src = f"/gallery/static/thumbnails/{image_name}"
+    else:
+        thumbnail_src = "https://via.placeholder.com/150?text=Kein+Bild"
+
+    scoreq1, scoreq2 = load_quality(folder_name, image_name)
+
+    extra_thumbnails = get_extra_thumbnails(folder_name, image_name)
+
+    return {
+        "thumbnail_src": thumbnail_src,
+        "image_id": image_id,
+        "scoreq1": scoreq1,
+        "scoreq2": scoreq2,
+        "extra_thumbnails": extra_thumbnails
+    }
+
+
+def get_exif_data(full_image_path):
+    image = Image.open(full_image_path)
+    exif_data = image._getexif()
+    if not exif_data:
+        logging.warning(f"[get_exif_data] Keine Daten: {full_image_path}")
+        return None, None
+
+    exif = {}
+    gps_info = {}
+    for tag, value in exif_data.items():
+        decoded = TAGS.get(tag, tag)
+        if decoded == "GPSInfo":
+            for t in value:
+                sub_decoded = GPSTAGS.get(t, t)
+                gps_info[sub_decoded] = value[t]
+        else:
+            exif[decoded] = value
+
+    date_taken = exif.get("DateTimeOriginal", None)
+    if gps_info:
+        gps_coords = get_coordinates(gps_info)
+    else:
+        gps_coords = None
+
+    return date_taken, gps_coords
+
+
+def get_coordinates(gps_info):
+    def convert_to_degrees(value):
+        try:
+            d, m, s = value
+            return float(d) + float(m) / 60 + float(s) / 3600
+        except Exception as e:
+            print(f"[Warnung] Ungültige GPS-Daten: {value} → {e}")
+            return None
+
+    lat = convert_to_degrees(gps_info.get("GPSLatitude", ()))
+    if lat is not None and gps_info.get("GPSLatitudeRef") != "N":
+        lat = -lat
+
+    lon = convert_to_degrees(gps_info.get("GPSLongitude", ()))
+    if lon is not None and gps_info.get("GPSLongitudeRef") != "E":
+        lon = -lon
+
+    if lat is not None and lon is not None:
+        return lat, lon
+    return None
+
+
+def reverse_geocode(coords):
+    key = f"{coords[0]:.6f},{coords[1]:.6f}"
+    if key in geo_cache:
+        return geo_cache[key]
+
+    geolocator = Nominatim(user_agent="photo_exif_locator")
+    try:
+        location = geolocator.reverse(coords, exactly_one=True, language='de', timeout=10)
+        address = location.address if location else None
+        geo_cache[key] = address
+        return address
+    except Exception as e:
+        print(f"Geocoding-Fehler: {e}")
+        return None
+
+
+def download_text_file(folder_name: str, image_name: str, cache_dir: str) -> str | None:
+    german_date = None
+    full_image_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+    date_str, gps = get_exif_data(full_image_path)
+    dt = None
+    if date_str:
+        try:
+            dt = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
+            german_date = dt.strftime("%d.%m.%Y %H:%M")
+        except Exception as e:
+            print(f"[Warnung] Ungültiges Datum in {image_name}: {e}")
+
+    location_name = reverse_geocode(gps) if gps else None
+
+    full_txt_path = Path(cache_dir, f"{image_name}.txt")
+
+    lines = full_txt_path.read_text(encoding="utf-8").splitlines()
+    aufnahme_info = f"Aufgenommen: {german_date}" + (f" @ {location_name}" if location_name else "")
+    if lines and lines[0].startswith("Aufgenommen:"):
+        lines[0] = aufnahme_info
+    else:
+        lines.insert(0, aufnahme_info)
+    full_txt_path.write_text("\n".join(lines), encoding="utf-8")
+    if dt:
+        os.utime(full_txt_path, (dt.timestamp(), dt.timestamp()))
+        os.utime(full_image_path, (dt.timestamp(), dt.timestamp()))
+
+    if os.path.exists(full_txt_path):
+        try:
+            with open(full_txt_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        except Exception as e:
+            logging.warning(f"[download_text_file] Fehler beim Lesen von Cache-Datei: {full_txt_path} - {e}")
+            return None
+    return None
+
+
+def set_status(image_name: str, key: str, checked: int = 1):
+    if key == None:
+        return
+
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            """
+            INSERT INTO checkbox_status (image_name, checkbox, checked)
+            VALUES (?, ?, ?) ON CONFLICT(image_name, checkbox)
+            DO
+            UPDATE SET checked = excluded.checked
+            """,
+            (image_name, key, checked)
+        )
+        conn.commit()
+
+
+def save_status(image_id: str, data: dict):
+    image_name = find_image_name_by_id(image_id)
     logging.info(f"[save_status] Speichern des Status für {image_name}. Eingabedaten: {data}")
 
     with sqlite3.connect(DB_PATH) as conn:
@@ -188,7 +710,6 @@ def save_status(image_name: str, data: dict):
             if key in CHECKBOX_CATEGORIES:
                 checked = 1 if str(value).lower() in ["1", "true", "on"] else 0
                 try:
-                    # Speichern der Checkbox-Daten
                     conn.execute("""
                         INSERT OR REPLACE INTO checkbox_status (image_name, checkbox, checked)
                         VALUES (?, ?, ?)
@@ -210,6 +731,10 @@ def save_status(image_name: str, data: dict):
 
 
 def load_status(image_name: str):
+    conn = sqlite3.connect(DB_PATH)
+    if conn.in_transaction:
+        return
+
     logging.info(f"[load_status] Laden des Status für {image_name}")
 
     status = {}
@@ -242,101 +767,24 @@ def load_status(image_name: str):
 
 
 @app.post("/save")
-async def save(request: Request):
+async def save(
+        request: Request,
+        user: str = Depends(require_login)):
     form = await request.form()
-    image_name = form.get("image_name")
-    data = {key: form.get(key) for key in form if key != "image_name"}
+    image_id = form.get("image_id")
+    data = {key: form.get(key) for key in form if key != "image_id"}
 
     for key in data:
         if data[key] == "on":
             data[key] = True
 
-    save_status(image_name, data)
+    save_status(image_id, data)
     return {"status": "ok"}
 
 
-@app.get("/auth")
-def start_auth():
-    flow = Flow.from_client_secrets_file(
-        CRED_FILE,
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
-    )
-    auth_url, _ = flow.authorization_url(prompt="consent", include_granted_scopes="true")
-    return RedirectResponse(auth_url)
-
-
-@app.get("/auth/callback")
-def auth_callback(request: Request):
-    code = request.query_params.get("code")
-    flow = Flow.from_client_secrets_file(
-        CRED_FILE,
-        scopes=SCOPES,
-        redirect_uri=REDIRECT_URI,
-    )
-    flow.fetch_token(code=code)
-    creds = flow.credentials
-
-    # Speichere das Token
-    with open(TOKEN_FILE, "w") as f:
-        f.write(creds.to_json())
-
-    return {"message": "✅ Authentifizierung erfolgreich!"}
-
-
 def verify_folders_exist(service, kategorien):
-    """Filtert Kategorien nach tatsächlich existierenden Ordnern."""
-    valid_kategorien = []
-    for kat in kategorien:
-        try:
-            folder = service.files().get(fileId=kat["folderid"], fields="id").execute()
-            if folder.get("id") == kat["folderid"]:
-                valid_kategorien.append(kat)
-        except Exception as e:
-            logging.warning(f"[verify_folders_exist] Ordner nicht gefunden: {kat['key']} ({kat['folderid']}) - {e}")
+    valid_kategorien = kategorien
     return valid_kategorien
-
-
-def download_text_file(image_name, file_id: str, cache_dir: str) -> str:
-    file_path = os.path.join(cache_dir, f"{image_name}.txt")
-
-    if os.path.exists(file_path):
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        except Exception as e:
-            logging.warning(f"[download_text_file] Fehler beim Lesen von Cache-Datei: {file_path} - {e}")
-
-    try:
-        logging.info(f"Lade Textdatei mit ID: {file_id}")
-        request = service.files().get_media(fileId=file_id)
-        content = request.execute().decode("utf-8")
-        with open(file_path, 'w', encoding='utf-8') as f:
-            f.write(content)
-            logging.info(f"[download_text_file] ✅ Text gespeichert: {file_path}")
-        return content
-    except Exception as e:
-        logging.warning(f"[download_text_file] Fehler beim Laden: {e}")
-        raise
-
-
-def download_thumbnail(image_cache, file_id):
-    if file_id in image_cache:
-        logging.info(f"[Thumbnail] Cache-Treffer für Datei-ID: {file_id}")
-        return image_cache[file_id]['thumbnail']
-
-    try:
-        logging.info(f"[Thumbnail] Abfrage für Datei-ID: {file_id}")
-        file = service.files().get(fileId=file_id, fields="thumbnailLink").execute()
-        thumbnail_url = file.get("thumbnailLink")
-        if thumbnail_url:
-            image_cache[file_id] = {'thumbnail': thumbnail_url}
-            logging.info(f"[Thumbnail] Erfolgreich geladen für Datei-ID {file_id}: {thumbnail_url}")
-            return thumbnail_url
-    except Exception as e:
-        logging.warning(f"[Thumbnail] Fehler beim Abrufen für {file_id}: {e}")
-
-    return "https://via.placeholder.com/150?text=Kein+Bild"
 
 
 def retry_google_request(callable_fn, retries: int = 7):
@@ -352,171 +800,11 @@ def retry_google_request(callable_fn, retries: int = 7):
     raise RuntimeError(f"Google Request nach {retries} Versuchen fehlgeschlagen.")
 
 
-def fillcache():
-    global pair_cache
-    text_id_cache = {}
-    image_name_cache = {}
-
-    # Falls der Cache existiert, lade ihn
-    if os.path.exists(PAIR_CACHE_PATH):
-        try:
-            with open(PAIR_CACHE_PATH, 'r') as f:
-                pair_cache.update(json.load(f))
-                logging.info(f"[fillcache] Pair-Cache geladen: {len(pair_cache)} Paare")
-                return
-        except Exception as e:
-            logging.warning(f"[fillcache] Fehler beim Laden von pair_cache.json: {e}")
-
-    # Cache für die Bildnamen anstelle der IDs
-
-    q = f"'{FOLDER_ID}' in parents and trashed=false and (name contains '.txt' or mimeType contains 'image/')"
-    logging.info(f"[p] : {q}")
-    page_token = None
-    while True:
-        try:
-            response = service.files().list(
-                q=q,
-                fields="nextPageToken, files(id, name, mimeType, webContentLink)",
-                pageToken=page_token,
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True
-            ).execute()
-        except Exception as e:
-            logging.error(f"[fillcache] API-Fehler: {e}")
-            break
-
-        for f in response.get('files', []):
-            name = f['name'].strip()
-            clean_name = name.lower()  # Umwandlung in Kleinbuchstaben für konsistente Vergleiche
-            fid = f['id']
-            mimetype = f.get('mimeType', '')
-            weblink = f.get('webContentLink', '')
-
-            if clean_name.endswith(".txt"):
-                text_id_cache[clean_name] = fid  # Verknüpft den Dateinamen mit der Text-ID
-            elif mimetype.startswith("image/"):
-                image_name_cache[clean_name] = (fid, weblink)  # Verknüpft den Bildnamen mit der ID und dem Web-Link
-
-        page_token = response.get('nextPageToken', None)
-        if not page_token:
-            break
-
-    # Verknüpfung von Bild- und Text-ID
-    for image_name in image_name_cache:
-        image_name = image_name.lower()
-        txt_name = image_name + ".txt"
-        if txt_name in text_id_cache:
-            image_id, web_link = image_name_cache[image_name]
-            text_id = text_id_cache[txt_name]
-            pair_cache[image_name] = {
-                "image_id": image_id,
-                "text_id": text_id,
-                "web_link": web_link
-            }
-
-    # Speichern des aktualisierten Caches
-    try:
-        with open(PAIR_CACHE_PATH, 'w') as f:
-            json.dump(pair_cache, f)
-        logging.info(f"[fillcache] Pair-Cache gespeichert: {len(pair_cache)} Paare")
-    except Exception as e:
-        logging.warning(f"[fillcache] Fehler beim Speichern von pair_cache.json: {e}")
-
-    logging.info(
-        f"[fillcache] Cache vollständig aktualisiert: {len(text_id_cache)} Textdateien, {len(image_name_cache)} Bilder, {len(pair_cache)} Paare.")
-
-
 @app.get("/status/{image_name}")
-def get_status_for_image(image_name: str):
+def get_status_for_image(
+        image_name: str,
+        user: str = Depends(require_login)):
     return load_status(image_name)
-
-
-def fill_folder_cache():
-    global folders_loaded, current_loading_folder
-
-    file_parents_cache.clear()
-
-    with sqlite3.connect(DB_PATH) as conn:
-        # Prüfen, ob schon Einträge existieren
-        row = conn.execute("SELECT COUNT(*) FROM image_folder_status").fetchone()
-        if row and row[0] > 0:
-            logging.info("[fill_folder_cache] 📦 Lade file_parents_cache aus der Datenbank...")
-
-            rows = conn.execute("SELECT image_id, folder_id FROM image_folder_status").fetchall()
-            for image_id, folder_id in rows:
-                if folder_id not in file_parents_cache:
-                    file_parents_cache[folder_id] = []
-                file_parents_cache[folder_id].append(image_id)
-
-            folders_loaded = folders_total
-            logging.info(f"[fill_folder_cache] ✅ Cache aus DB geladen: {folders_loaded}/{folders_total} Ordner")
-            return  # <<< Fertig, nichts mehr von Google Drive laden
-
-    # Falls KEINE Daten vorhanden → API laden
-    logging.info("[fill_folder_cache] 🛰️ Keine Cache-Daten vorhanden, lade von Google Drive...")
-
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("DELETE FROM image_folder_status")  # <<< Sauber löschen
-
-        for kat in kategorien:
-            folder_id = kat["folderid"]
-            current_loading_folder = kat["label"]
-            logging.info(f"[fill_folder_cache] Lade Dateien für Ordner: {kat['key']} ({folder_id})")
-
-            query = f"'{folder_id}' in parents and trashed = false"
-            page_token = None
-            file_parents_cache[folder_id] = []
-
-            while True:
-                try:
-                    response = service.files().list(
-                        q=query,
-                        spaces='drive',
-                        fields='nextPageToken, files(id)',
-                        pageToken=page_token,
-                        supportsAllDrives=True,
-                        includeItemsFromAllDrives=True
-                    ).execute()
-                except Exception as e:
-                    logging.warning(f"[fill_folder_cache] Fehler beim Laden für {kat['key']} ({folder_id}): {e}")
-                    break
-
-                for file in response.get('files', []):
-                    file_id = file['id']
-                    file_parents_cache[folder_id].append(file_id)
-
-                    try:
-                        # Direkt in die DB speichern
-                        conn.execute("""
-                            INSERT OR REPLACE INTO image_folder_status (image_id, folder_id)
-                            VALUES (?, ?)
-                        """, (file_id, folder_id))
-                    except Exception as e:
-                        logging.warning(f"[fill_folder_cache] Fehler beim Speichern von {file_id} → {folder_id}: {e}")
-
-                page_token = response.get('nextPageToken', None)
-                if page_token is None:
-                    break
-
-            folders_loaded += 1
-            logging.info(f"[fill_folder_cache] ✅ {folders_loaded}/{folders_total} Ordner geladen: {kat['key']}")
-
-        conn.commit()
-
-
-def init_folder_cache(FOLDER_ID):
-    file_parents_cache.clear()
-    file_parents_cache[FOLDER_ID] = []
-
-    for image_name, pair in pair_cache.items():
-        image_id = pair['image_id']
-        file_parents_cache[FOLDER_ID].append(image_id)
-
-
-def is_file_in_folder(service, file_id: str, folder_id: str) -> bool:
-    """Prüft nur lokal im Cache, ob eine Datei in einem Ordner ist."""
-    parents = file_parents_cache.get(folder_id, [])
-    return file_id in parents
 
 
 def clear_folder_parents_cache(folder_id: str):
@@ -525,10 +813,10 @@ def clear_folder_parents_cache(folder_id: str):
 
 
 @app.get("/loading_status")
-def loading_status():
+def loading_status(user: str = Depends(require_login)):
     return {
         "ready": app_ready,
-        "current_folder": current_loading_folder,
+        "folder_name": current_loading_folder,
         "folders_loaded": folders_loaded,
         "folders_total": folders_total
     }
@@ -544,115 +832,10 @@ def render_status(status: dict) -> str:
     return '\n'.join(html)
 
 
-@app.get("/", response_class=HTMLResponse)
-def show_images(request: Request):
-    if not app_ready:
-        return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
-
-    page_str = request.query_params.get('page', '1')
-    try:
-        page = int(page_str)
-        if page < 1:
-            page = 1
-    except ValueError:
-        page = 1
-
-    count_str = request.query_params.get('count', '6')
-    try:
-        count = int(count_str)
-        if count < 1:
-            count = 6
-    except ValueError:
-        count = 6
-
-    folder_str = request.query_params.get('folder', 'real')
-    folder_id = get_folderid_for_checkbox(folder_str)
-
-    start = (page - 1) * count
-    end = start + count
-
-    image_keys = []
-    for image_name in pair_cache.keys():
-        pair = pair_cache[image_name]
-        image_id = pair['image_id']
-
-        # Prüfen, ob die Datei im gewünschten Ordner ist
-        if is_file_in_folder(service, image_id, folder_id):
-            image_keys.append(image_name)
-
-    total_images = len(image_keys)
-    image_keys = image_keys[start:end]
-
-    images_html_parts = []
-
-    for image_name in image_keys:
-        image_name = image_name.lower()
-
-        # 1. Laden der aktuellen Statusdaten
-        status = load_status(image_name)
-
-        if count > 6 and image_name in rendered_image_cache:
-            images_html_parts.append(rendered_image_cache[image_name])
-        elif count <= 6 and image_name + "_T" in rendered_image_cache:
-            images_html_parts.append(rendered_image_cache[image_name + "_T"])
-        else:
-            image_data = prepare_image_data(image_name)
-
-            if count > 6:
-                text_content = ""
-            else:
-                text_content = text_cache.get(image_name, "Kein Text gefunden")
-
-            rendered_html = templates.get_template("image_entry.j2").render(
-                thumbnail_src=image_data["thumbnail_src"],
-                text_content=text_content,
-                image_id=image_data["image_id"],
-                image_name=image_data["image_name"],
-                status={},
-                quality=image_data["quality"],
-                quality_class=image_data["quality_class"],
-                kategorien=kategorien
-            )
-
-            if len(text_content) == 0:
-                rendered_image_cache[image_name] = rendered_html
-            else:
-                rendered_image_cache[image_name + "_T"] = rendered_html
-
-            images_html_parts.append(rendered_html)
-
-        # Status dynamisch nachschieben
-        status_json = json.dumps({f"{image_name}_{key}": value for key, value in status.items()})
-        safe_image_id = pair_cache[image_name]["image_id"].replace("-", "_")
-
-        images_html_parts.append(f"""
-        <script>
-        const checkboxStatus_{safe_image_id} = {status_json};
-        for (const key in checkboxStatus_{safe_image_id}) {{
-            const checkbox = document.querySelector(`input[name="${{key}}"]`);
-            if (checkbox) {{
-                checkbox.checked = checkboxStatus_{safe_image_id}[key];
-            }}
-        }}
-        </script>
-        """)
-
-    # Berechnung total_pages
-    total_pages = max(1, math.ceil(total_images / count))
-
-    return templates.TemplateResponse("image_gallery.j2", {
-        "request": request,
-        "page": page,
-        "total_pages": total_pages,
-        "current_folder": folder_str,
-        "count": count,
-        "kategorien": kategorien,
-        "images_html": ''.join(images_html_parts)
-    })
-
-
 @app.get("/verarbeite/check/{checkbox}")
-def verarbeite_check_checkbox(checkbox: str):
+def verarbeite_check_checkbox(
+        checkbox: str,
+        user: str = Depends(require_login)):
     if checkbox not in CHECKBOX_CATEGORIES:
         return {"error": "ungültige Kategorie"}
     with sqlite3.connect(DB_PATH) as conn:
@@ -665,158 +848,28 @@ def verarbeite_check_checkbox(checkbox: str):
     return {"count": count}
 
 
-def move_marked_images_by_checkbox(current_folder: str, save_folder_key: str) -> int:
-    logging.info(f"[move_marked_images_by_checkbox] Starte Verschieben von '{current_folder}' nach '{save_folder_key}'")
-
-    with sqlite3.connect(DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-                       SELECT image_name
-                       FROM checkbox_status
-                       WHERE checked = 1
-                         AND checkbox = ?
-                       """, (save_folder_key,))
-        rows = cursor.fetchall()
-
-        logging.info(f"[move_marked_images_by_checkbox] {len(rows)} markierte Bilder gefunden für '{save_folder_key}'.")
-
-        anzahl_verschoben = 0
-
-        folder_id = get_folderid_for_checkbox(current_folder)
-        save_folder_id = get_folderid_for_checkbox(save_folder_key)
-
-        for (image_name,) in rows:
-            image_name = image_name.lower()
-
-            if image_name not in pair_cache:
-                logging.warning(
-                    f"[move_marked_images_by_checkbox] ⚠️ Bild '{image_name}' nicht im Pair-Cache gefunden, übersprungen.")
-                continue
-
-            image_id = pair_cache[image_name]["image_id"]
-
-            try:
-                move_file_db(image_id, folder_id, save_folder_id)
-                conn.execute("""
-                             DELETE
-                             FROM checkbox_status
-                             WHERE image_name = ?
-                               AND checkbox = ?
-                             """, (image_name, save_folder_key))
-                anzahl_verschoben += 1
-                logging.info(f"[move_marked_images_by_checkbox] ✅ Verschoben: {image_name} ({image_id})")
-            except Exception as e:
-                logging.error(f"[move_marked_images_by_checkbox] ❌ Fehler beim Verschieben von {image_name}: {e}")
-
-        conn.commit()
-
-    logging.info(
-        f"[move_marked_images_by_checkbox] ✅ {anzahl_verschoben} Dateien erfolgreich verschoben von '{current_folder}' nach '{save_folder_key}'.")
-
-    return anzahl_verschoben
-
-
-def move_file_db(file_id: str, old_folder_id: str, new_folder_id: str):
-    """Verschiebt eine Datei nur in der lokalen Datenbank von einem Ordner in einen anderen."""
-    logging.info(
-        f"[move_file_db] Starte Verschieben von Datei {file_id} in der Datenbank von {old_folder_id} zu {new_folder_id}")
-
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            # Update in der Datenbank
-            conn.execute("""
-                         UPDATE image_folder_status
-                         SET folder_id = ?
-                         WHERE image_id = ?
-                           AND folder_id = ?
-                         """, (new_folder_id, file_id, old_folder_id))
-            conn.commit()
-
-        # Lokalen Cache anpassen
-        if old_folder_id in file_parents_cache:
-            try:
-                file_parents_cache[old_folder_id].remove(file_id)
-            except ValueError:
-                logging.warning(f"[move_file_db] Datei {file_id} war nicht im Cache von {old_folder_id} vorhanden.")
-
-        if new_folder_id not in file_parents_cache:
-            file_parents_cache[new_folder_id] = []
-
-        if file_id not in file_parents_cache[new_folder_id]:
-            file_parents_cache[new_folder_id].append(file_id)
-
-        logging.info(f"[move_file_db] 📂 Erfolgreich verschoben (nur DB): {file_id}")
-
-    except Exception as e:
-        logging.error(f"[move_file_db] ❌ Fehler beim Verschieben von {file_id}: {e}")
-
-
-def move_file(file_id: str, old_folder_id: str, new_folder_id: str):
-    """Verschiebt eine Datei auf Google Drive von einem Ordner in einen anderen."""
-    logging.info(f"[move_file] Starte Verschieben von Datei {file_id} von {old_folder_id} zu {new_folder_id}")
-
-    service.files().update(
-        fileId=file_id,
-        addParents=new_folder_id,
-        removeParents=old_folder_id,
-        fields='id, parents'
-    ).execute()
-
-    # Update lokaler Cache
-    if old_folder_id in file_parents_cache:
-        try:
-            file_parents_cache[old_folder_id].remove(file_id)
-        except ValueError:
-            logging.warning(f"[move_file] Datei {file_id} war nicht in {old_folder_id} vorhanden.")
-
-    if new_folder_id not in file_parents_cache:
-        file_parents_cache[new_folder_id] = []
-
-    if file_id not in file_parents_cache[new_folder_id]:
-        file_parents_cache[new_folder_id].append(file_id)
-
-    logging.info(f"[move_file] 📂 Erfolgreich verschoben: {file_id}")
-
-
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
-
-
 @app.post("/moveToFolder/{checkbox}")
-async def verarbeite_checkbox(checkbox: str, request: Request):
-    referer = request.headers.get("referer", "/gallery/?page=1&count=6&folder=real")
-    parsed_url = urlparse(referer)
-    query = parse_qs(parsed_url.query)
-
-    # Hole aktuelle page, count und folder aus der URL
-    page = query.get("page", ["1"])[0]
-    count = query.get("count", ["6"])[0]
-    folder = query.get("folder", ["real"])[0]
-
+async def verarbeite_checkbox(
+        checkbox: str,
+        count: str = Query("6"),
+        folder: str = Query("real"),
+        user: str = Depends(require_login)
+):
     if checkbox not in CHECKBOX_CATEGORIES:
-        # Fehler: einfach sauber ohne done zurück
-        clean_query = urlencode({
-            "page": page,
-            "count": count,
-            "folder": folder
-        })
-        clean_url = urlunparse(parsed_url._replace(query=clean_query))
-        return RedirectResponse(url=clean_url, status_code=303)
+        return JSONResponse(status_code=400, content={"status": "invalid checkbox"})
 
-    anzahl_verschoben = move_marked_images_by_checkbox("real", checkbox)
+    anzahl = move_marked_images_by_checkbox(folder, checkbox)
 
-    # Erfolgreich: mit done zurück
-    done_query = urlencode({
-        "page": page,
-        "count": count,
-        "folder": folder,
-        "done": checkbox
-    })
-    done_url = urlunparse(parsed_url._replace(query=done_query))
-    return RedirectResponse(url=done_url, status_code=303)
+    # Ziel-URL vorbereiten
+    redirect_url = f"/gallery?page=1&count={count}&folder={checkbox}&done={checkbox}"
+    logging.info(f"[move_file] 📂 Erfolgreich verschoben: {redirect_url}")
+    return {"status": "ok", "redirect": redirect_url, "moved": anzahl}
 
 
 @app.get("/moveToFolder/{checkbox}")
-def get_marked_images_count(checkbox: str):
+def get_marked_images_count(
+        checkbox: str,
+        user: str = Depends(require_login)):
     if checkbox not in CHECKBOX_CATEGORIES:
         return {"count": 0}
     with sqlite3.connect(DB_PATH) as conn:
@@ -829,80 +882,10 @@ def get_marked_images_count(checkbox: str):
     return {"count": count}
 
 
-# Hilfsfunktion: hole folderid anhand checkbox/key
-def get_folderid_for_checkbox(cat: str) -> str:
-    for kategorie in kategorien:
-        if kategorie["key"] == cat:
-            return kategorie["folderid"]
-    raise ValueError(f"Keine folderid gefunden für Checkbox '{cat}'")
-
-
-def get_quality_class(quality: int) -> str:
-    """Gibt eine CSS-Klasse basierend auf der Qualität zurück."""
-    if quality is None:
-        return "quality-unknown"
-    elif quality >= 70:
-        return "quality-good"
-    elif quality >= 40:
-        return "quality-medium"
-    else:
-        return "quality-bad"
-
-
-def prepare_image_data(image_name: str):
-    """Bereitet alle Variablen für ein einzelnes Bild vor, inkl. Qualität."""
-    image_name = image_name.lower()
-    pair = pair_cache[image_name]
-    image_id = pair['image_id']
-    text_id = pair['text_id']
-
-    try:
-        if image_name not in text_cache:
-            content = download_text_file(image_name, text_id, TEXT_FILE_CACHE_DIR)
-            text_cache[image_name] = content
-    except Exception as e:
-        text_cache[image_name] = f"Fehler beim Laden: {e}"
-
-    local_thumbnail_path = download_and_save_image(image_id, image_name)
-
-    if os.path.exists(local_thumbnail_path):
-        thumbnail_src = f"/gallery/static/thumbnails/{image_name}"
-    else:
-        # Falls nicht vorhanden → Drive-Thumbnail verwenden
-        thumbnail_src = download_thumbnail(image_cache, image_id)
-
-    quality = load_image_quality(image_name)
-
-    # Qualität Klasse bestimmen
-    quality_class = get_quality_class(quality)
-
-    return {
-        "thumbnail_src": thumbnail_src,
-        "image_id": image_id,
-        "image_name": image_name,
-        "quality": quality,
-        "quality_class": quality_class
-    }
-
-
-def load_image_quality(image_name: str) -> int:
-    """Lädt die Qualitätsbewertung (0-100) eines Bildes aus der Datenbank, case-insensitiv."""
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            result = conn.execute("""
-                                  SELECT quality
-                                  FROM image_quality
-                                  WHERE LOWER(image_name) = LOWER(?)
-                                  """, (image_name,)).fetchone()
-            if result:
-                return result[0]
-    except Exception as e:
-        logging.error(f"[load_image_quality] Fehler beim Laden der Qualität für {image_name}: {e}")
-    return None
-
-
 @app.get("/original/{file_id}")
-def show_original_image(file_id: str):
+def show_original_image(
+        file_id: str,
+        user: str = Depends(require_login)):
     try:
         html = f"""
         <html>
@@ -919,138 +902,517 @@ def show_original_image(file_id: str):
         return HTMLResponse("<p>Fehler beim Laden des Bildes.</p>", status_code=500)
 
 
-@app.get("/grid", response_class=HTMLResponse)
-def show_grid_view(request: Request):
-    # Holen der aktuellen Seite und der Anzahl der Bilder pro Seite (count)
-    page_str = request.query_params.get("page", "1")
-    count_str = request.query_params.get("count", "12")  # Standardwert ist 6, wenn kein count angegeben wird
+def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -> int:
+    logging.info(f"[move_marked_images_by_checkbox] Starte Verschieben von '{current_folder}' nach '{new_folder}'")
 
-    try:
-        page = int(page_str)
-        count = int(count_str)  # Konvertiere count in eine Zahl
-    except ValueError:
-        page = 1
-        count = 12  # Setze einen Standardwert, falls ungültige Werte übergeben werden
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+                       SELECT image_name
+                       FROM checkbox_status
+                       WHERE checked = 1
+                         AND checkbox = ?
+                       """, (new_folder,))
+        rows = cursor.fetchall()
 
-    # Berechne Start und Ende basierend auf der Seite und der Anzahl der Bilder pro Seite
-    start = (page - 1) * count
-    end = start + count
-    image_keys = list(pair_cache.keys())[start:end]
+        logging.info(f"[move_marked_images_by_checkbox] {len(rows)} markierte Bilder gefunden für '{new_folder}'.")
 
-    # Generiere die Grid-Einträge
-    grid_entries = []
-    for image_name in image_keys:
-        pair = pair_cache[image_name]
-        image_id = pair["image_id"]
-        thumbnail_src = download_thumbnail(service, image_cache, image_id)
+        anzahl_verschoben = 0
 
-        grid_entries.append(
-            templates.get_template("grid_entry.html").render(
-                image_id=image_id,
-                thumbnail_src=thumbnail_src,
-                file_name=image_name,
-                count=count
-            )
-        )
+        folder_id = current_folder
+        save_folder_id = new_folder
 
-    # Rückgabe des Templates, ohne spalten, da das Grid im CSS dynamisch angepasst wird
-    return templates.TemplateResponse("grid_gallery.html", {
-        "request": request,
-        "page": page,
-        "count": count,
-        "grid_entries": "".join(grid_entries)
-    })
-
-
-def move_all_images_to_real_folder():
-    """Verschiebt ALLE Dateien aus ALLEN Ordnern in den real-Ordner, echtes Live-Lesen ohne Cache."""
-    logging.info("[move_all_images_to_real_folder] 🚀 Starte Verschieben aller Dateien nach 'real' (ohne Cache)...")
-
-    real_folder_id = get_folderid_for_checkbox("real")
-    anzahl_verschoben = 0
-
-    for folder_key in CHECKBOX_CATEGORIES:
-        if folder_key == "real":
-            continue  # 'real'-Ordner selbst überspringen
-
-        source_folder_id = get_folderid_for_checkbox(folder_key)
-
-        logging.info(f"[move_all_images_to_real_folder] 📂 Lade Dateien aus Ordner: {folder_key} ({source_folder_id})")
-        page_token = None
-
-        while True:
-            try:
-                response = service.files().list(
-                    q=f"'{source_folder_id}' in parents and trashed = false",
-                    spaces='drive',
-                    fields='nextPageToken, files(id)',
-                    pageToken=page_token,
-                    supportsAllDrives=True,
-                    includeItemsFromAllDrives=True
-                ).execute()
-            except Exception as e:
-                logging.error(f"[move_all_images_to_real_folder] ❌ Fehler beim Laden der Dateien: {e}")
-                break
-
-            for file in response.get('files', []):
-                file_id = file['id']
+        for (image_name,) in rows:
+            if not image_name:
+                continue
+            logging.info(f"[move_marked_images_by_checkbox] Bild gefunden '{image_name}'.")
+            success = move_file_db(conn, image_name, folder_id, save_folder_id)
+            if success:
                 try:
-                    move_file(file_id, source_folder_id, real_folder_id)
+                    conn.execute("""
+                                 DELETE
+                                 FROM checkbox_status
+                                 WHERE image_name = ?
+                                   AND checkbox = ?
+                                 """, (image_name, new_folder))
+
+                    current_folder_path = Path(IMAGE_FILE_CACHE_DIR) / current_folder / image_name
+                    new_folder_path = Path(IMAGE_FILE_CACHE_DIR) / new_folder / image_name
+                    try:
+                        (Path(IMAGE_FILE_CACHE_DIR) / new_folder).mkdir(parents=True, exist_ok=True)
+                        shutil.move(current_folder_path, new_folder_path)
+                    except:
+                        logging.error(
+                            f"[move_marked_images_by_checkbox] ❌ Fehler beim Verschieben {current_folder_path} ->  {new_folder_path}")
+
                     anzahl_verschoben += 1
-                    logging.info(f"[move_all_images_to_real_folder] ✅ Datei {file_id} verschoben")
+                    logging.info(
+                        f"[move_marked_images_by_checkbox] ✅ Verschoben: {image_name} ({current_folder}) -> ({new_folder})")
                 except Exception as e:
-                    logging.error(f"[move_all_images_to_real_folder] ❌ Fehler beim Verschieben von {file_id}: {e}")
+                    logging.error(
+                        f"[move_marked_images_by_checkbox] ❌ Fehler beim Entfernen der Checkbox von {image_name}: {e}")
+            else:
+                logging.warning(
+                    f"[move_marked_images_by_checkbox] ⚠️ Verschieben von {image_name} nicht erfolgreich – überspringe Löschen.")
 
-            page_token = response.get('nextPageToken')
-            if not page_token:
-                break
+        conn.commit()
 
-    logging.info(f"[move_all_images_to_real_folder] 🎯 Insgesamt {anzahl_verschoben} Dateien erfolgreich verschoben.")
+    logging.info(
+        f"[move_marked_images_by_checkbox] ✅ {anzahl_verschoben} Dateien erfolgreich verschoben von '{current_folder}' nach '{new_folder}'.")
+
+    return anzahl_verschoben
 
 
-def calculate_simple_brisque(image_path):
-    """Berechnet die Fake-BRISQUE (LBP-Standardabweichung)."""
+def move_file_db(conn, image_name: str, old_folder_id: str, new_folder_id: str, retries: int = 5) -> bool:
+    """Verschiebt eine Datei nur in der lokalen Datenbank von einem Ordner in einen anderen."""
+    logging.info(
+        f"[move_file_db] Starte Verschieben von Datei {image_name} in der Datenbank von {old_folder_id} zu {new_folder_id} (Thread: {threading.get_ident()})")
+
+    image_name = image_name.lower()
+    pair = pair_cache.get(image_name)
+    if not pair:
+        logging.warning(f"[move_file_db] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
+        return
+    image_id = pair["image_id"]
+
+    for attempt in range(retries):
+        try:
+            conn.execute("""
+                         UPDATE image_folder_status
+                         SET folder_id = ?
+                         WHERE image_id = ?
+                           AND folder_id = ?
+                         """, (new_folder_id, image_id, old_folder_id))
+
+            # Lokalen Cache anpassen
+            if old_folder_id in file_parents_cache:
+                try:
+                    file_parents_cache[old_folder_id].remove(image_id)
+                except ValueError:
+                    logging.warning(
+                        f"[move_file_db] Datei {image_name} war nicht im Cache von {old_folder_id} vorhanden.")
+
+            if new_folder_id not in file_parents_cache:
+                file_parents_cache[new_folder_id] = []
+
+            if image_id not in file_parents_cache[new_folder_id]:
+                file_parents_cache[new_folder_id].append(image_id)
+
+            logging.info(f"[move_file_db] 📂 Erfolgreich verschoben (nur DB): {image_id}")
+            return True
+
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                logging.warning(f"[move_file_db] Datenbank gesperrt, Versuch {attempt + 1}/{retries}")
+                time.sleep(0.3 * (attempt + 1))
+            else:
+                logging.error(f"[move_file_db] ❌ Unerwarteter Fehler bei {image_id}: {e}")
+                return False
+        except Exception as e:
+            logging.error(f"[move_file_db] ❌ Fehler beim Verschieben von {image_id}: {e}")
+            return False
+
+    logging.error(f"[move_file_db] ❌ Max. Versuche erreicht für {image_id}: Datenbank bleibt gesperrt")
+    return False
+
+
+def calculateq1andq2(image_path):
+    """Berechnet die Fake-BRISQUE (LBP-Standardabweichung und einfache Bildästhetik).
+    :return: Tuple[int, int] → (scoreq1, scoreq2), oder (None, None) bei Fehler
+    """
     image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
     if image is None:
         print(f"Bild {image_path} konnte nicht geladen werden.")
-        return None
+        return None, None
+
+    if image.shape[0] < 16 or image.shape[1] < 16:
+        print(f"Bild zu klein für Analyse: {image_path}")
+        return None, None
 
     lbp = feature.local_binary_pattern(image, P=8, R=1, method="uniform")
-    score = np.std(lbp)
-    return score
+    scoreq1 = min(scale_score_to_0_100(np.std(lbp)), 100)
+
+    image = cv2.imread(image_path)
+    h, w = image.shape[:2]
+    if h < 16 or w < 16:
+        print(f"Bild zu klein für Analyse: {image_path}")
+        return None, None
+
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+    _, thresh = cv2.threshold(blur, 127, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        print("Keine Konturen erkannt.")
+        return None, None
+
+    largest = max(contours, key=cv2.contourArea)
+    M = cv2.moments(largest)
+    if M["m00"] == 0:
+        print("Ungültige Momentberechnung.")
+        return None, None
+
+    cx = int(M["m10"] / M["m00"])
+    cy = int(M["m01"] / M["m00"])
+
+    # Goldener Schnitt
+    gx, gy = int(w * 0.618), int(h * 0.618)
+    dist_golden = np.hypot(cx - gx, cy - gy) / np.hypot(w, h)
+    score_golden = max(0, 1 - dist_golden)
+
+    # Drittelregel
+    thirds_x = [w // 3, 2 * w // 3]
+    thirds_y = [h // 3, 2 * h // 3]
+    min_dist_thirds = min([abs(cx - x) for x in thirds_x]) + min([abs(cy - y) for y in thirds_y])
+    score_thirds = max(0, 1 - (min_dist_thirds / max(w, h)))
+
+    # Symmetrie (vertikal)
+    left = image[:, :w // 2]
+    right = cv2.flip(image[:, w - w // 2:], 1)
+    diff = cv2.absdiff(left, right)
+    denom = h * w * 3 * 255
+    score_symmetry = 1 - (np.sum(diff) / denom) if denom > 0 else 0
+
+    # Kontrast
+    contrast = gray.std() / 128
+    score_contrast = min(contrast, 1.0)
+
+    # Gesamtbewertung (q2)
+    scoreq2 = int(round(np.mean([score_golden, score_thirds, score_symmetry, score_contrast]), 2) * 100)
+
+    return scoreq1, scoreq2
 
 
-def download_and_save_image(file_id: str, image_name: str) -> str | None:
-    """Lädt das Originalbild und speichert es + Thumbnail lokal."""
-    image_path = os.path.join(IMAGE_FILE_CACHE_DIR, image_name)
-    thumbnail_path = os.path.join(THUMBNAIL_CACHE_DIR, image_name)
+def find_file_by_name(root_dir: Path, image_name: str):
+    return list(root_dir.rglob(image_name))
 
-    # Original speichern
+
+def download_and_save_image(folder_name: str, image_name: str) -> str | None:
+    """Erzeugt ein Thumbnail aus einer lokalen Originalbilddatei."""
+    image_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+    thumbnail_path = os.path.join(THUMBNAIL_CACHE_DIR_300, image_name)
+
     if not os.path.exists(image_path):
-        try:
-            logging.info(f"[download_and_save_image] Lade Originalbild für {image_name}")
-            request = service.files().get_media(fileId=file_id)
-            content = request.execute()
-            os.makedirs(IMAGE_FILE_CACHE_DIR, exist_ok=True)
-            with open(image_path, 'wb') as f:
-                f.write(content)
-            logging.info(f"[download_and_save_image] ✅ Originalbild gespeichert: {image_path}")
-        except Exception as e:
-            logging.error(f"[download_and_save_image] ❌ Fehler beim Laden von Originalbild {image_name}: {e}")
+        treffer = find_file_by_name(Path(IMAGE_FILE_CACHE_DIR), image_name)
+        for path in treffer:
+            try:
+                shutil.move(path, image_path)
+            except Exception as e:
+                logging.warning(f"[download_and_save_image] Originalbild nicht gefunden: {image_path}")
+                return None
+            break
+
+    if not os.path.exists(image_path):
+        logging.warning(f"[download_and_save_image] Originalbild nicht gefunden: {image_path}")
+        return None
+
+    if not os.path.exists(thumbnail_path):
+        if not generate_thumbnail(image_path, thumbnail_path, image_name):
             return None
 
-    # Thumbnail erzeugen
-    if not os.path.exists(thumbnail_path):
-        try:
-            logging.info(f"[download_and_save_image] Erzeuge Thumbnail für {image_name}")
-            img = Image.open(image_path)
-            img = ImageOps.exif_transpose(img)
-            img.thumbnail((300, 300),
-                          Image.Resampling.LANCZOS)  # max 300x300, Seitenverhältnis wird AUTOMATISCH behalten
-            os.makedirs(THUMBNAIL_CACHE_DIR, exist_ok=True)
-            img.save(thumbnail_path, format="JPEG")
-            logging.info(f"[download_and_save_image] ✅ Thumbnail gespeichert: {thumbnail_path}")
-        except Exception as e:
-            logging.error(f"[download_and_save_image] ❌ Fehler beim Erzeugen von Thumbnail {image_name}: {e}")
-
     return thumbnail_path
+
+
+def generate_thumbnail(image_path: Path, thumbnail_path: str, image_name: str) -> bool:
+    try:
+        logging.info(f"[generate_thumbnail] Erzeuge Thumbnail für {image_name}")
+        img = Image.open(image_path)
+        img = ImageOps.exif_transpose(img)
+        img.thumbnail((300, 300), Image.Resampling.LANCZOS)
+        os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
+        img.convert("RGB").save(thumbnail_path, format="JPEG")  # <-- Fix hier
+        logging.info(f"[generate_thumbnail] ✅ Thumbnail gespeichert: {thumbnail_path}")
+        return True
+    except Exception as e:
+        logging.error(f"[generate_thumbnail] ❌ Fehler beim Erzeugen von Thumbnail {image_name}: {e}")
+        return False
+
+
+def run(cmd, **kwargs):
+    logging.info("⚙️  %s", " ".join(cmd))
+    subprocess.run(cmd, check=True, **kwargs)
+
+
+def dump_from_container():
+    logging.info("📤 Erzeuge Dump aus dem Container...")
+    with open(DUMP_FILE, "w") as out:
+        run(["docker", "exec", CONTAINER, "sqlite3", DB_PATH_IN_CONTAINER, ".dump"], stdout=out)
+    logging.info("✅ Dump gespeichert in %s", DUMP_FILE)
+
+
+def restore_to_local():
+    logging.info("📥 Stelle Dump lokal wieder her...")
+    if os.path.exists(LOCAL_DB):
+        os.remove(LOCAL_DB)
+        logging.info("🗑️  Alte lokale DB %s gelöscht.", LOCAL_DB)
+    with open(DUMP_FILE, "rb") as f:
+        run(["sqlite3", LOCAL_DB], stdin=f)
+    logging.info("✅ Wiederherstellung in %s abgeschlossen.", LOCAL_DB)
+
+
+def remove_db_in_container():
+    logging.info("🧹 Entferne alte DB im Container...")
+    run(["docker", "exec", CONTAINER, "rm", "-f", DB_PATH_IN_CONTAINER])
+
+
+def restore_to_container():
+    logging.info("📥 Spiele Dump in Container zurück...")
+    with open(DUMP_FILE, "rb") as f:
+        run(["docker", "exec", "-i", CONTAINER, "sqlite3", DB_PATH_IN_CONTAINER], stdin=f)
+    logging.info("✅ Dump erfolgreich in Container-DB eingespielt.")
+
+
+def sync_in():
+    dump_from_container()
+    restore_to_local()
+
+
+def sync_out():
+    remove_db_in_container()
+    restore_to_container()
+
+
+def egal():
+    global DB_PATH, IMAGE_FILE_CACHE_DIR, TEXT_FILE_CACHE_DIR, THUMBNAIL_CACHE_DIR_300, app_ready
+    sync_in()
+
+    DB_PATH = Path(LOCAL_DB)
+
+    IMAGE_FILE_CACHE_DIR = '../cache/imagefiles'
+    TEXT_FILE_CACHE_DIR = '../cache/textfiles'
+    THUMBNAIL_CACHE_DIR_300 = '../cache/thumbnailfiles300'
+
+    app_ready = True
+
+    fillcache_local(
+        '../cache/pair_cache_local.json',
+        IMAGE_FILE_CACHE_DIR)
+
+    fill_folder_cache(DB_PATH)
+
+    scope = {
+        "type": "http",
+        "query_string": b"page=1&count=1&folder=real",
+        "method": "GET",
+        "path": "/",
+        "headers": [],
+    }
+    request = Request(scope)
+
+    # Direkt aufrufen
+    response = show_images(request)
+    print(response)
+
+    sync_out()
+
+
+def has_numbered_gesichter(image_path: Path, gesichter_file_cache_dir: Path) -> bool:
+    stem = image_path.stem  # z. B. "img_1952"
+    pattern = f"{stem}_*.jpg"
+    regex = re.compile(rf"^{re.escape(stem)}_(\d+)\.jpg$")
+
+    for file in Path(gesichter_file_cache_dir).glob(pattern):
+        if regex.match(file.name):
+            return True
+    return False
+
+
+def gesichter(image_path: Path, gesichter_file_cache_dir: str, min_gesichtsgroesse=(200, 300)) -> None:
+    gesichter_file_cache_dir_path = Path(gesichter_file_cache_dir)
+    gesichter_file_cache_dir_path.mkdir(parents=True, exist_ok=True)
+
+    if not has_numbered_gesichter(image_path, gesichter_file_cache_dir_path):
+        ergebnisse = []
+
+        img = cv2.imread(str(image_path))
+        if img is None:
+            return None
+
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gesichter = face_cascade.detectMultiScale(
+            gray, scaleFactor=1.3, minNeighbors=8, minSize=min_gesichtsgroesse
+        )
+
+        # Keine Filterung nach Seitenverhältnis
+        gefilterte_gesichter = list(gesichter)
+        for (x, y, w, h) in gesichter:
+            verhaeltnis = w / h
+            if 0.6 < verhaeltnis < 1.0 and w >= min_gesichtsgroesse[0] and h >= min_gesichtsgroesse[1]:
+                gefilterte_gesichter.append((x, y, w, h))
+
+            if len(gefilterte_gesichter) > 0:
+                eintrag = f"{image_path} -> {len(gefilterte_gesichter)} Gesicht(er)"
+                ergebnisse.append(eintrag)
+
+                for i, (x, y, w, h) in enumerate(gefilterte_gesichter):
+                    gesicht_img = img[y:y + h, x:x + w]
+                    ziel_datei = Path(gesichter_file_cache_dir) / f"{image_path.stem}_{i}.jpg"
+                    cv2.imwrite(str(ziel_datei), gesicht_img)
+    else:
+        logging.info(f"✅ Gesichter vorhanden für Bild {image_path}.")
+
+    return None
+
+
+def get_extra_thumbnails(folder_name: str, image_name: str) -> list[dict]:
+    full_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+    gesichter(full_path, GESICHTER_FILE_CACHE_DIR)
+
+    stem = full_path.stem
+    face_dir = Path(GESICHTER_FILE_CACHE_DIR)
+    base_url = "/static/facefiles"
+    return [
+        {
+            "src": f"/gallery{base_url}/{thumb.name}",
+            "link": f"/gallery{base_url}/{thumb.name}",
+            "image_name": f"{thumb.name}"
+        }
+        for thumb in sorted(face_dir.glob(f"{stem}_*.jpg"))
+    ]  # Beispiel
+
+
+def scale_score_to_0_100(score):
+    """Skaliert den LBP-Score präzise auf 0–100."""
+    scaled = (score / 5.0) * 100  # 5.0 ist ein erfahrener Maximalwert für LBP-std
+    scaled = max(0, min(100, scaled))  # Clamping
+    return int(round(scaled))
+
+
+def load_quality(folder_name: str, image_name: str):
+    """Lädt die Qualitätsbewertung (0–100) eines Bildes aus der neuen Tabelle image_quality_scores."""
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            rows = conn.execute("""
+                                SELECT score_type, score
+                                FROM image_quality_scores
+                                WHERE LOWER(image_name) = LOWER(?)
+                                """, (image_name,)).fetchall()
+
+            scores = {score_type: score for score_type, score in rows}
+            if 1 in scores and 2 in scores:
+                return scores[1], scores[2]
+
+            logging.info(f"[load_quality] nicht vollständig in DB für {image_name}")
+
+        full_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+        scoreq1, scoreq2 = calculateq1andq2(full_path)
+        if scoreq1 is not None and scoreq2 is not None:
+            save_image_quality(image_name, scoreq1, scoreq2)
+            return scoreq1, scoreq2
+
+    except Exception as e:
+        logging.error(f"[load_quality] Fehler bei {image_name}: {e}")
+
+    return None, None
+
+
+def save_image_quality(image_name, scoreq1, scoreq2):
+    """Speichert die Qualitätswerte als separate Zeilen in der neuen Tabelle."""
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+            VALUES (?, ?, ?)
+        """, (image_name, 1, scoreq1))
+
+        conn.execute("""
+            INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+            VALUES (?, ?, ?)
+        """, (image_name, 2, scoreq2))
+
+
+def ensure_category_dirs(image_file_cache_dir, kategorien):
+    image_file_cache_dir = Path(image_file_cache_dir)  # absichern
+    for k in kategorien:
+        folder = image_file_cache_dir / k["key"]
+        folder.mkdir(parents=True, exist_ok=True)
+
+
+def list_all_images_one_level(image_file_cache_dir: Path):
+    image_file_cache_dir = Path(image_file_cache_dir)
+    files = list(image_file_cache_dir.glob("*.*"))  # direkt im Hauptverzeichnis
+    files += list(image_file_cache_dir.glob("*/*.*"))  # genau eine Ebene tiefer
+    return files
+
+
+def find_image_name_by_id(image_id):
+    for image_name, pair in pair_cache.items():
+        if pair.get("image_id") == image_id:
+            return image_name
+    return None  # nicht gefunden
+
+
+def find_category_by_image_id(file_parents_cache, target_image_id):
+    for category_key, image_ids in file_parents_cache.items():
+        if target_image_id in image_ids:
+            return category_key
+    return None
+
+
+def print_file_counts(image_file_cache_dir, kategorien):
+    base_dir = Path(image_file_cache_dir)
+
+    for k in kategorien:
+        folder = base_dir / k["key"]
+        count = len(list(folder.glob("*"))) if folder.exists() else 0
+        print(f"{k['key']:<10} ({k['label']:<12}): {count:>4} Dateien {folder}")
+
+
+def mmmm():
+    IMAGE_FILE_CACHE_DIR = '../cache/imagefiles'
+    DB_PATH = "../gallery_local.db"
+
+    ensure_category_dirs(IMAGE_FILE_CACHE_DIR, kategorien)
+
+    fillcache_local(PAIR_CACHE_PATH, IMAGE_FILE_CACHE_DIR)
+
+    fill_folder_cache(DB_PATH)
+
+    for category_key, image_ids in file_parents_cache.items():
+        print(f"Kategorie: {category_key} ({len(image_ids)} Bilder)")
+
+    allimages = list_all_images_one_level(IMAGE_FILE_CACHE_DIR)
+    print(f"allimages: {len(allimages)} Bilder")
+
+    alle = len(allimages);
+
+    for image_path in allimages:
+        pair = pair_cache.get(image_path.name)
+        if not pair:
+            logging.error(
+                f"[Verschieben] ❌ Fehler finden pair {image_path}")
+            if (image_path.suffix == ".html" or
+                image_path.suffix == ".log" or
+                image_path.suffix == ".log") and image_path.exists():
+                image_path.unlink()
+                print("Datei gelöscht:", image_path)
+            else:
+                print("Datei existiert nicht:", image_path)
+            continue
+        image_id = pair["image_id"]
+        if not image_id:
+            logging.error(
+                f"[Verschieben] ❌ Fehler finden image_id {image_path}")
+            continue
+        cat = find_category_by_image_id(file_parents_cache, image_id)
+        if not cat:
+            logging.error(
+                f"[Verschieben] ❌ Fehler finden cat {image_path}")
+            continue
+        else:
+            topath = Path(IMAGE_FILE_CACHE_DIR) / cat / image_path.name
+            if (not topath.exists()):
+                logging.info(f"✅ Verschieben nach {topath}.")
+                shutil.move(image_path, topath)
+            alle -= 1
+
+    logging.info(f"✅ Rest {alle}.")
+
+
+if __name__ == "__main__":
+    GESICHTER_FILE_CACHE_DIR = '../cache/facefiles'
+    IMAGE_FILE_CACHE_DIR = '../cache/imagefiles'
+    DB_PATH = "../gallery_local.db"
+    # mmmm()
+
+    print_file_counts(IMAGE_FILE_CACHE_DIR, kategorien)

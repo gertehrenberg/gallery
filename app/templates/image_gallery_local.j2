@@ -252,15 +252,18 @@
             font-style: italic;
             color: #999;
         }
+
         .config-section {
             display: none;
             margin-top: 1rem;
             border-top: 1px solid #ccc;
             padding-top: 0.5rem;
         }
+
         .config-section.show {
             display: block;
         }
+
         button.section-toggle {
             background: none;
             border: none;
@@ -313,18 +316,34 @@
                 </div>
             {% endfor %}
         </div>
-            <button class="section-toggle" onclick="toggleConfigSection()">▶ Configuration</button>
-            <div id="configSection" class="config-section">
-                <form id="configForm">
-                    <fieldset>
-                        <legend>Textanzeige</legend>
-                        <label><input type="radio" name="textOption" value="1"{% if textflag == '1' %} checked{% endif %}> keine Anzeige</label><br>
-                        <label><input type="radio" name="textOption" value="2"{% if textflag == '2' %} checked{% endif %}> ganzer Text</label><br>
-                        <label><input type="radio" name="textOption" value="3"{% if textflag == '3' %} checked{% endif %}> nur erste Zeile</label><br>
-                        <label><input type="radio" name="textOption" value="4"{% if textflag == '4' %} checked{% endif %}> kein Englisch</label><br>
-                    </fieldset>
-                </form>
-            </div>
+        <div style="padding: 6px 10px; border-radius: 5px; width: 80px; background: #eef; text-align: center; margin-bottom: 6px;">
+            <button onclick="logout()" style="
+        background: none;
+        border: none;
+        color: #000;
+        font-size: 0.9em;
+        cursor: pointer;
+        padding: 0;
+    ">
+                🔒 Logout
+            </button>
+        </div>
+        <button class="section-toggle" onclick="toggleConfigSection()">▶ Configuration</button>
+        <div id="configSection" class="config-section">
+            <form id="configForm">
+                <fieldset>
+                    <legend>Textanzeige</legend>
+                    <label><input type="radio" name="textOption" value="1"{% if textflag == '1' %} checked{% endif %}>
+                        keine Anzeige</label><br>
+                    <label><input type="radio" name="textOption" value="2"{% if textflag == '2' %} checked{% endif %}>
+                        ganzer Text</label><br>
+                    <label><input type="radio" name="textOption" value="3"{% if textflag == '3' %} checked{% endif %}>
+                        nur erste Zeile</label><br>
+                    <label><input type="radio" name="textOption" value="4"{% if textflag == '4' %} checked{% endif %}>
+                        kein Englisch</label><br>
+                </fieldset>
+            </form>
+        </div>
     </div>
 </div>
 <div class="sticky-nav">
@@ -421,7 +440,7 @@
         section.classList.toggle("show");
     }
 
-    document.getElementById("configForm").addEventListener("change", function(e) {
+    document.getElementById("configForm").addEventListener("change", function (e) {
         if (e.target.name === "textOption") {
             const newFlag = e.target.value;
             const url = new URL(window.location.href);
@@ -626,6 +645,17 @@
         const visible = menu.style.display === "block";
         menu.style.display = visible ? "none" : "block";
         localStorage.setItem("menuOpen", !visible);
+    }
+
+    function logout() {
+        // Menü ausblenden
+        const menu = document.getElementById("menu");
+        menu.style.display = "none";
+        localStorage.setItem("menuOpen", false);
+
+        const url = new URL(window.location.href);
+        url.pathname = "/gallery/logout";
+        window.location.href = url.toString();
     }
 
     function navigateToFolder(kategorien, cat, count) {
