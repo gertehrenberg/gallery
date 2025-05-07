@@ -547,6 +547,11 @@ def show_images(
     textflag = request.query_params.get('textflag', '1')
 
     try:
+        lastindex = int(request.query_params.get('lastindex', 0))
+    except ValueError:
+        lastindex = 0
+
+    try:
         lastpage = int(request.query_params.get('lastpage', 0))
     except ValueError:
         lastpage = 0
@@ -560,6 +565,11 @@ def show_images(
         lasttextflag = int(request.query_params.get('lasttextflag', 0))
     except ValueError:
         lasttextflag = 0
+
+    if lastindex > 0:
+        # logging.info(f"📂 [last_index]: {lastindex}")
+        page = (lastindex // count) + 1
+        # logging.info(f"📂 [pagenew]: {page}")
 
     start = (page - 1) * count
     end = start + count
