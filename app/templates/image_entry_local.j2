@@ -1,7 +1,11 @@
 <div class="eintrag">
     <table style="width: 100%; table-layout: fixed">
         <tr>
-            <td colspan="2" class="bildname">{{ image_name }}
+            <td colspan="2" class="bildname">
+                <span style="cursor:pointer; margin-left:10px;" onclick="saveAndGoName('{{ image_name }}')">
+                    🔍
+                </span>
+                {{ image_name }}
             </td>
         </tr>
         <tr>

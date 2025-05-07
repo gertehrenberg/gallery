@@ -350,12 +350,12 @@
     {% if page > 1 %}
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, 1, {{ count }}, '{{ folder_name }}')"
+                onclick="saveAndGo(1, {{ count }}, '{{ folder_name }}')"
         >⏮ Anfang</a
         >
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, {{ page - 1 }}, {{ count }}, '{{ folder_name }}')"
+                onclick="saveAndGo({{ page - 1 }}, {{ count }}, '{{ folder_name }}')"
         >⬅ Zurück</a
         >
     {% else %}
@@ -364,43 +364,46 @@
     {% endif %}
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ folder_name }}')">
+                onclick="saveAndGo({{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ folder_name }}')">
             ➗2
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ folder_name }}')">
+                onclick="saveAndGo({{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ folder_name }}')">
             ➖
         </button>
     </div>
+    {% if lastcall %}
+        <button onclick="window.location.href='{{ lastcall }}'" style="margin:1em;">↩️</button>
+    {% endif %}
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count }}, '{{ folder_name }}')">
+                onclick="saveAndGo({{ page }}, {{ count }}, '{{ folder_name }}')">
             Seite {{ page }} von {{ total_pages }}
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count + 1 }}, '{{ folder_name }}')">
+                onclick="saveAndGo({{ page }}, {{ count + 1 }}, '{{ folder_name }}')">
             ➕
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ kategorien }}, {{ page }}, {{ count * 2 }}, '{{ folder_name }}')">
+                onclick="saveAndGo({{ page }}, {{ count * 2 }}, '{{ folder_name }}')">
             ✖️2
         </button>
     </div>
     {% if page < total_pages %}
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, {{ page + 1 }}, {{ count }}, '{{ folder_name }}')"
+                onclick="saveAndGo({{ page + 1 }}, {{ count }}, '{{ folder_name }}')"
         >Weiter ➡</a
         >
         <a
                 href="#"
-                onclick="saveAndGo({{ kategorien }}, {{ total_pages }}, {{ count }}, '{{ folder_name }}')"
+                onclick="saveAndGo({{ total_pages }}, {{ count }}, '{{ folder_name }}')"
         >⏭ Ende</a
         >
     {% else %}
@@ -516,8 +519,8 @@
         if (e.key === "Escape") closeModal();
     });
 
-    function saveAndGo(kategorien, targetPage, count, folder, done) {
-        const data = Array.from(document.querySelectorAll("form.checkbox-container")).map(
+    function save() {
+        return Array.from(document.querySelectorAll("form.checkbox-container")).map(
             (form) => {
                 const entry = {};
                 // Extrahiere image_id aus dem Formular
@@ -537,59 +540,14 @@
                 return entry;
             }
         );
-
-        // Sende die Daten an den Server
-        Promise.all(
-            data.map((entry) =>
-                fetch("/gallery/save", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
-                    body: new URLSearchParams(entry),
-                })
-            )
-        )
-            .then(() => {
-                const url = new URL(window.location.href);
-
-                // Pfad auf '/gallery/' setzen
-                url.pathname = '/gallery/';
-
-                // Alle vorhandenen Suchparameter entfernen
-                url.search = '';
-
-                url.searchParams.set("page", targetPage);
-                url.searchParams.set("count", count);
-                url.searchParams.set("folder", folder);
-                url.searchParams.set("textflag", TEXTFLAG);
-                window.location.href = url.toString();
-            })
-            .catch((err) => {
-                alert("Fehler beim Speichern!");
-                console.error(err);
-            });
     }
 
-    function saveAndGoWithOut(targetPage, count, folder, done) {
-        const data = Array.from(document.querySelectorAll("form.checkbox-container")).map(
-            (form) => {
-                const entry = {};
-                // Extrahiere image_id aus dem Formular
-                entry.image_id = form.querySelector('[name="image_id"]').value;
+    function saveAndGoName(image_name) {
+        saveAndGo(PAGE, COUNT, FOLDER, image_name)
+    }
 
-                // Gehe durch alle Kategorien und speichere die Checkbox-Werte
-                kategorien.forEach((cat) => {
-                    // Name der Checkbox angepasst an das Format img_5242.jpg_<key>
-                    const box = form.querySelector(
-                        `[name="${entry.image_id}_${cat.key}"]`
-                    );
-                    entry[cat.key] = box && box.checked ? "on" : ""; // 'on' wenn angekreuzt, sonst leer
-                });
-
-                // Notiz extrahieren
-                entry.notiz = form.querySelector('[name="notiz"]')?.value || "";
-                return entry;
-            }
-        );
+    function saveAndGo(targetPage, count, folder, image_name) {
+        data = save()
 
         // Sende die Daten an den Server
         Promise.all(
@@ -604,11 +562,16 @@
             .then(() => {
                 const url = new URL(window.location.href);
 
-                // Pfad auf '/gallery/' setzen
-                url.pathname = '/gallery/';
-
                 // Alle vorhandenen Suchparameter entfernen
                 url.search = '';
+
+                if (image_name) {
+                    url.pathname = '/gallery/images';
+                    url.searchParams.set("image_name", image_name);
+
+                } else {
+                    url.pathname = '/gallery/';
+                }
 
                 url.searchParams.set("page", targetPage);
                 url.searchParams.set("count", count);
@@ -630,7 +593,7 @@
             return;
         }
         toggleMenu();
-        saveAndGoWithOut(page, {{ count }}, "{{ folder_name }}");
+        saveAndGo(page, {{ count }}, "{{ folder_name }}");
     }
 
     document.getElementById("gotoPageInput").addEventListener("keydown", function (e) {

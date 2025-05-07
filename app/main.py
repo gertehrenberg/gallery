@@ -13,6 +13,7 @@ import threading
 import time
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import unquote
 
 import cv2
 import numpy as np
@@ -439,6 +440,100 @@ def fill_folder_cache(db_path):
     conn.commit()
 
 
+@app.get("/images", response_class=HTMLResponse)
+def show_image(
+        request: Request,
+        user: str = Depends(require_login)
+):
+    # Query-Parameter sicher parsen
+    try:
+        page = int(request.query_params.get('page') or 1)
+        count = int(request.query_params.get('count') or 1)
+    except ValueError:
+        page = 1
+        count = 1
+
+    folder_name = request.query_params.get('folder', 'real')
+    textflag = request.query_params.get('textflag', '1')
+    image_name = request.query_params.get('image_name', '')
+    image_name = unquote(image_name).strip()
+    image_name = image_name.strip().lower()
+    pagecounter = 0
+
+    for image_name_l in pair_cache:
+        pair = pair_cache[image_name_l]
+        image_id = pair.get("image_id", "")
+        if is_file_in_folder(image_id, folder_name):
+            pagecounter += 1
+            if image_name_l.strip().lower() == image_name:
+                clean(image_name)
+                return RedirectResponse(
+                    url=f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}"
+                )
+
+    # Fallback, wenn Bild nicht gefunden wurde
+    return RedirectResponse(
+        url=f"/gallery/?page={page}&count={count}&folder={folder_name}&textflag={textflag}"
+    )
+
+
+@app.get("/clean")
+def clean_image(image_name: str = Query(...)):
+    return clean(image_name)
+
+
+def clean(image_name: str):
+    global rendered_image_cache, text_cache
+    print(f"Bereinige Bild: {image_name}")
+
+    # Eintrag aus Datenbank löschen
+    with sqlite3.connect(DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+                       DELETE
+                       FROM checkbox_status
+                       WHERE LOWER(image_name) = LOWER(?)
+                       """, (image_name,))  # <-- Tupel beachten!
+
+        cursor = conn.cursor()
+        cursor.execute("""
+                       DELETE
+                       FROM image_quality_scores
+                       WHERE LOWER(image_name) = LOWER(?)
+                       """, (image_name,))  # <-- Tupel beachten!
+
+    # Caches bereinigen, falls Schlüssel vorhanden
+    if image_name in text_cache:
+        print(f"[clean_image] ✅ text_cache gelöscht {image_name}")
+        text_cache.pop(image_name, None)
+
+    image_id = find_image_id_by_name(image_name)
+    for i in range(1, 5):
+        key = f"{image_id}_{i}"
+        if key in rendered_image_cache:
+            print(f"[clean_image] ✅ rendered_image_cache gelöscht {key}")
+            rendered_image_cache.pop(f"{key}", None)
+        else:
+            print(f"[clean_image] ❌ rendered_image_cache leer {key}")
+
+    thumbnail_path = os.path.join(THUMBNAIL_CACHE_DIR_300, image_name)
+    if os.path.exists(thumbnail_path):
+        print(f"[clean_image] ✅ gelöscht {thumbnail_path}")
+        os.remove(thumbnail_path)
+
+    face_dir = Path(GESICHTER_FILE_CACHE_DIR)
+    base_name = Path(image_name).stem
+    # Alle passenden Dateien wie "img_0555_0.jpg", "img_0555_1.jpg", ...
+    for file in face_dir.glob(f"{base_name}_*.jpg"):
+        try:
+            file.unlink()
+            print(f"[clean_image] ✅ gelöscht {file}")
+        except Exception as e:
+            print(f"[clean_image] ❌ Fehler beim Löschen von {file}: {e}")
+
+    return JSONResponse(content={"status": "ok", "image_name": image_name})
+
+
 @app.get("/", response_class=HTMLResponse)
 def show_images(
         request: Request,
@@ -446,14 +541,20 @@ def show_images(
     if not app_ready:
         return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
 
-    user = request.session.get("user")
-    if not user:
-        return RedirectResponse(url="/gallery/login")
-
     page = int(request.query_params.get('page', '1') or 1)
     count = int(request.query_params.get('count', '1') or 1)
     folder_name = request.query_params.get('folder', 'real')
     textflag = request.query_params.get('textflag', '1')
+
+    try:
+        lastpage = int(request.query_params.get('lastpage', 0))
+    except ValueError:
+        lastpage = 0
+
+    try:
+        lastcount = int(request.query_params.get('lastcount', 0))
+    except ValueError:
+        lastcount = 0
 
     start = (page - 1) * count
     end = start + count
@@ -481,7 +582,7 @@ def show_images(
         if image_id_text in rendered_image_cache:
             images_html_parts.append(rendered_image_cache[image_id_text])
         else:
-            image_data = prepare_image_data(folder_name, image_name)
+            image_data = prepare_image_data(min(count, total_images), folder_name, image_name)
 
             match textflag:
                 case '1':
@@ -490,14 +591,14 @@ def show_images(
                     textmode = "none"
                 case '2':
                     # ganzer Text
-                    text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                    text_content = text_cache.get(image_name, KEIN_TEXT_GEFUNDEN)
                     if KEIN_TEXT_GEFUNDEN == text_content:
                         set_status(image_name, recheck)
                 case '3':
                     # nur erste Zeile
                     text_content = ""
                     textmode = "first_line"
-                    text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                    text_content = text_cache.get(image_name, KEIN_TEXT_GEFUNDEN)
                     if KEIN_TEXT_GEFUNDEN == text_content:
                         set_status(image_name, recheck)
                     lines = text_content.splitlines()
@@ -505,7 +606,7 @@ def show_images(
                         text_content = lines[0]
                 case '4':
                     # kein Englisch
-                    text_content = text_cache.get(image_id, KEIN_TEXT_GEFUNDEN)
+                    text_content = text_cache.get(image_name, KEIN_TEXT_GEFUNDEN)
                     if KEIN_TEXT_GEFUNDEN == text_content:
                         set_status(image_name, recheck)
 
@@ -530,7 +631,8 @@ def show_images(
                 extra_thumbnails=image_data["extra_thumbnails"]
             )
 
-            rendered_image_cache[image_id_text] = rendered_html
+            if min(count, total_images) > 1:
+                rendered_image_cache[image_id_text] = rendered_html
 
             images_html_parts.append(rendered_html)
 
@@ -553,6 +655,11 @@ def show_images(
     # Berechnung total_pages
     total_pages = max(1, math.ceil(total_images / count))
 
+    if lastpage > 0 and lastcount > 0:
+        lastcall = f"/gallery/?{lastpage}=1&count={lastcount}&folder={folder_name}&textflag={textflag}"
+    else:
+        lastcall = ""
+
     return templates.TemplateResponse("image_gallery_local.j2", {
         "request": request,
         "page": page,
@@ -561,7 +668,8 @@ def show_images(
         "count": count,
         "textflag": textflag,
         "kategorien": kategorien,
-        "images_html": ''.join(images_html_parts)
+        "images_html": ''.join(images_html_parts),
+        "lastcall": lastcall
     })
 
 
@@ -674,23 +782,26 @@ def is_file_in_folder(image_id: str, folder_name: str) -> bool:
     return image_id in parents
 
 
-def prepare_image_data(folder_name: str, image_name: str):
+def prepare_image_data(count: int, folder_name: str, image_name: str):
     """Bereitet alle Variablen für ein einzelnes Bild vor, inkl. Qualität."""
     image_name = image_name.lower()
     pair = pair_cache[image_name]
     image_id = pair['image_id']
 
     try:
-        if image_id not in text_cache:
+        if image_name not in text_cache:
             content = download_text_file(folder_name, image_name, TEXT_FILE_CACHE_DIR)
-            text_cache[image_id] = content
+            text_cache[image_name] = content
     except Exception as e:
-        text_cache[image_id] = f"Fehler beim Laden: {e}"
+        text_cache[image_name] = f"Fehler beim Laden: {e}"
 
     local_thumbnail_path = download_and_save_image(folder_name, image_name)
 
     if local_thumbnail_path and os.path.exists(local_thumbnail_path):
-        thumbnail_src = f"/gallery/static/thumbnails/{image_name}"
+        if count != 1:
+            thumbnail_src = f"/gallery/static/thumbnails/{image_name}"
+        else:
+            thumbnail_src = f"/gallery/static/imagefiles/{folder_name}/{image_name}"
     else:
         thumbnail_src = "https://via.placeholder.com/150?text=Kein+Bild"
 
@@ -1282,6 +1393,7 @@ def load_quality(folder_name: str, image_name: str):
 
 
 def faces(folder_name: str, image_name: str) -> int | None:
+    score_type = 3
     """
     Analysiert ein Bild, erkennt Gesichter und speichert die Anzahl der erkannten Gesichter
     in der Datenbank. Zusätzlich werden die erkannten Gesichter als separate Bilddateien gespeichert.
@@ -1294,28 +1406,26 @@ def faces(folder_name: str, image_name: str) -> int | None:
         int | None: Anzahl der erkannten Gesichter oder None bei einem Fehler.
     """
     try:
-        # Bildpfad erstellen
-        image_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
-        if not image_path.is_file():
-            logging.warning(f"[gesichter] Datei nicht gefunden: {image_path}")
-            return None
-
         # Datenbankverbindung herstellen
         with sqlite3.connect(DB_PATH) as conn:
-            # cursor = conn.cursor()
-            # cursor.execute("DELETE FROM image_quality_scores WHERE score_type=3")  # <<< Sauber löschen
+            image_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
 
-            # Überprüfen, ob bereits ein Eintrag existiert
             cursor = conn.cursor()
             cursor.execute("""
                            SELECT score
                            FROM image_quality_scores
-                           WHERE score_type = 3
+                           WHERE score_type = ?
                              AND LOWER(image_name) = LOWER(?)
-                           """, (image_name,))
+                           """, (score_type, image_name))
             row = cursor.fetchone()
             if row:
+                logging.info(f"[gesichter] wurden schon verarbeitet: {image_path}")
                 return row[0]
+
+            # Bildpfad erstellen
+            if not image_path.is_file():
+                logging.warning(f"[gesichter] Datei nicht gefunden: {image_path}")
+                return None
 
             # Bild laden
             img = cv2.imread(str(image_path))
@@ -1352,7 +1462,7 @@ def faces(folder_name: str, image_name: str) -> int | None:
             cursor.execute("""
                 INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
                 VALUES (?, ?, ?)
-            """, (image_name, 3, count))
+            """, (image_name, score_type, count))
             conn.commit()
 
             return count
@@ -1388,6 +1498,13 @@ def list_all_images_one_level(image_file_cache_dir: Path):
     files = list(image_file_cache_dir.glob("*.*"))  # direkt im Hauptverzeichnis
     files += list(image_file_cache_dir.glob("*/*.*"))  # genau eine Ebene tiefer
     return files
+
+
+def find_image_id_by_name(image_name):
+    pair = pair_cache.get(image_name)
+    if pair:
+        return pair.get("image_id")
+    return None  # nicht gefunden
 
 
 def find_image_name_by_id(image_id):
