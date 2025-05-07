@@ -661,7 +661,7 @@ def show_images(
     total_pages = max(1, math.ceil(total_images / count))
 
     if lastpage > 0 and lastcount > 0:
-        lastcall = f"/gallery/?{lastpage}=1&count={lastcount}&folder={folder_name}&textflag={lasttextflag}"
+        lastcall = f"/gallery/?page={lastpage}&count={lastcount}&folder={folder_name}&textflag={lasttextflag}"
     else:
         lastcall = ""
 
