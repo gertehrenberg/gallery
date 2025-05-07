@@ -468,7 +468,7 @@ def show_image(
             if image_name_l.strip().lower() == image_name:
                 clean(image_name)
                 return RedirectResponse(
-                    url=f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}"
+                    url=f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}&lasttextflag={textflag}"
                 )
 
     # Fallback, wenn Bild nicht gefunden wurde
@@ -555,6 +555,11 @@ def show_images(
         lastcount = int(request.query_params.get('lastcount', 0))
     except ValueError:
         lastcount = 0
+
+    try:
+        lasttextflag = int(request.query_params.get('lasttextflag', 0))
+    except ValueError:
+        lasttextflag = 0
 
     start = (page - 1) * count
     end = start + count
@@ -656,7 +661,7 @@ def show_images(
     total_pages = max(1, math.ceil(total_images / count))
 
     if lastpage > 0 and lastcount > 0:
-        lastcall = f"/gallery/?{lastpage}=1&count={lastcount}&folder={folder_name}&textflag={textflag}"
+        lastcall = f"/gallery/?{lastpage}=1&count={lastcount}&folder={folder_name}&textflag={lasttextflag}"
     else:
         lastcall = ""
 
