@@ -2,7 +2,13 @@
 # Gehe von utils/ in das übergeordnete gallery/
 cd "$(dirname "$0")/.." || exit 1
 
-zip -r gallery_export.zip . \
+# Aktuelles Datum/Zeit-Format: Jahr-Monat-Tag_Stunde-Minute
+timestamp=$(date +"%Y-%m-%d_%H-%M")
+
+# Ziel-Dateiname mit Zeitstempel
+zipfile="./cache/zips/${timestamp}_gallery_export.zip"
+
+zip -r "$zipfile" . \
   -x "*.db" \
   -x "*.pyc" \
   -x "__pycache__/*" \
