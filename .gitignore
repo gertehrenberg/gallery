@@ -1,0 +1,29 @@
+# Bytecode, Cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Entwicklungsverzeichnisse
+.idea/
+.vscode/
+.DS_Store
+
+# Temporäre/voluminöse Daten
+cache/
+cache/*
+cache/**/*
+secrets/
+secrets/*
+secrets/**/*
+temp/
+imagefiles/
+thumbnails/
+facefiles/
+
+# Datenbanken
+*.db
+*.sqlite
+
+# Versionskontrolle
+.git/
+.gitignore

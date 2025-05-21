@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Galerie – Seite {{ page }}</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            background: #f7f7f7;
+        }
+
+        /* Grid-Container für Einträge */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 10px;
+            padding: 10px;
+            width: 100%;
+            row-gap: 2px;
+        }
+
+        /* Einzelner Eintrag */
+        .eintrag {
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 10px;
+            box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 95%;
+        }
+
+        /* Bildbereich */
+        .bild-wrapper {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        /* Bild selbst */
+        .bild {
+            width: 100%;
+            max-width: 250px;
+            height: auto;
+            border-radius: 8px;
+            cursor: pointer;
+        }
+
+        /* Checkbox-Container */
+        .checkbox-container {
+            display: flex;
+            flex-direction: column;
+            gap: 0px;
+        }
+
+        /* Checkbox-Labels */
+        .checkbox-container label {
+            display: block;
+            margin-bottom: 0px;
+            font-size: 0.7em;
+            padding: 0;
+        }
+
+        /* Bildname-Box */
+        .bildname-box {
+            display: flex;
+            justify-content: center;
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            padding: 5px;
+            margin-top: 10px;
+            background: #f5f5f5;
+            font-size: 0.7em;
+        }
+
+        /* Bildname-Text */
+        .bildname {
+            color: #555;
+            text-align: center;
+            margin-top: 8px;
+            font-size: 0.7em;
+        }
+
+        /* Bildbeschreibung/Text */
+        .text {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #333;
+            white-space: pre-wrap;
+        }
+
+        /* Sticky Navigation oben */
+        .sticky-nav {
+            position: sticky;
+            top: 0;
+            background: #fff;
+            padding: 8px 20px;
+            border-bottom: 1px solid #ddd;
+            text-align: center;
+            font-size: 1.1em;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 20px;
+            z-index: 1000;
+            max-width: 100%; /* Begrenze die maximale Breite */
+        }
+
+        /* Links und Texte in der Navigation */
+        .sticky-nav a,
+        .sticky-nav span {
+            text-decoration: none;
+            color: #333;
+            font-weight: bold;
+        }
+
+        /* Hover-Effekt Navigation */
+        .sticky-nav a:hover {
+            color: #007bff;
+        }
+
+        .modal {
+            position: fixed;
+            z-index: 9999;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal img {
+            max-width: 90vw;
+            max-height: 90vh;
+            object-fit: contain;
+            display: block;
+            margin: auto;
+        }
+
+        .close {
+            position: absolute;
+            top: 20px;
+            right: 40px;
+            z-index: 10001;
+            font-size: 32px;
+            color: white;
+            background: rgba(0, 0, 0, 0.5);
+            border: none;
+            padding: 6px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+
+        #menu {
+            display: none;
+            margin-top: 10px;
+            background: white;
+            box-shadow: 0 0 5px #ccc;
+            border-radius: 10px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        #spinner {
+            position: absolute;
+            z-index: 9999;
+            border: 6px solid #f3f3f3;
+            border-top: 6px solid white;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: none;
+        }
+
+        #zoomWrapper {
+            cursor: grab;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: translate(-50%, -50%) rotate(0deg);
+            }
+            100% {
+                transform: translate(-50%, -50%) rotate(360deg);
+            }
+        }
+
+        .thumbnail-mini {
+            width: 50px;
+            height: 20px;
+            object-fit: cover;
+            margin-right: 4px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+
+        .thumbnails-row {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            gap: 4px;
+            margin-top: 6px;
+            overflow-x: auto;
+        }
+
+        .config-section {
+            display: none;
+            margin-top: 1rem;
+            border-top: 1px solid #ccc;
+            padding-top: 0.5rem;
+        }
+
+        .config-section.show {
+            display: block;
+        }
+
+        button.section-toggle {
+            background: none;
+            border: none;
+            color: #007BFF;
+            text-align: left;
+            padding: 0;
+            margin-top: 0.5rem;
+            cursor: pointer;
+        }
+
+    </style>
+    <style>
+        .nsfw-bars {
+            margin-top: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .nsfw_quality-bar {
+            margin-top: 3px;
+            position: relative;
+            height: 10px;
+            background: linear-gradient(to right, green, yellow, red);
+            border-radius: 5px;
+            overflow: hidden;
+            cursor: pointer;
+        }
+
+        .nsfw_quality-bar .nsfw_bar {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .nsfw_quality-bar .nsfw_marker {
+            position: absolute;
+            top: -1px; /* leicht oberhalb des Balkens */
+            transform: translateX(-50%);
+            background: transparent;
+            color: rgba(0, 0, 0, 0.6); /* halbtransparentes Schwarz */
+            padding: 0;
+            font-size: 11px;
+            font-weight: normal;
+            line-height: 1;
+            z-index: 2;
+        }
+
+        /* Tooltip */
+        .nsfw_quality-bar::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            right: -5px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.75);
+            color: #fff;
+            padding: 3px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            white-space: nowrap;
+            z-index: 10;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+            pointer-events: none;
+        }
+
+        .nsfw_quality-bar:hover::after {
+            opacity: 1;
+        }
+
+        .nsfw_quality-bar:nth-child(3) {
+            background: linear-gradient(to right, red, yellow, green);
+        }
+    </style>
+</head>
+<body>
+<div
+        id="hamburger"
+        style="position: fixed; top: 40px; left: 20px; z-index: 1000"
+>
+    <button
+            onclick="toggleMenu()"
+            style="padding: 8px 12px; font-size: 0.8em"
+    >
+        ☰
+    </button>
+    <div id="menu">
+        <hr style="margin: 10px 0"/>
+        <div style="display: flex; align-items: center; gap: 6px">
+            <input
+                    id="gotoPageInput"
+                    max="{{ total_pages }}"
+                    min="1"
+                    placeholder="Seite..."
+                    style="width: 60px; padding: 4px"
+                    type="number"
+            />
+            <button onclick="gotoPage()">Gehe zu Seite</button>
+        </div>
+        <hr style="margin: 10px 0"/>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+            {% for k in kategorien %}
+                <div style="display: flex; gap: 6px;">
+                    <button onclick="moveToFolder({{ kategorien }}, '{{ k.key }}')"
+                            style="padding: 6px 10px; border-radius: 5px; width: 180px;">
+                        {{ k.icon }} {{ k.label }} (<span id="count-{{ k.key }}">?</span>)
+                    </button>
+                    <button
+                            onclick="navigateToFolder({{ kategorien }}, '{{ k.key }}', {{ count }})"
+                            style="padding: 6px 10px; border-radius: 5px; width: 40px; {{ 'background: #eef;' if folder_name == k.key else '' }}">
+                        📂
+                    </button>
+                </div>
+            {% endfor %}
+        </div>
+        <div style="padding: 6px 10px; border-radius: 5px; width: 80px; background: #eef; text-align: center; margin-bottom: 6px;">
+            <button onclick="logout()" style="
+        background: none;
+        border: none;
+        color: #000;
+        font-size: 0.9em;
+        cursor: pointer;
+        padding: 0;
+    ">
+                🔒 Logout
+            </button>
+        </div>
+        <button class="section-toggle" onclick="toggleConfigSection()">▶ Configuration</button>
+        <div id="configSection" class="config-section">
+            <form id="configForm">
+                <fieldset>
+                    <legend>Textanzeige</legend>
+                    <label><input type="radio" name="textOption" value="1"{% if textflag == '1' %} checked{% endif %}>
+                        keine Anzeige</label><br>
+                    <label><input type="radio" name="textOption" value="2"{% if textflag == '2' %} checked{% endif %}>
+                        ganzer Text</label><br>
+                    <label><input type="radio" name="textOption" value="3"{% if textflag == '3' %} checked{% endif %}>
+                        nur erste Zeile</label><br>
+                    <label><input type="radio" name="textOption" value="4"{% if textflag == '4' %} checked{% endif %}>
+                        kein Englisch</label><br>
+                </fieldset>
+            </form>
+        </div>
+    </div>
+</div>
+<div class="sticky-nav">
+    {% if page > 1 %}
+        <a
+                href="#"
+                onclick="saveAndGo(1, {{ count }}, '{{ folder_name }}')"
+        >⏮ Anfang</a
+        >
+        <a
+                href="#"
+                onclick="saveAndGo({{ page - 1 }}, {{ count }}, '{{ folder_name }}')"
+        >⬅ Zurück</a
+        >
+    {% else %}
+        <span style="color: #ccc">⏮ Anfang</span>
+        <span style="color: #ccc">⬅ Zurück</span>
+    {% endif %}
+    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
+        <button style="padding: 4px 8px; font-size: 12px;"
+                onclick="saveAndGo({{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ folder_name }}')">
+            ➗2
+        </button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
+        <button style="padding: 4px 8px; font-size: 12px;"
+                onclick="saveAndGo({{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ folder_name }}')">
+            ➖
+        </button>
+    </div>
+    {% if lastcall %}
+        <button onclick="window.location.href='{{ lastcall }}'" style="margin:1em;">↩️</button>
+    {% endif %}
+    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
+        <button style="padding: 4px 8px; font-size: 12px;"
+                onclick="saveAndGo({{ page }}, {{ count }}, '{{ folder_name }}')">
+            Seite {{ page }} von {{ total_pages }} ({{ total_images }})
+        </button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
+        <button style="padding: 4px 8px; font-size: 12px;"
+                onclick="saveAndGo({{ page }}, {{ count + 1 }}, '{{ folder_name }}')">
+            ➕
+        </button>
+    </div>
+    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
+        <button style="padding: 4px 8px; font-size: 12px;"
+                onclick="saveAndGo({{ page }}, {{ count * 2 }}, '{{ folder_name }}')">
+            ✖️2
+        </button>
+    </div>
+    {% if page < total_pages %}
+        <a
+                href="#"
+                onclick="saveAndGo({{ page + 1 }}, {{ count }}, '{{ folder_name }}')"
+        >Weiter ➡</a
+        >
+        <a
+                href="#"
+                onclick="saveAndGo({{ total_pages }}, {{ count }}, '{{ folder_name }}')"
+        >⏭ Ende</a
+        >
+    {% else %}
+        <span style="color: #ccc">Weiter ➡</span>
+        <span style="color: #ccc">⏭ Ende</span>
+    {% endif %}
+</div>
+
+<div class="grid">{{ images_html | safe }}</div>
+
+<!-- Modal-Container -->
+<div id="meinModal"
+     style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.8); z-index:1000;">
+    <!-- statt: <span onclick="closeModal" ... -->
+    <button class="close" onclick="closeModal()">×</button>
+    <div id="panzoomContainer"
+         style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; position:relative; overflow:hidden;">
+        <div id="zoomWrapper">
+            <img id="zoomImage" src="" style="display: block; max-width: 90vw; max-height: 90vh;"/>
+        </div>
+        <div id="spinner"></div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/@panzoom/panzoom/dist/panzoom.min.js"></script>
+<script>
+    const TEXTFLAG = "{{ textflag }}";
+    const PAGE = parseInt("{{ page }}");
+    const COUNT = parseInt("{{ count }}");
+    const FOLDER = "{{ folder_name }}";
+
+    const kategorien = {{ kategorien | tojson }};
+
+    function toggleConfigSection() {
+        const section = document.getElementById("configSection");
+        if (!section) return;
+        section.classList.toggle("show");
+    }
+
+    document.getElementById("configForm").addEventListener("change", function (e) {
+        if (e.target.name === "textOption") {
+            const newFlag = e.target.value;
+            const url = new URL(window.location.href);
+            url.searchParams.set("page", PAGE);
+            url.searchParams.set("count", COUNT);
+            url.searchParams.set("folder", FOLDER);
+            url.searchParams.set("textflag", newFlag);
+            window.location.href = url.toString();
+        }
+    });
+
+    let panzoomInstance;
+
+    function openModal(image_name) {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        const spinner = document.getElementById("spinner");
+
+        spinner.style.display = "block"; // Spinner zeigen
+
+        img.onload = () => {
+            spinner.style.display = "none"; // Spinner verstecken
+            modal.style.display = "flex";
+
+            if (panzoomInstance) panzoomInstance.destroy();
+            panzoomInstance = Panzoom(img, {
+                maxScale: 5,
+                minScale: 1,
+                contain: 'outside'
+            });
+
+            img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+            img.addEventListener('dblclick', () => panzoomInstance.reset());
+        };
+
+        img.src = "/gallery/static/imagefiles/" + image_name;
+    }
+
+    function openModalThumb(image_name) {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        const spinner = document.getElementById("spinner");
+
+        spinner.style.display = "block"; // Spinner zeigen
+
+        img.onload = () => {
+            spinner.style.display = "none"; // Spinner verstecken
+            modal.style.display = "flex";
+
+            if (panzoomInstance) panzoomInstance.destroy();
+            panzoomInstance = Panzoom(img, {
+                maxScale: 5,
+                minScale: 1,
+                contain: 'outside'
+            });
+
+            img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+            img.addEventListener('dblclick', () => panzoomInstance.reset());
+        };
+
+        img.src = "/gallery/static/facefiles/" + image_name;
+    }
+
+    function closeModal() {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        modal.style.display = "none";
+        img.src = "";
+        if (panzoomInstance) panzoomInstance.destroy();
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === "Escape") closeModal();
+    });
+
+    function save() {
+        return Array.from(document.querySelectorAll("form.checkbox-container")).map(
+            (form) => {
+                const entry = {};
+                // Extrahiere image_id aus dem Formular
+                entry.image_id = form.querySelector('[name="image_id"]').value;
+
+                // Gehe durch alle Kategorien und speichere die Checkbox-Werte
+                kategorien.forEach((cat) => {
+                    // Name der Checkbox angepasst an das Format img_5242.jpg_<key>
+                    const box = form.querySelector(
+                        `[name="${entry.image_id}_${cat.key}"]`
+                    );
+                    entry[cat.key] = box && box.checked ? "on" : ""; // 'on' wenn angekreuzt, sonst leer
+                });
+
+                // Notiz extrahieren
+                entry.notiz = form.querySelector('[name="notiz"]')?.value || "";
+                return entry;
+            }
+        );
+    }
+
+    function saveAndGoName(image_name) {
+        saveAndGo(PAGE, COUNT, FOLDER, image_name)
+    }
+
+    function saveAndGo(targetPage, count, folder, image_name) {
+        data = save()
+
+        // Sende die Daten an den Server
+        Promise.all(
+            data.map((entry) =>
+                fetch("/gallery/save", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    body: new URLSearchParams(entry),
+                })
+            )
+        )
+            .then(() => {
+                const url = new URL(window.location.href);
+
+                // Alle vorhandenen Suchparameter entfernen
+                url.search = '';
+
+                if (image_name) {
+                    url.pathname = '/gallery/images';
+                    url.searchParams.set("image_name", image_name);
+
+                } else {
+                    url.pathname = '/gallery/';
+                }
+
+                url.searchParams.set("page", targetPage);
+                url.searchParams.set("count", count);
+                if (COUNT !== parseInt(count)) {
+                    url.searchParams.set("lastindex", PAGE * COUNT);
+                }
+                url.searchParams.set("folder", folder);
+                url.searchParams.set("textflag", TEXTFLAG);
+                window.location.href = url.toString();
+            })
+            .catch((err) => {
+                alert("Fehler beim Speichern!");
+                console.error(err);
+            });
+    }
+
+    function gotoPage() {
+        const input = document.getElementById("gotoPageInput");
+        const page = parseInt(input.value);
+        if (!page || page < 1 || page > {{ total_pages }}) {
+            alert("Ungültige Seitenzahl (1–{{ total_pages }})");
+            return;
+        }
+        toggleMenu();
+        saveAndGo(page, {{ count }}, "{{ folder_name }}");
+    }
+
+    document.getElementById("gotoPageInput").addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            gotoPage();
+        }
+    });
+
+    function toggleMenu() {
+        const menu = document.getElementById("menu");
+        const visible = menu.style.display === "block";
+        menu.style.display = visible ? "none" : "block";
+        localStorage.setItem("menuOpen", !visible);
+    }
+
+    function logout() {
+        // Menü ausblenden
+        const menu = document.getElementById("menu");
+        menu.style.display = "none";
+        localStorage.setItem("menuOpen", false);
+
+        const url = new URL(window.location.href);
+        url.pathname = "/gallery/logout";
+        window.location.href = url.toString();
+    }
+
+    function navigateToFolder(kategorien, cat, count) {
+        // Menü ausblenden
+        const menu = document.getElementById("menu");
+        menu.style.display = "none";
+        localStorage.setItem("menuOpen", false);
+
+        // URL neu setzen
+        const url = new URL(window.location.href);
+
+        // Werte setzen (page und count hier neu festlegen!)
+        url.searchParams.set("page", 1); // beim Ordnerwechsel immer auf Seite 1
+        url.searchParams.set("count", count); // kannst du ggf. anpassen
+        url.searchParams.set("folder", cat); // der neue Folder
+        url.searchParams.set("textflag", TEXTFLAG);
+
+        window.location.href = url.toString(); // Seite neu laden
+    }
+
+    function moveToFolder(kategorien, cat) {
+        const labelMap = Object.fromEntries(
+            kategorien.map((k) => [k.key, k.label])
+        );
+
+        fetch(`/gallery/moveToFolder/${cat}`)
+            .then((res) => res.json())
+            .then((data) => {
+                const count = data.count;
+
+                if (count === 0) {
+                    alert(`Keine Bilder zum ${labelMap[cat]} vorhanden.`);
+                    return;
+                }
+
+                const ok = confirm(
+                    `${count} Bild(er) würden nach '${labelMap[cat]}' verschoben. Fortfahren?`
+                );
+
+                if (ok) {
+                    const currentParams = new URLSearchParams(window.location.search);
+                    const countValue = currentParams.get("count") || "6";
+                    const orgfolder = currentParams.get("folder") || "real";
+
+                    fetch(`/gallery/moveToFolder/${cat}?count=${countValue}&folder=${orgfolder}&textflag=${TEXTFLAG}`, {
+                        method: "POST"
+                    })
+                        .then((res) => res.json())
+                        .then((response) => {
+                            localStorage.setItem("menuOpen", "false");
+                            const moved = response.moved || 0;
+                            const targetUrl = `?page=1&count=${countValue}&folder=${cat}&textflag=${TEXTFLAG}&done=${cat}&moved=${moved}`;
+                            window.location.href = targetUrl;
+                        })
+                        .catch((err) => {
+                            console.error("Fehler beim POST:", err);
+                            alert("❌ Beim Verschieben ist ein Fehler aufgetreten.");
+                        });
+                }
+            });
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+        const menu = document.getElementById("menu");
+        const params = new URLSearchParams(window.location.search);
+        const done = params.get("done");
+
+        if (done) {
+            const moved = params.get("moved");
+            const msg = document.createElement("div");
+            msg.innerText = moved
+                ? `✅ ${moved} Bild(er) wurden nach '${done}' verschoben.`
+                : `✅ Bilder wurden nach '${done}' verschoben.`;
+            msg.style.position = "fixed";
+            msg.style.top = "10px";
+            msg.style.right = "10px";
+            msg.style.padding = "10px 20px";
+            msg.style.background = "#4caf50";
+            msg.style.color = "white";
+            msg.style.borderRadius = "8px";
+            msg.style.zIndex = 1000;
+            document.body.appendChild(msg);
+
+            setTimeout(() => {
+                msg.remove();
+
+                // Entferne done und moved aus der URL, ohne Seite neu zu laden
+                const cleanParams = new URLSearchParams(window.location.search);
+                cleanParams.delete("done");
+                cleanParams.delete("moved");
+                const newUrl = `${window.location.pathname}?${cleanParams.toString()}`;
+                window.history.replaceState({}, document.title, newUrl);
+            }, 2500);
+
+            localStorage.setItem("menuOpen", "false");
+            menu.style.display = "none";
+        } else {
+            const saved = localStorage.getItem("menuOpen");
+            menu.style.display = saved === "true" ? "block" : "none";
+        }
+
+        // Zähler für Kategorien aktualisieren
+        if (typeof kategorien !== "undefined") {
+            kategorien.forEach((cat) => {
+                fetch(`/gallery/verarbeite/check/${cat.key}`)
+                    .then((res) => res.json())
+                    .then((data) => {
+                        const elem = document.getElementById(`count-${cat.key}`);
+                        if (elem) elem.textContent = data.count;
+                    });
+            });
+        }
+    });
+
+</script>
+</body>
+</html>

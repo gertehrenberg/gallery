@@ -1,0 +1,79 @@
+<div class="eintrag">
+    <table style="width: 100%; table-layout: fixed">
+        <tr>
+            <td colspan="2" class="bildname">
+                <span style="cursor:pointer; margin-left:10px;" onclick="saveAndGoName('{{ image_name }}')">
+                    🔍
+                </span>
+                {{ image_name }}
+            </td>
+        </tr>
+        <tr>
+            <!-- Bild in der ersten Spalte -->
+            <td style="width: 60%; vertical-align: top">
+                {% if nsfw_scores %}
+                    <div class="nsfw-bars">
+                        {% for label, value in nsfw_scores.items() %}
+                            <div class="nsfw_quality-bar" data-tooltip="{{ label }}: {{ value }}">
+                                <div class="nsfw_bar" style="width: 100%">
+                                    <div class="nsfw_marker" style="left: {{ value }}%">●</div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <img
+                        alt="{{ image_name }}"
+                        class="bild"
+                        onclick="openModal('{{ folder_name }}/{{ image_name }}')"
+                        src="{{ thumbnail_src }}"
+                        style="cursor: pointer; max-width: 100%"
+                />
+
+                {% if quality_scores %}
+                    <div class="nsfw-bars">
+                        {% for label, value in quality_scores.items() %}
+                            <div class="nsfw_quality-bar" data-tooltip="{{ label }}: {{ value }}">
+                                <div class="nsfw_bar" style="width: 100%">
+                                    <div class="nsfw_marker" style="left: {{ value }}%">●</div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <!-- Zusätzliche Thumbnails -->
+                <div class="thumbnails-row">
+                    {% for thumb in extra_thumbnails %}
+                        <img
+                                src="{{ thumb.src }}"
+                                alt="extra"
+                                class="thumbnail-mini"
+                                onclick="openModalThumb('{{ thumb.image_name }}')"
+                                style="cursor: pointer"/>
+                    {% endfor %}
+                </div>
+            </td>
+            <td style="width: 40%; vertical-align: top; padding-left: 10px">
+                <div id="checkboxes-{{ image_id }}">
+                    <form class="checkbox-container">
+                        <input name="image_id" type="hidden" value="{{ image_id }}"/>
+                        <!-- Verstecktes Eingabefeld für image_name -->
+                        {% for k in kategorien %}
+                            <label>
+                                <input name="{{ image_id }}_{{ k.key }}"
+                                       type="checkbox" {{ 'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label }}
+                            </label>
+                        {% endfor %}
+                    </form>
+                </div>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="2">
+                <div class="text">{{ text_content | safe }}</div>
+            </td>
+        </tr>
+    </table>
+</div>

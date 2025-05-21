@@ -1,0 +1,23 @@
+services:
+  gallery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gallery
+    user: "1000:1000"
+    networks:
+      - n8n-netz
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - ./secrets:/app/secrets
+      - ./cache:/data
+      - ./cache/thumbnailfiles300:/app/thumbnails
+      - ./cache/imagefiles:/app/imagefiles
+      - ./cache/facefiles:/app/facefiles
+    restart: unless-stopped
+
+networks:
+  n8n-netz:
+    external: true
