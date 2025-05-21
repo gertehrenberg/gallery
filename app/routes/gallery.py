@@ -193,7 +193,7 @@ def show_images_gallery(
         <script>
         const checkboxStatus_{image_id} = {status_json};
         for (const key in checkboxStatus_{image_id}) {{
-            const checkbox = document.querySelector(\'input[name="${{key}}"]\');
+            const checkbox = document.querySelector(`input[name="${{key}}"]`);  // <-- RICHTIG: Backticks!
             if (checkbox) {{
                 checkbox.checked = checkboxStatus_{image_id}[key];
             }}

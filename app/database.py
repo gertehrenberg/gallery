@@ -216,7 +216,7 @@ def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, 
                  retries: int = 5) -> bool:
     logging.info(f"[move_file_db] 🔁 move_file_db({image_name}, {old_folder_id} → {new_folder_id})")
     image_name = image_name.lower()
-    global pair_cache
+    pair_cache = Settings.CACHE.get("pair_cache")
     pair = pair_cache.get(image_name)
     if not pair:
         logging.warning(f"[move_file_db] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
@@ -267,7 +267,7 @@ def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, 
 
 def find_image_id_by_name(image_name: str):
     logging.info(f"[find_image_id_by_name] 🔎 Suche ID für Bild: {image_name}")
-    global pair_cache
+    pair_cache = Settings.CACHE.get("pair_cache")
     pair = pair_cache.get(image_name)
     if pair:
         logging.info(f"[find_image_id_by_name] ✅ Gefunden: {pair.get('image_id')}")
