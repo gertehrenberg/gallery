@@ -407,7 +407,7 @@
     {% endif %}
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ page }}, {{ count }}, '{{ folder_name }}')">
+                onclick="saveAndGoRefresh({{ page }}, {{ count }}, '{{ folder_name }}')">
             Seite {{ page }} von {{ total_pages }} ({{ total_images }})
         </button>
     </div>
@@ -574,6 +574,11 @@
         saveAndGo(PAGE, COUNT, FOLDER, image_name)
     }
 
+    function saveAndGoRefresh(targetPage, count, folder, image_name) {
+        saveAndGo(targetPage, count, folder, image_name)
+        refresh_count()
+    }
+
     function saveAndGo(targetPage, count, folder, image_name) {
         data = save()
 
@@ -712,6 +717,20 @@
             });
     }
 
+    function refresh_count() {
+        // Zähler für Kategorien aktualisieren
+        if (typeof kategorien !== "undefined") {
+            kategorien.forEach((cat) => {
+                fetch(`/gallery/verarbeite/check/${cat.key}`)
+                    .then((res) => res.json())
+                    .then((data) => {
+                        const elem = document.getElementById(`count-${cat.key}`);
+                        if (elem) elem.textContent = data.count;
+                    });
+            });
+        }
+    }
+
     window.addEventListener("DOMContentLoaded", () => {
         const menu = document.getElementById("menu");
         const params = new URLSearchParams(window.location.search);
@@ -751,18 +770,10 @@
             menu.style.display = saved === "true" ? "block" : "none";
         }
 
-        // Zähler für Kategorien aktualisieren
-        if (typeof kategorien !== "undefined") {
-            kategorien.forEach((cat) => {
-                fetch(`/gallery/verarbeite/check/${cat.key}`)
-                    .then((res) => res.json())
-                    .then((data) => {
-                        const elem = document.getElementById(`count-${cat.key}`);
-                        if (elem) elem.textContent = data.count;
-                    });
-            });
-        }
+        refresh_count()
+
     });
+
 
 </script>
 </body>

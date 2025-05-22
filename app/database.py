@@ -1,8 +1,13 @@
 import logging
+import shutil
 import sqlite3
 import time
+from pathlib import Path
 
 from app.config_new import Settings  # Importiere die Settings-Klasse
+from app.tools import find_image_name_by_id
+
+logger = logging.getLogger(__name__)
 
 
 def init_db(db_path):
@@ -222,7 +227,7 @@ def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, 
         logging.warning(f"[move_file_db] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
         return False
     image_id = pair["image_id"]
-    global file_parents_cache
+    file_parents_cache = Settings.CACHE.get("file_parents_cache")
 
     for attempt in range(retries):
         try:
@@ -265,23 +270,72 @@ def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, 
     return False
 
 
-def find_image_id_by_name(image_name: str):
-    logging.info(f"[find_image_id_by_name] 🔎 Suche ID für Bild: {image_name}")
-    pair_cache = Settings.CACHE.get("pair_cache")
-    pair = pair_cache.get(image_name)
-    if pair:
-        logging.info(f"[find_image_id_by_name] ✅ Gefunden: {pair.get('image_id')}")
-        return pair.get("image_id")
-    logging.warning(f"[find_image_id_by_name] ❌ Kein Eintrag gefunden für: {image_name}")
-    return None
+def delete_checkbox_status(image_name: str):
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+                       DELETE
+                       FROM checkbox_status
+                       WHERE LOWER(image_name) = LOWER(?)
+                       """, (image_name,))
 
 
-def find_image_name_by_id(image_id: str):
-    logging.info(f"[find_image_name_by_id] 🔍 Suche Bildname für ID: {image_id}")
-    pair_cache = Settings.CACHE.get("pair_cache")
-    for image_name, pair in pair_cache.items():
-        if pair.get("image_id") == image_id:
-            logging.info(f"[find_image_name_by_id] ✅ Gefunden: {image_name}")
-            return image_name
-    logging.warning(f"[find_image_name_by_id] ❌ Kein Bildname gefunden für ID: {image_id}")
-    return None
+def delete_quality_scores(image_name: str):
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+                       DELETE
+                       FROM image_quality_scores
+                       WHERE LOWER(image_name) = LOWER(?)
+                       """, (image_name,))
+
+
+def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -> int:
+    logger.info(f"📦 Starte move_marked_images_by_checkbox() von '{current_folder}' nach '{new_folder}'")
+
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+                       SELECT image_name
+                       FROM checkbox_status
+                       WHERE checked = 1
+                         AND checkbox = ?
+                       """, (new_folder,))
+        rows = cursor.fetchall()
+
+        logger.info(f"🔍 {len(rows)} markierte Bilder gefunden für '{new_folder}'")
+
+        anzahl_verschoben = 0
+
+        for (image_name,) in rows:
+            if not image_name:
+                logger.warning("⚠️  Leerer image_name – überspringe.")
+                continue
+
+            logger.info(f"➡️  Verarbeite Bild: {image_name}")
+            success = move_file_db(conn, image_name, current_folder, new_folder)
+            if success:
+                try:
+                    conn.execute("""
+                                 DELETE
+                                 FROM checkbox_status
+                                 WHERE image_name = ?
+                                   AND checkbox = ?
+                                 """, (image_name, new_folder))
+
+                    src = Path(Settings.IMAGE_FILE_CACHE_DIR) / current_folder / image_name
+                    dst = Path(Settings.IMAGE_FILE_CACHE_DIR) / new_folder / image_name
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.move(src, dst)
+
+                    logger.info(f"✅ Verschoben: {image_name} → {new_folder}")
+                    anzahl_verschoben += 1
+                except Exception as e:
+                    logger.error(f"❌ Fehler beim Verschieben/Löschen von {image_name}: {e}")
+            else:
+                logger.warning(f"⚠️  move_file_db fehlgeschlagen für {image_name} – kein Verschieben")
+
+        conn.commit()
+        logger.info(f"📊 Insgesamt verschoben: {anzahl_verschoben} Dateien")
+
+    return anzahl_verschoben

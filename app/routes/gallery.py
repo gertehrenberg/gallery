@@ -3,6 +3,7 @@ import logging
 import math
 import os
 import sqlite3
+from pathlib import Path
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Request, Query
@@ -11,11 +12,14 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
 from app.config_new import Settings  # Importiere die Settings-Klasse
-from app.database import set_status, load_status, save_status  # Importiere die benötigten Funktionen
+from app.database import set_status, load_status, save_status, \
+    move_marked_images_by_checkbox  # Importiere die benötigten Funktionen
 from app.dependencies import require_login
-from app.routes.admin import move_marked_images_by_checkbox
 from app.services.cache_management import load_rendered_html_file, save_rendered_html_file
-from app.services.image_processing import prepare_image_data
+from app.services.image_processing import prepare_image_data, clean
+
+DEFAULT_COUNT: str = "6"
+DEFAULT_FOLDER: str = "real"
 
 router = APIRouter()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
@@ -41,12 +45,12 @@ def show_image_redirect(
     """
     try:
         page = int(request.query_params.get('page') or 1)
-        count = int(request.query_params.get('count') or 1)
+        count = int(request.query_params.get('count') or DEFAULT_COUNT)
     except ValueError:
         page = 1
-        count = 1
+        count = DEFAULT_COUNT
 
-    folder_name = request.query_params.get('folder', 'real')
+    folder_name = request.query_params.get('folder', DEFAULT_FOLDER)
     textflag = request.query_params.get('textflag', '1')
     image_name = unquote(request.query_params.get('image_name', '')).strip().lower()
 
@@ -58,7 +62,7 @@ def show_image_redirect(
         if is_file_in_folder(image_id, folder_name):
             pagecounter += 1
             if image_name_l.strip().lower() == image_name:
-                # clean(image_name) # Entfernt, da die Funktion nicht definiert ist.
+                clean(image_name) # Entfernt, da die Funktion nicht definiert ist.
                 return RedirectResponse(
                     url=f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}&lasttextflag={textflag}"
                 )
@@ -80,8 +84,8 @@ def show_images_gallery(
         return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
 
     page = int(request.query_params.get('page', '1') or 1)
-    count = int(request.query_params.get('count', '1') or 1)
-    folder_name = request.query_params.get('folder', 'real')
+    count = int(request.query_params.get('count', DEFAULT_COUNT) or 1)
+    folder_name = request.query_params.get('folder', DEFAULT_FOLDER)
     textflag = request.query_params.get('textflag', '1')
     checkboxstr = request.query_params.get('checkbox', None)
 
@@ -231,10 +235,6 @@ async def save(
     image_id = form.get("image_id")
     data = {key: form.get(key) for key in form if key != "image_id"}
 
-    for key in data:
-        if data[key] == "on":
-            data[key] = True
-
     save_status(image_id, data)
     return {"status": "ok"}
 
@@ -244,6 +244,8 @@ def get_status_for_image(image_name: str, user: str = Depends(require_login)):
     logger.info(f"📥 Lade Status für Bild: {image_name}")
     return load_status(image_name)
 
+def find_file_by_name(root_dir: Path, image_name: str):
+    return list(root_dir.rglob(image_name))
 
 @router.get("/loading_status")
 def loading_status(user: str = Depends(require_login)):
@@ -276,8 +278,8 @@ def verarbeite_check_checkbox(checkbox: str, user: str = Depends(require_login))
 @router.post("/moveToFolder/{checkbox}")
 async def verarbeite_checkbox(
         checkbox: str,
-        count: str = Query("6"),
-        folder: str = Query("real"),
+        count: str = Query(DEFAULT_COUNT),
+        folder: str = Query(DEFAULT_FOLDER),
         user: str = Depends(require_login)):
     logger.info(f"📦 Starte move_marked_images_by_checkbox() von '{folder}' nach '{checkbox}'")
     if checkbox not in Settings.CHECKBOX_CATEGORIES:

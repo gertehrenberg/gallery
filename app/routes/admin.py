@@ -1,16 +1,10 @@
 import logging
 import os
-import shutil
-import sqlite3
 import subprocess
-from pathlib import Path
 
-from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter
 
 from app.config_new import Settings  # Importiere die Settings-Klasse
-from app.database import move_file_db  # Funktion aus database.py importieren
-from app.dependencies import require_login
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -71,54 +65,3 @@ def restore_to_container():
     except subprocess.CalledProcessError as e:
         logger.error(f"❌ Fehler bei restore_to_container(): {e}")
         raise
-
-
-def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -> int:
-    logger.info(f"📦 Starte move_marked_images_by_checkbox() von '{current_folder}' nach '{new_folder}'")
-
-    with sqlite3.connect(Settings.DB_PATH) as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-                       SELECT image_name
-                       FROM checkbox_status
-                       WHERE checked = 1
-                         AND checkbox = ?
-                       """, (new_folder,))
-        rows = cursor.fetchall()
-
-        logger.info(f"🔍 {len(rows)} markierte Bilder gefunden für '{new_folder}'")
-
-        anzahl_verschoben = 0
-
-        for (image_name,) in rows:
-            if not image_name:
-                logger.warning("⚠️  Leerer image_name – überspringe.")
-                continue
-
-            logger.info(f"➡️  Verarbeite Bild: {image_name}")
-            success = move_file_db(conn, image_name, current_folder, new_folder)
-            if success:
-                try:
-                    conn.execute("""
-                                 DELETE
-                                 FROM checkbox_status
-                                 WHERE image_name = ?
-                                   AND checkbox = ?
-                                 """, (image_name, new_folder))
-
-                    src = Path(Settings.IMAGE_FILE_CACHE_DIR) / current_folder / image_name
-                    dst = Path(Settings.IMAGE_FILE_CACHE_DIR) / new_folder / image_name
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(src, dst)
-
-                    logger.info(f"✅ Verschoben: {image_name} → {new_folder}")
-                    anzahl_verschoben += 1
-                except Exception as e:
-                    logger.error(f"❌ Fehler beim Verschieben/Löschen von {image_name}: {e}")
-            else:
-                logger.warning(f"⚠️  move_file_db fehlgeschlagen für {image_name} – kein Verschieben")
-
-        conn.commit()
-        logger.info(f"📊 Insgesamt verschoben: {anzahl_verschoben} Dateien")
-
-    return anzahl_verschoben

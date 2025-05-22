@@ -17,6 +17,10 @@ zip -r "$zipfile" \
   -x "*.log" \
   -x "*.zip" \
   \
+  -x "$GALLERY_DIR/.git/**" \
+  -x "$N8N_DIR/.git/**" \
+  -x "$NSFW_DIR/.git/**" \
+  \
   -x "$N8N_DIR/caddy-data/**" \
   -x "$N8N_DIR/caddy-config/**" \
   -x "$N8N_DIR/.idea/**" \

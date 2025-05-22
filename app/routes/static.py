@@ -3,8 +3,8 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import FileResponse
 
-from app.dependencies import require_login
 from app.config_new import Settings  # Importiere die Settings-Klasse
+from app.dependencies import require_login
 
 router = APIRouter()
 

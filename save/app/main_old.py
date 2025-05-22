@@ -38,8 +38,8 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 if script_dir not in sys.path:
     sys.path.insert(0, script_dir)
 
-from config_old import IMAGE_EXTENSIONS, CACHE_DATEI_NAME
-from config_old import DB_PATH, IMAGE_FILE_CACHE_DIR, GESICHTER_FILE_CACHE_DIR
+from save.app.config_old import IMAGE_EXTENSIONS, CACHE_DATEI_NAME
+from save.app.config_old import DB_PATH, IMAGE_FILE_CACHE_DIR, GESICHTER_FILE_CACHE_DIR
 
 from app.scores.faces import gen_faces
 from app.scores.nsfw import load_nsfw
@@ -1331,14 +1331,14 @@ def egal():
 
     DB_PATH = Path(LOCAL_DB)
 
-    IMAGE_FILE_CACHE_DIR = '../cache/imagefiles'
-    TEXT_FILE_CACHE_DIR = '../cache/textfiles'
-    THUMBNAIL_CACHE_DIR_300 = '../cache/thumbnailfiles300'
+    IMAGE_FILE_CACHE_DIR = '../../cache/imagefiles'
+    TEXT_FILE_CACHE_DIR = '../../cache/textfiles'
+    THUMBNAIL_CACHE_DIR_300 = '../../cache/thumbnailfiles300'
 
     app_ready = True
 
     fillcache_local(
-        '../cache/pair_cache_local.json',
+        '../../cache/pair_cache_local.json',
         IMAGE_FILE_CACHE_DIR)
 
     fill_folder_cache(DB_PATH)
@@ -1421,8 +1421,8 @@ def print_file_counts(image_file_cache_dir, kategorien):
 
 
 def mmmm():
-    IMAGE_FILE_CACHE_DIR = '../cache/imagefiles'
-    DB_PATH = "../gallery_local.db"
+    IMAGE_FILE_CACHE_DIR = '../../cache/imagefiles'
+    DB_PATH = "../../gallery_local.db"
 
     ensure_category_dirs(IMAGE_FILE_CACHE_DIR, kategorien)
 
@@ -1476,7 +1476,7 @@ def batch_generate_thumbnails(cats):
 
     from tqdm import tqdm
 
-    THUMBNAIL_CACHE_DIR_300 = '../cache/thumbnailfiles300'
+    THUMBNAIL_CACHE_DIR_300 = '../../cache/thumbnailfiles300'
 
     for k in kategorien:
         folder_name = k["key"]
@@ -1533,9 +1533,9 @@ def batch_generate_quality(cats):
 
 
 if __name__ == "__main__":
-    IMAGE_FILE_CACHE_DIR = '../cache/imagefiles'
-    GESICHTER_FILE_CACHE_DIR = '../cache/facefiles'
-    DB_PATH = Path("../gallery_local.db")
+    IMAGE_FILE_CACHE_DIR = '../../cache/imagefiles'
+    GESICHTER_FILE_CACHE_DIR = '../../cache/facefiles'
+    DB_PATH = Path("../../gallery_local.db")
 
     print_file_counts(IMAGE_FILE_CACHE_DIR, kategorien)
 

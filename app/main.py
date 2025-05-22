@@ -14,7 +14,7 @@ from app.config_new import Settings
 from app.database import init_db
 # Importiere die Routen
 from app.routes import gallery, static, admin, login
-from app.scores.nsfw import test_all_nsfw_urls, log_missing_scores_from_cache
+from app.scores.nsfw import log_missing_scores_from_cache
 # Importiere die Cache-Funktionen aus app/services/cache_management.py
 from app.services.cache_management import fillcache_local, fill_folder_cache
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
