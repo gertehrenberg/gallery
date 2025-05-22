@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
-from app.config_new import Settings  # Importiere die Settings-Klasse
+from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import set_status, load_status, save_status, \
     move_marked_images_by_checkbox, get_checkbox_count  # Importiere die benötigten Funktionen
 from app.dependencies import require_login

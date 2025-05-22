@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 
-from app.config_new import Settings  # Importiere die Settings-Klasse
+from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import save_folder_status_to_db, clear_folder_status_db, load_folder_status_from_db
 
 

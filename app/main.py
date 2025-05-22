@@ -9,7 +9,7 @@ from googleapiclient.discovery import build
 from starlette.middleware.sessions import SessionMiddleware  # Korrigierter Import
 
 # Importiere die Konfiguration aus app/config_new.py
-from app.config_new import Settings
+from app.config import Settings
 # Importiere die Datenbankfunktionen aus app/database.py
 from app.database import init_db
 # Importiere die Routen

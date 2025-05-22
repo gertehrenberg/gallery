@@ -4,7 +4,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from app.config_new import Settings  # Importiere die Settings-Klasse
+from app.config import Settings  # Importiere die Settings-Klasse
 from app.tools import find_image_name_by_id
 
 logger = logging.getLogger(__name__)

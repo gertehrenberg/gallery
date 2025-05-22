@@ -26,7 +26,7 @@ def gen_faces(folder_name, image_name, min_size=(50, 50)):
     Returns:
         bool: True, wenn Gesichter erkannt und gespeichert wurden, False sonst.
     """
-    from app.config_new import Settings
+    from app.config import Settings
     full_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
     img = cv2.imread(str(full_path))
     if img is None:

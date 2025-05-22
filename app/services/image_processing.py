@@ -9,7 +9,7 @@ from PIL.ExifTags import TAGS, GPSTAGS
 from geopy.geocoders import Nominatim
 from starlette.responses import JSONResponse
 
-from app.config_new import Settings  # Importiere die Settings-Klasse
+from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import delete_checkbox_status, delete_quality_scores
 from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality

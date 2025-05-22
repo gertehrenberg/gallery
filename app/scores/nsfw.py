@@ -3,7 +3,7 @@ from pathlib import Path
 
 import httpx
 
-from app.config_new import Settings  # Importiere die Settings-Klasse
+from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores
 
 NSFW_SERVICE_URL = "http://127.0.0.1/nsfw/check-nsfw-path/"

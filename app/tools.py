@@ -1,6 +1,6 @@
 import logging
 
-from app.config_new import Settings  # Importiere die Settings-Klasse
+from app.config import Settings  # Importiere die Settings-Klasse
 
 logger = logging.getLogger(__name__)
 
