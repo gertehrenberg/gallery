@@ -1,10 +1,11 @@
 import logging
-import sqlite3
 from pathlib import Path
 
 import cv2
 import numpy as np
 from skimage import feature
+
+from app.database import save_quality_scores, load_quality_from_db
 
 
 def scale_score_to_0_100(score):
@@ -24,13 +25,7 @@ reverse_mapping = {v: k for k, v in mapping.items()}
 def load_quality(db_path, image_file_path, folder_name: str, image_name: str):
     """Lädt die Qualitätsbewertung (0–100) eines Bildes aus der neuen Tabelle image_quality_scores."""
     try:
-        with sqlite3.connect(db_path) as conn:
-            rows = conn.execute("""
-                                SELECT score_type, score
-                                FROM image_quality_scores
-                                WHERE LOWER(image_name) = LOWER(?)
-                                  AND score_type BETWEEN 1 AND 2
-                                """, (image_name,)).fetchall()
+        rows = load_quality_from_db(db_path, image_name)
 
         scores = {score_type: score for score_type, score in rows}
         if set(range(1, 2)).issubset(scores):
@@ -59,7 +54,7 @@ def calculateq1andq2(image_path):
     """Berechnet die Fake-BRISQUE (LBP-Standardabweichung und einfache Bildästhetik).
     :return: Tuple[int, int] → (scoreq1, scoreq2), oder (None, None) bei Fehler
     """
-    image = cv2.imread(image_path, cv2.IMREAD_GRAYSCALE)
+    image = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
     if image is None:
         print(f"Bild {image_path} konnte nicht geladen werden.")
         return None, None
@@ -71,7 +66,7 @@ def calculateq1andq2(image_path):
     lbp = feature.local_binary_pattern(image, P=8, R=1, method="uniform")
     scoreq1 = min(scale_score_to_0_100(np.std(lbp)), 100)
 
-    image = cv2.imread(image_path)
+    image = cv2.imread(str(image_path))
     h, w = image.shape[:2]
     if h < 16 or w < 16:
         print(f"Bild zu klein für Analyse: {image_path}")
@@ -95,29 +90,24 @@ def calculateq1andq2(image_path):
     cx = int(M["m10"] / M["m00"])
     cy = int(M["m01"] / M["m00"])
 
-    # Goldener Schnitt
     gx, gy = int(w * 0.618), int(h * 0.618)
     dist_golden = np.hypot(cx - gx, cy - gy) / np.hypot(w, h)
     score_golden = max(0, 1 - dist_golden)
 
-    # Drittelregel
     thirds_x = [w // 3, 2 * w // 3]
     thirds_y = [h // 3, 2 * h // 3]
     min_dist_thirds = min([abs(cx - x) for x in thirds_x]) + min([abs(cy - y) for y in thirds_y])
     score_thirds = max(0, 1 - (min_dist_thirds / max(w, h)))
 
-    # Symmetrie (vertikal)
     left = image[:, :w // 2]
     right = cv2.flip(image[:, w - w // 2:], 1)
     diff = cv2.absdiff(left, right)
     denom = h * w * 3 * 255
     score_symmetry = 1 - (np.sum(diff) / denom) if denom > 0 else 0
 
-    # Kontrast
     contrast = gray.std() / 128
     score_contrast = min(contrast, 1.0)
 
-    # Gesamtbewertung (q2)
     scoreq2 = int(round(np.mean([score_golden, score_thirds, score_symmetry, score_contrast]), 2) * 100)
 
     return scoreq1, scoreq2
@@ -125,12 +115,5 @@ def calculateq1andq2(image_path):
 
 def save(db_path, image_name, nsfw_scores: dict[str, int] | None = None):
     """Speichert die Qualitätswerte inklusive optionaler NSFW-Werte in der Datenbank."""
-    with sqlite3.connect(db_path) as conn:
-        if nsfw_scores:
-            for label, value in nsfw_scores.items():
-                type_id = mapping.get(label)
-                if type_id:
-                    conn.execute("""
-                        INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
-                        VALUES (?, ?, ?)
-                    """, (image_name, type_id, value))
+    if nsfw_scores:
+        save_quality_scores(db_path, image_name, nsfw_scores, mapping)

@@ -2,7 +2,6 @@ import json
 import logging
 import math
 import os
-import sqlite3
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -13,7 +12,7 @@ from starlette.responses import JSONResponse
 
 from app.config_new import Settings  # Importiere die Settings-Klasse
 from app.database import set_status, load_status, save_status, \
-    move_marked_images_by_checkbox  # Importiere die benötigten Funktionen
+    move_marked_images_by_checkbox, get_checkbox_count  # Importiere die benötigten Funktionen
 from app.dependencies import require_login
 from app.services.cache_management import load_rendered_html_file, save_rendered_html_file
 from app.services.image_processing import prepare_image_data, clean
@@ -62,7 +61,7 @@ def show_image_redirect(
         if is_file_in_folder(image_id, folder_name):
             pagecounter += 1
             if image_name_l.strip().lower() == image_name:
-                clean(image_name) # Entfernt, da die Funktion nicht definiert ist.
+                clean(image_name)  # Entfernt, da die Funktion nicht definiert ist.
                 return RedirectResponse(
                     url=f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}&lasttextflag={textflag}"
                 )
@@ -244,8 +243,10 @@ def get_status_for_image(image_name: str, user: str = Depends(require_login)):
     logger.info(f"📥 Lade Status für Bild: {image_name}")
     return load_status(image_name)
 
+
 def find_file_by_name(root_dir: Path, image_name: str):
     return list(root_dir.rglob(image_name))
+
 
 @router.get("/loading_status")
 def loading_status(user: str = Depends(require_login)):
@@ -256,23 +257,6 @@ def loading_status(user: str = Depends(require_login)):
         "folders_loaded": Settings.folders_loaded,
         "folders_total": Settings.folders_total
     }
-
-
-@router.get("/verarbeite/check/{checkbox}")
-def verarbeite_check_checkbox(checkbox: str, user: str = Depends(require_login)):
-    logger.info(f"📊 Zähle markierte Bilder für Kategorie: {checkbox}")
-    if checkbox not in Settings.CHECKBOX_CATEGORIES:
-        logger.warning("⚠️ Ungültige Checkbox-Kategorie")
-        return {"error": "ungültige Kategorie"}
-    with sqlite3.connect(Settings.DB_PATH) as conn:
-        count = conn.execute("""
-                             SELECT COUNT(*)
-                             FROM checkbox_status
-                             WHERE checked = 1
-                               AND checkbox = ?
-                             """, (checkbox,)).fetchone()[0]
-    logger.info(f"🔢 Anzahl markierter Bilder in '{checkbox}': {count}")
-    return {"count": count}
 
 
 @router.post("/moveToFolder/{checkbox}")
@@ -292,18 +276,13 @@ async def verarbeite_checkbox(
     return {"status": "ok", "redirect": redirect_url, "moved": anzahl}
 
 
+@router.get("/verarbeite/check/{checkbox}")
+def verarbeite_check_checkbox(checkbox: str, user: str = Depends(require_login)):
+    logger.info(f"📊 Zähle markierte Bilder für Kategorie: {checkbox}")
+    return get_checkbox_count(checkbox)
+
+
 @router.get("/moveToFolder/{checkbox}")
 def get_marked_images_count(checkbox: str, user: str = Depends(require_login)):
     logger.info(f"📊 Abfrage markierter Bilder für: {checkbox}")
-    if checkbox not in Settings.CHECKBOX_CATEGORIES:
-        logger.warning("⚠️ Ungültige Checkbox-Kategorie bei GET")
-        return {"count": 0}
-    with sqlite3.connect(Settings.DB_PATH) as conn:
-        count = conn.execute("""
-                             SELECT COUNT(*)
-                             FROM checkbox_status
-                             WHERE checked = 1
-                               AND checkbox = ?
-                             """, (checkbox,)).fetchone()[0]
-    logger.info(f"🔢 Anzahl (GET) markierter Bilder in '{checkbox}': {count}")
-    return {"count": count}
+    return get_checkbox_count(checkbox)

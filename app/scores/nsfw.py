@@ -1,10 +1,10 @@
 import logging
-import sqlite3
 from pathlib import Path
 
 import httpx
 
 from app.config_new import Settings  # Importiere die Settings-Klasse
+from app.database import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores
 
 NSFW_SERVICE_URL = "http://127.0.0.1/nsfw/check-nsfw-path/"
 
@@ -21,14 +21,7 @@ reverse_mapping = {v: k for k, v in mapping.items()}
 
 def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, float] | None:
     try:
-        """Lädt alle NSFW-Scores (Typ 10–15) für ein Bild."""
-        with sqlite3.connect(db_path) as conn:
-            rows = conn.execute("""
-                                SELECT score_type, score
-                                FROM image_quality_scores
-                                WHERE LOWER(image_name) = LOWER(?)
-                                  AND score_type BETWEEN 10 AND 15
-                                """, (image_name,)).fetchall()
+        rows = load_nsfw_from_db(db_path, image_name)
 
         scores = {score_type: score for score_type, score in rows}
         if set(range(10, 15)).issubset(scores):
@@ -50,7 +43,7 @@ def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, fl
             diff = 3
             for k in scores:
                 scores[k] = min(100 - diff, max(diff, scores[k]))
-            save(db_path, image_name, scores)
+            save_nsfw_scores(db_path, image_name, scores, mapping)
             return scores
         return None
     except Exception as e:
@@ -59,28 +52,14 @@ def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, fl
 
 
 def save(db_path, image_name, nsfw_scores: dict[str, int] | None = None):
-    """Speichert die Qualitätswerte inklusive optionaler NSFW-Werte in der Datenbank."""
-    with sqlite3.connect(db_path) as conn:
-        if nsfw_scores:
-            logging.info(f"[save] 📂 Schreiben für: {nsfw_scores}")
-            for label, value in nsfw_scores.items():
-                type_id = mapping.get(label)
-                if type_id:
-                    conn.execute("""
-                        INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
-                        VALUES (?, ?, ?)
-                    """, (image_name, type_id, value))
+    if nsfw_scores:
+        logging.info(f"[save] 📂 Schreiben für: {nsfw_scores}")
+        save_nsfw_scores(db_path, image_name, nsfw_scores, mapping)
 
 
 def load_all_scores(db_path: str) -> dict[str, dict[str, float]]:
-    """Lädt alle vollständigen NSFW-Scores (Typ 10–15) für alle Bilder aus der Datenbank."""
     try:
-        with sqlite3.connect(db_path) as conn:
-            rows = conn.execute("""
-                                SELECT image_name, score_type, score
-                                FROM image_quality_scores
-                                WHERE score_type BETWEEN 10 AND 15
-                                """).fetchall()
+        rows = load_all_nsfw_scores(db_path)
 
         result = {}
         for image_name, score_type, score in rows:
@@ -107,7 +86,6 @@ def log_scores(image_name: str, scores: dict[str, float]) -> None:
 
 
 def log_missing_scores_from_cache(db_path: str) -> None:
-    """Prüft alle image_names in Settings.CACHE["pair_cache"] gegen die geladenen Scores und loggt, was fehlt."""
     try:
         all_scores = load_all_scores(db_path)
         available = set(name.lower() for name in all_scores.keys())
@@ -149,4 +127,3 @@ def test_all_nsfw_urls(pathname: str, filename: str):
             print(f"✅ Antwort von {url}: {response.status_code} → {response.text[:200]}")
         except Exception as e:
             print(f"❌ Fehler bei {url}: {e}")
-

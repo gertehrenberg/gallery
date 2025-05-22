@@ -339,3 +339,95 @@ def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -> int:
         logger.info(f"📊 Insgesamt verschoben: {anzahl_verschoben} Dateien")
 
     return anzahl_verschoben
+
+
+def get_checkbox_count(checkbox: str):
+    if checkbox not in Settings.CHECKBOX_CATEGORIES:
+        logger.warning("⚠️ Ungültige Checkbox-Kategorie")
+        return {"count": 0}
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        count = conn.execute("""
+                             SELECT COUNT(*)
+                             FROM checkbox_status
+                             WHERE checked = 1
+                               AND checkbox = ?
+                             """, (checkbox,)).fetchone()[0]
+    logger.info(f"🔢 Anzahl markierter Bilder in '{checkbox}': {count}")
+    return {"count": count}
+
+
+def load_nsfw_from_db(db_path: str, image_name: str):
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("""
+                            SELECT score_type, score
+                            FROM image_quality_scores
+                            WHERE LOWER(image_name) = LOWER(?)
+                              AND score_type BETWEEN 10 AND 15
+                            """, (image_name,)).fetchall()
+
+
+def save_nsfw_scores(db_path: str, image_name: str, nsfw_scores: dict[str, int], mapping):
+    with sqlite3.connect(db_path) as conn:
+        for label, value in nsfw_scores.items():
+            type_id = mapping.get(label)
+            if type_id:
+                conn.execute("""
+                    INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+                    VALUES (?, ?, ?)
+                """, (image_name, type_id, value))
+
+
+def load_all_nsfw_scores(db_path: str):
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("""
+                            SELECT image_name, score_type, score
+                            FROM image_quality_scores
+                            WHERE score_type BETWEEN 10 AND 15
+                            """).fetchall()
+
+
+def load_quality_from_db(db_path: str, image_name: str):
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("""
+                            SELECT score_type, score
+                            FROM image_quality_scores
+                            WHERE LOWER(image_name) = LOWER(?)
+                              AND score_type BETWEEN 1 AND 2
+                            """, (image_name,)).fetchall()
+
+
+def save_quality_scores(db_path: str, image_name: str, quality_scores: dict[str, int], mapping):
+    with sqlite3.connect(db_path) as conn:
+        for label, value in quality_scores.items():
+            type_id = mapping.get(label)
+            if type_id:
+                conn.execute("""
+                    INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+                    VALUES (?, ?, ?)
+                """, (image_name, type_id, value))
+
+
+def load_folder_status_from_db(db_path: str):
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("SELECT COUNT(*) FROM image_folder_status").fetchone()
+        if row and row[0] > 0:
+            return conn.execute("SELECT image_id, folder_id FROM image_folder_status").fetchall()
+        return []
+
+
+def clear_folder_status_db(db_path: str):
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("DELETE FROM image_folder_status")
+        conn.commit()
+
+
+def save_folder_status_to_db(db_path: str, image_id: str, folder_id: str):
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO image_folder_status (image_id, folder_id)
+                VALUES (?, ?)
+            """, (image_id, folder_id))
+            conn.commit()
+    except Exception as e:
+        logging.warning(f"[fill_folder_cache] Fehler beim Speichern von {image_id} → {folder_id}: {e}")

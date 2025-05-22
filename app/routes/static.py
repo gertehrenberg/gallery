@@ -8,6 +8,7 @@ from app.dependencies import require_login
 
 router = APIRouter()
 
+
 @router.get("/thumbnails/{file_path:path}")
 @router.get("/static/thumbnails/{file_path:path}")
 async def get_thumbnail(file_path: str, request: Request):
@@ -17,6 +18,7 @@ async def get_thumbnail(file_path: str, request: Request):
     if file.exists() and file.is_file():
         return FileResponse(file)
     raise HTTPException(status_code=404)
+
 
 @router.get("/imagefiles/{file_path:path}")
 @router.get("/static/imagefiles/{file_path:path}")
@@ -32,13 +34,14 @@ async def get_imagefile(file_path: str, request: Request, user: str = Depends(re
     for eintrag in Settings.kategorien:
         alt_key = eintrag["key"]
         if file_path.startswith(alt_key + "/"):
-            rest = file_path[len(alt_key)+1:]  # Restlicher Pfad ohne Präfix
+            rest = file_path[len(alt_key) + 1:]  # Restlicher Pfad ohne Präfix
             for ersatz in [k["key"] for k in Settings.kategorien if k["key"] != alt_key]:
                 alt_file = base_path / ersatz / rest
                 if alt_file.exists() and alt_file.is_file():
                     return FileResponse(alt_file)
 
     raise HTTPException(status_code=404)
+
 
 @router.get("/facefiles/{file_path:path}")
 @router.get("/static/facefiles/{file_path:path}")
