@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-900">
+<div class="p-6">
+    <h1 class="text-2xl font-bold mb-4">Dashboard</h1>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <!-- Übersicht -->
+        <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="text-lg font-semibold mb-2">Übersicht</h2>
+            <p>Projektname: n8n-Test</p>
+            <p>Projekt-ID: init-setup-454010-i9</p>
+            <p>Abrechnung: 24,65 CHF (01.–22.05.2025)</p>
+        </div>
+        <!-- GDrive -->
+        <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="text-lg font-semibold mb-2">GDrive</h2>
+            <table class="w-full text-sm text-left">
+                <thead>
+                <tr>
+                    <th class="font-medium">Ordner</th>
+                    <th class="font-medium text-right">GDrive</th>
+                    <th class="font-medium text-right">Lokal</th>
+                </tr>
+                </thead>
+                <tbody>
+                {% for stat in gdrive_stats %}
+                    <tr class="border-t">
+                        <td>{{ stat.ordner }}</td>
+                        <td class="text-right">{{ stat.gdrive_count }}</td>
+                        <td class="text-right">{{ stat.local_count }}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+</body>
+</html>

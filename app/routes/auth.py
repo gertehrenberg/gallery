@@ -15,6 +15,7 @@ SCOPES = [
 SECRET_PATH = 'secrets'
 CLIENT_SECRETS_FILE = os.path.join(SECRET_PATH, 'credentials.json')
 TOKEN_FILE = os.path.join(SECRET_PATH, 'token.json')
+
 REDIRECT_URI = "http://localhost/gallery/auth/callback"
 
 

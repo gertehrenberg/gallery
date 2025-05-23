@@ -13,12 +13,14 @@ from app.config import Settings
 # Importiere die Datenbankfunktionen aus app/database.py
 from app.database import init_db
 # Importiere die Routen
-from app.routes import gallery, static, admin, login
+from app.routes import auth, gallery, static, admin, login, dashboard
 from app.scores.nsfw import log_missing_scores_from_cache
 # Importiere die Cache-Funktionen aus app/services/cache_management.py
 from app.services.cache_management import fillcache_local, fill_folder_cache
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
+
+from app.routes.auth import SCOPES, TOKEN_FILE
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -39,11 +41,8 @@ def init_service():
     os.environ.pop("HTTPS_PROXY", None)
     os.environ.pop("HTTP_PROXY", None)
 
-    if not os.path.exists(Settings.CRED_FILE):
-        raise RuntimeError("credentials.json fehlt")
-
-    if os.path.exists(Settings.TOKEN_FILE):
-        creds = Credentials.from_authorized_user_file(Settings.TOKEN_FILE, Settings.SCOPES)
+    if os.path.exists(TOKEN_FILE):
+        creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
     else:
         logging.warning("Kein Token gefunden. Bitte besuche 'http://localhost/gallery/auth'.")
         return
@@ -77,10 +76,12 @@ def slow_start():
 
 
 # Include Routers
+app.include_router(auth.router)
 app.include_router(login.router)
 app.include_router(gallery.router)
 app.include_router(static.router)
 app.include_router(admin.router)
+app.include_router(dashboard.router)
 
 if __name__ == "__main__":
     import uvicorn

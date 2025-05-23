@@ -25,15 +25,7 @@ GDRIVE_FOLDERS_DICT = Path("../cache/gdrive_folders.pkl")
 
 RENDERED_HTML = Path("../cache/rendered_html")
 
-# Konfiguration
-SCOPES = [
-    "https://www.googleapis.com/auth/drive"
-]
-
-SECRET_PATH = "../secrets"
-CRED_FILE = os.path.abspath(os.path.join(SECRET_PATH, "credentials.json"))
-TOKEN_FILE = os.path.abspath(os.path.join(SECRET_PATH, "token.json"))
-
+from app.routes.auth import TOKEN_FILE, SCOPES
 
 def load_drive_service():
     creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
@@ -52,34 +44,6 @@ def calculate_md5(file_path: Path) -> str:
         for chunk in iter(lambda: f.read(4096), b""):
             hasher.update(chunk)
     return hasher.hexdigest()
-
-
-def compare_hashfile_counts(file_folder_dir, subfolders: bool = True):
-    root = Path(file_folder_dir)
-    all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
-    header = f"{'Ordner':<15}{'GDrive-Hashes':>15}{'Lokal-Hashes':>15}"
-    print(header)
-    print("-" * len(header))
-    for subdir in sorted(all_dirs):
-        gdrive_path = subdir / "hashes.json"
-        local_path = subdir / "gallery202505_hashes.json"
-
-        try:
-            with gdrive_path.open("r", encoding="utf-8") as f:
-                gdrive_data = json.load(f)
-                gdrive_data = gdrive_data if isinstance(gdrive_data, dict) else {}
-        except:
-            gdrive_data = {}
-
-        try:
-            with local_path.open("r", encoding="utf-8") as f:
-                local_data = json.load(f)
-                local_data = local_data if isinstance(local_data, dict) else {}
-        except:
-            local_data = {}
-
-        print(f"{subdir.name:<15}{len(gdrive_data):>15}{len(local_data):>15}")
-
 
 def delete_all_hashfiles(file_folder_dir, subfolders: bool = True):
     root = Path(file_folder_dir)

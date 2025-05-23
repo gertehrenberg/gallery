@@ -9,9 +9,6 @@ HAAR_FRONTALFACE_ALT2 = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xm
 HAAR_PROFILEFACE = cv2.data.haarcascades + 'haarcascade_profileface.xml'
 HAAR_FRONTALFACE_DEFAULT = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
 
-# Ensure that the required directories exist
-os.makedirs('/app/facefiles', exist_ok=True)
-
 
 def gen_faces(folder_name, image_name, min_size=(50, 50)):
     """

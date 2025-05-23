@@ -10,24 +10,20 @@ class Settings:
     """
     DATA_DIR = Path('/data')
 
-    # Pfade zu Dateien und Verzeichnissen
-    CRED_FILE = '/app/secrets/credentials.json'
-    TOKEN_FILE = '/app/secrets/token.json'
     DB_PATH = 'gallery_local.db'
 
     PAIR_CACHE_PATH = DATA_DIR / 'pair_cache_local.json'
-    TEXT_FILE_CACHE_DIR = DATA_DIR / 'textfiles'
     RENDERED_HTML_DIR = DATA_DIR / "rendered_html"
     THUMBNAIL_CACHE_DIR_300 = DATA_DIR / 'thumbnailfiles300'
-    IMAGE_FILE_CACHE_DIR = '/data/imagefiles'
     GESICHTER_FILE_CACHE_DIR = '/data/facefiles'
     CACHE_DATEI_NAME = DATA_DIR / "geo_cache.json"
 
-    # Google Drive API-Einstellungen
-    SCOPES = [
-        "https://www.googleapis.com/auth/drive",
-        "https://www.googleapis.com/auth/drive.readonly"
-    ]
+    IMAGE_EXTENSIONS = (".bmp", ".gif", ".jpg", ".jpeg", ".png")
+    IMAGE_FILE_CACHE_DIR = '/data/imagefiles'
+
+    TEXT_EXTENSIONS = {".txt"}
+    TEXT_FILE_CACHE_DIR = DATA_DIR / 'textfiles'
+
     REDIRECT_URI = "http://localhost/gallery/auth/callback"  # Sollte konfigurierbar sein
 
     # Kategorien für die Bildergalerie
@@ -56,7 +52,6 @@ class Settings:
     LOCAL_DB = "gallery_local.db"
     DEFAULT_PORT = 8000  # Standard Port für die Anwendung
     CACHE_DIR = "cache"
-    IMAGE_EXTENSIONS = (".bmp", ".gif", ".jpg", ".jpeg", ".png")
 
     # Caches (Dictionary-Struktur beibehalten, aber zentralisiert)
     CACHE = {

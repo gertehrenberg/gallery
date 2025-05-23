@@ -5,10 +5,10 @@ from typing import Dict, List
 
 from tqdm import tqdm
 
-from config import IMAGE_EXTENSIONS, IMAGE_FILE_CACHE_DIR
-from config import TEXT_EXTENSIONS, TEXT_FILE_CACHE_DIR
-from config import calculate_md5, compare_hashfile_counts, delete_all_hashfiles, load_drive_service, sanitize_filename, \
+from app.config import Settings
+from app.config_gdrive import calculate_md5, delete_all_hashfiles, load_drive_service, sanitize_filename, \
     get_all_subfolders
+from app.routes.dashboard import compare_hashfile_counts
 from gdrive_folder_dict import folder_id_by_name
 
 
@@ -107,22 +107,32 @@ def write_local_hashes(extensions, file_folder_dir, subfolders: bool = True):
 
 
 def images(service):
-    delete_all_hashfiles(IMAGE_FILE_CACHE_DIR)
-    process_image_folders(service, IMAGE_EXTENSIONS, IMAGE_FILE_CACHE_DIR, [folder_id_by_name("imagefiles")])
-    write_local_hashes(IMAGE_EXTENSIONS, IMAGE_FILE_CACHE_DIR)
+    delete_all_hashfiles(Settings.IMAGE_FILE_CACHE_DIR)
+    process_image_folders(service, Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR,
+                          [folder_id_by_name("imagefiles")])
+    write_local_hashes(Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR)
 
 
 def text(service):
-    delete_all_hashfiles(TEXT_FILE_CACHE_DIR, False)
-    process_image_folders(service, TEXT_EXTENSIONS, TEXT_FILE_CACHE_DIR, [folder_id_by_name("textfiles")], False)
-    write_local_hashes(TEXT_EXTENSIONS, TEXT_FILE_CACHE_DIR, False)
+    delete_all_hashfiles(Settings.TEXT_FILE_CACHE_DIR, False)
+    process_image_folders(service, Settings.TEXT_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR,
+                          [folder_id_by_name("textfiles")], False)
+    write_local_hashes(Settings.TEXT_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR, False)
+
+
+def local():
+    global service
+    Settings.IMAGE_FILE_CACHE_DIR = "../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../cache/textfiles"
+    SECRET_PATH = "../secrets"
+    return load_drive_service(os.path.abspath(os.path.join(SECRET_PATH, "token.json")))
 
 
 if __name__ == "__main__":
-    service = load_drive_service()
+    service = local()
 
     images(service)
     text(service)
 
-    compare_hashfile_counts(IMAGE_FILE_CACHE_DIR)
-    compare_hashfile_counts(TEXT_FILE_CACHE_DIR, False)
+    compare_hashfile_counts(Settings.IMAGE_FILE_CACHE_DIR)
+    compare_hashfile_counts(Settings.TEXT_FILE_CACHE_DIR, False)
