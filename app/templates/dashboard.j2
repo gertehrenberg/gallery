@@ -13,8 +13,15 @@
         <div class="bg-white rounded-xl shadow p-4">
             <h2 class="text-lg font-semibold mb-2">Übersicht</h2>
             <p>Projektname: n8n-Test</p>
-            <p>Projekt-ID: init-setup-454010-i9</p>
-            <p>Abrechnung: 24,65 CHF (01.–22.05.2025)</p>
+            <p>Projekt-ID: innate-setup-454010-i9</p>
+
+            {% for row in info %}
+                {% if row.from_to %}
+                    <p>Abrechnung: {{ row.from_to }}</p>
+                {% elif row.kosten_chf %}
+                    <p>Betrag: {{ row.kosten_chf }} CHF</p>
+                {% endif %}
+            {% endfor %}
         </div>
         <!-- GDrive -->
         <div class="bg-white rounded-xl shadow p-4">

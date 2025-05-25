@@ -31,7 +31,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.auth import router as auth_router
+from app.routes.auth import router as auth_router
 from app.login import router as login_router
 
 script_dir = os.path.dirname(os.path.abspath(__file__))

@@ -18,3 +18,4 @@ itsdangerous==2.1.2
 protobuf~=4.25.3
 starlette~=0.46.1
 tqdm~=4.67.0
+google-cloud-bigquery>=3.0.0

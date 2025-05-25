@@ -124,8 +124,7 @@ def local():
     global service
     Settings.IMAGE_FILE_CACHE_DIR = "../cache/imagefiles"
     Settings.TEXT_FILE_CACHE_DIR = "../cache/textfiles"
-    SECRET_PATH = "../secrets"
-    return load_drive_service(os.path.abspath(os.path.join(SECRET_PATH, "token.json")))
+    return load_drive_service(os.path.abspath(os.path.join("../secrets", "token.json")))
 
 
 if __name__ == "__main__":
