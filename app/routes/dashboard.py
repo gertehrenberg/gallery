@@ -16,8 +16,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from starlette.responses import JSONResponse
 
 from app.config import Settings
-from app.config_gdrive import folder_id_by_name
-from app.routes.auth import load_drive_service
+from app.routes.auth import load_drive_service, load_drive_service_token
 
 router = APIRouter()
 progress = {"value": 0}
@@ -112,7 +111,7 @@ def compare_hashfile_counts(file_folder_dir, subfolders: bool = True):
     print("-" * len(header))
 
     for entry in results:
-        print(f"{entry['ordner']:<15}{entry['gdrive_count']:>15}{entry['local_count']:>15}")
+        print(f"{entry['label']:<15}{entry['gdrive_count']:>15}{entry['local_count']:>15}")
 
 
 def get_monthly_costs(dataset: str, table: str, start: str, end: str):
@@ -212,9 +211,9 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
         progress["value"] = 0
         try:
             if direction == "gdrive_from_lokal":
-                gdrive_from_lokal(folder)
+                gdrive_from_lokal(load_drive_service(), folder)
             elif direction == "lokal_from_gdrive":
-                lokal_from_gdrive(folder)
+                lokal_from_gdrive(load_drive_service(), folder)
         finally:
             progress["value"] = 100
 
@@ -222,13 +221,12 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
     return {"started": True}
 
 
-def gdrive_from_lokal(folder_name: str):
+def gdrive_from_lokal(service, folder_name: str):
     logger.info(f"gdrive_from_lokal: {folder_name}")
 
     cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
 
     global_gdrive_hashes = load_all_gdrive_hashes(cache_dir)
-    service = load_drive_service()
     folder_id_map = build_folder_id_map(service)
     hashfiles = list(cache_dir.rglob("gallery202505_hashes.json"))
 
@@ -262,9 +260,13 @@ def gdrive_from_lokal(folder_name: str):
             gdrive_hashes = {}
 
         updated = False
-        processed_files = 0
+        count = 0
         progress["value"] = 0
-        total_files = len(local_hashes)
+
+        total = len(local_hashes)
+        if total == 0:
+            progress["value"] = 100
+            return
 
         for name, md5 in local_hashes.items():
             existing = gdrive_hashes.get(name)
@@ -279,8 +281,8 @@ def gdrive_from_lokal(folder_name: str):
                         target_folder_id = folder_id_map.get(folder)
                         if not target_folder_id:
                             print(f"[!] Keine Ordner-ID für {folder} gefunden")
-                            processed_files += 1
-                            progress["value"] = int((processed_files / total_files) * 100)
+                            count += 1
+                            progress["value"] = int((count / total) * 100)
                             continue
                         try:
                             move_file_to_folder(service, file_id, target_folder_id)
@@ -317,9 +319,9 @@ def gdrive_from_lokal(folder_name: str):
                     else:
                         print(f"[!] {name} fehlt in {folder} und global nicht gefunden")
 
-            processed_files += 1
-            if total_files > 0:
-                progress["value"] = int((processed_files / total_files) * 100)
+            count += 1
+            if total > 0:
+                progress["value"] = int((count / total) * 100)
 
         if updated:
             with gdrive_hashfile.open("w", encoding="utf-8") as f:
@@ -380,13 +382,12 @@ def move_file_to_folder(service, file_id: str, target_folder_id: str):
     ).execute()
 
 
-def lokal_from_gdrive(folder_name: str):
+def lokal_from_gdrive(service, folder_name: str):
     logger.info(f"lokal_from_gdrive: {folder_name}")
     try:
         progress["value"] = 0
         count = 0
         base_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
-        service = load_drive_service()
         if folder_name:
             all_local_folders = [base_dir / folder_name]
         else:
@@ -460,7 +461,8 @@ def lokal_from_gdrive(folder_name: str):
             elif best_match:
                 print(f"\033[94m[FEHLT] {name} → kein Download möglich, aber lokal gefunden\033[0m")
 
-            progress["value"] = int((count / total) * 100)
+            if total > 0:
+                progress["value"] = int((count / total) * 100)
 
         gallery_hash_path = base_dir / Settings.GALLERY_HASH_FILE
         with open(gallery_hash_path, "w", encoding="utf-8") as f:
@@ -482,18 +484,11 @@ def download_file(service, file_id, local_path):
 
 
 def local():
-    global service
     Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
     Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
+    return load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
 
 if __name__ == "__main__":
-    local()
-
-    dataset = "gcp_billing_export_n8n"
-    table = "gcp_billing_export_resource_v1_01003C_0EEFF2_E60D9D"
-    start = "2025-05-01"
-    end = "2025-05-31"
-
-    print(get_monthly_costs(dataset, table, start, end))
+    lokal_from_gdrive(local(), "ki")

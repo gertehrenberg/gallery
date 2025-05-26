@@ -35,8 +35,8 @@
                     <th class="font-medium text-right">GDrive</th>
                     <th class="font-medium text-center">
                         <div class="flex justify-center gap-4">
-                            <span class="text-xl">←</span>
                             <span class="text-xl">→</span>
+                            <span class="text-xl">←</span>
                         </div>
                     </th>
                     <th class="font-medium text-left">Lokal</th>
@@ -60,12 +60,12 @@
                                 <form action="/gallery/dashboard/test">
                                     <input type="hidden" name="folder" value="{{ stat.key }}">
                                     <input type="hidden" name="direction" value="gdrive_from_lokal">
-                                    <button type="submit" class="text-xl">←</button>
+                                    <button type="submit" class="text-xl">→</button>
                                 </form>
                                 <form action="/gallery/dashboard/test">
                                     <input type="hidden" name="folder" value="{{ stat.key }}">
-                                    <input type="hidden" name="direction" value="lokal_from_gdrive">
-                                    <button type="submit" class="text-xl">→</button>
+                                    <input type="hidden" name="direction" value="gdrive_from_lokal">
+                                    <button type="submit" class="text-xl">←</button>
                                 </form>
                             </div>
                         </td>
