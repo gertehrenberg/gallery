@@ -9,8 +9,11 @@ from tqdm import tqdm
 from app.config import Settings
 from app.config_gdrive import folder_id_by_name, get_all_subfolders, sanitize_filename, delete_all_hashfiles, \
     calculate_md5, SettingsGdrive
+from app.database import clear_folder_status_db
 from app.routes.auth import load_drive_service_token
 from app.routes.dashboard import compare_hashfile_counts
+from app.services.cache_management import fillcache_local, fill_file_parents_cache
+from app.tools import fill_pair_cache
 
 logging.basicConfig(
     level=logging.INFO,
@@ -140,14 +143,14 @@ def local():
 if __name__ == "__main__":
     service = local()
 
-    # fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
+    fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
 
-    # clear_folder_status_db('../../gallery_local.db')
-    # fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
-    # fill_file_parents_cache(Settings.DB_PATH)
+    clear_folder_status_db('../../gallery_local.db')
+    fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
+    fill_file_parents_cache(Settings.DB_PATH)
 
-    # images(service)
-    # text(service)
+    images(service)
+    text(service)
 
     compare_hashfile_counts(Settings.IMAGE_FILE_CACHE_DIR)
     compare_hashfile_counts(Settings.TEXT_FILE_CACHE_DIR, False)
