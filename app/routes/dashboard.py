@@ -104,10 +104,10 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
                 "local_count": len(local_data),
                 "db_count": db_count
             })
-        else:
+        elif not subfolders:
             result.append({
                 "icon": "📄",
-                "label": "Tesxtfiles",
+                "label": "Textfiles",
                 "key": subdir.name,
                 "gdrive_count": len(gdrive_data),
                 "local_count": len(local_data),
