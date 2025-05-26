@@ -15,14 +15,22 @@
 </div>
 
 <button onclick="startTransfer()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
-    Übertragung starten
+    {{ button_text }}
 </button>
 
 <script>
     let interval = null;
 
     async function startTransfer() {
-        await fetch("/gallery/dashboard/start", { method: "POST" });
+        const formData = new FormData();
+        formData.append("folder", "delete");
+        formData.append("direction", "gdrive2lokal");
+
+        await fetch("/gallery/dashboard/start", {
+            method: "POST",
+            body: formData
+        });
+
         if (!interval) {
             interval = setInterval(updateProgress, 200);
         }

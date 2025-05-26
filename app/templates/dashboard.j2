@@ -35,8 +35,8 @@
                     <th class="font-medium text-right">GDrive</th>
                     <th class="font-medium text-center">
                         <div class="flex justify-center gap-4">
-                            <a href="/gallery/dashboard" class="text-xl">←</a>
-                            <a href="/gallery/dashboard" class="text-xl">→</a>
+                            <span class="text-xl">←</span>
+                            <span class="text-xl">→</span>
                         </div>
                     </th>
                     <th class="font-medium text-left">Lokal</th>
@@ -48,7 +48,8 @@
                         <td>
                             <div class="flex items-center gap-2">
                                 <span>{{ stat.icon }}</span>
-                                <a href="/gallery/?page=1&amp;count=6&amp;folder={{ stat.key }}&amp;textflag=1" class="hover:underline">
+                                <a href="/gallery/?page=1&amp;count=6&amp;folder={{ stat.key }}&amp;textflag=1"
+                                   class="hover:underline">
                                     {{ stat.label }}
                                 </a>
                             </div>
@@ -56,14 +57,23 @@
                         <td class="text-right">{{ stat.gdrive_count }}</td>
                         <td class="text-center">
                             <div class="flex justify-center gap-4">
-                                <a href="/gallery/dashboard" class="text-xl">←</a>
-                                <a href="/gallery/dashboard" class="text-xl">→</a>
+                                <form action="/gallery/dashboard/test">
+                                    <input type="hidden" name="folder" value="{{ stat.key }}">
+                                    <input type="hidden" name="direction" value="gdrive2lokal">
+                                    <button type="submit" class="text-xl">←</button>
+                                </form>
+                                <form action="/gallery/dashboard/test">
+                                    <input type="hidden" name="folder" value="{{ stat.key }}">
+                                    <input type="hidden" name="direction" value="lokal2gdrive">
+                                    <button type="submit" class="text-xl">→</button>
+                                </form>
                             </div>
                         </td>
                         <td class="text-left pl-2">{{ stat.local_count }}</td>
                     </tr>
                 {% endfor %}
-                </tbody>            </table>
+                </tbody>
+            </table>
         </div>
     </div>
 
