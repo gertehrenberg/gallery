@@ -4,6 +4,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
+from googleapiclient.discovery import build
 
 router = APIRouter()
 
@@ -56,3 +57,12 @@ def auth_callback(request: Request):
     creds = flow.credentials
     save_credentials_to_file(creds)
     return RedirectResponse("/gallery?page=1&count=1&folder=real")
+
+
+def load_drive_service():
+    return load_drive_service_token(TOKEN_FILE)
+
+
+def load_drive_service_token(token):
+    creds = Credentials.from_authorized_user_file(token, SCOPES)
+    return build("drive", "v3", credentials=creds)

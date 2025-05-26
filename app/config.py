@@ -24,6 +24,8 @@ class Settings:
     TEXT_EXTENSIONS = {".txt"}
     TEXT_FILE_CACHE_DIR = DATA_DIR / 'textfiles'
 
+    GALLERY_HASH_FILE = "gallery202505_hashes.json"
+
     REDIRECT_URI = "http://localhost/gallery/auth/callback"  # Sollte konfigurierbar sein
 
     # Kategorien für die Bildergalerie

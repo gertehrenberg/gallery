@@ -9,10 +9,13 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from google.cloud import bigquery
+from googleapiclient.http import MediaIoBaseDownload
 
 from app.config import Settings
+from app.routes.auth import load_drive_service
 
 router = APIRouter()
+progress = {"value": 0}
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
 logger = logging.getLogger(__name__)
 
@@ -21,7 +24,6 @@ logger = logging.getLogger(__name__)
 async def dashboard(request: Request):
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
 
-    gdrive_stats = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
     dataset = "gcp_billing_export_n8n"
     table = "gcp_billing_export_resource_v1_01003C_0EEFF2_E60D9D"
 
@@ -47,6 +49,8 @@ async def dashboard(request: Request):
     values = [float(d["kosten_chf"]) for d in daily_info]
 
     logger.info(info)
+
+    gdrive_stats = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
 
     return templates.TemplateResponse("dashboard.j2", {
         "request": request,
@@ -86,7 +90,9 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
         if entry:
             icon, label = entry
             result.append({
-                "ordner": f'<a href="http://localhost/gallery/?page=1&count=6&folder={subdir.name}&textflag=1">{icon} {label}</a>',
+                "icon": icon,
+                "label": label,
+                "key": subdir.name,
                 "gdrive_count": len(gdrive_data),
                 "local_count": len(local_data)
             })
@@ -151,13 +157,107 @@ def get_daily_costs(dataset: str, table: str, year: int, month: int):
     results = query_job.result()
     return [{"tag": row["tag"].strftime("%Y-%m-%d"), "kosten_chf": row["kosten_chf"]} for row in results]
 
+@router.get("/dashboard/test", response_class=HTMLResponse)
+async def dashboard_test(request: Request):
+    return templates.TemplateResponse("dashboard_test.j2", {"request": request})
+
+
+@router.get("/dashboard/progress")
+async def get_progress():
+    return {"progress": progress["value"]}
+
+
+@router.post("/dashboard/start")
+async def start_progress():
+    import threading
+
+    def run_mapping():
+        try:
+            progress["value"] = 0
+            count = 0
+            base_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
+            service = load_drive_service()
+            all_local_folders = [p for p in base_dir.iterdir() if p.is_dir() and p.name != "real"]
+            all_entries = []
+
+            for folder_path in sorted(all_local_folders):
+                hash_file_path = folder_path / "hashes.json"
+                if not hash_file_path.exists():
+                    continue
+                with open(hash_file_path, "r", encoding="utf-8") as f:
+                    entries = json.load(f)
+                    all_entries.extend([(folder_path, name, entry) for name, entry in entries.items()])
+
+            total = len(all_entries)
+            if total == 0:
+                progress["value"] = 100
+                return
+
+            processed_files = set()
+            gallery_hashes = {}
+
+            for folder_path, name, entry in all_entries:
+                count += 1
+                logger.info(f"[{count}/{total}] Verarbeitung: {name}")
+
+                md5 = None
+                file_id = None
+                if isinstance(entry, dict):
+                    md5 = entry.get("md5")
+                    file_id = entry.get("id")
+                elif isinstance(entry, str):
+                    md5 = entry
+
+                if not md5:
+                    logger.warning(f"Kein MD5 für Datei {name} gefunden – übersprungen")
+                    continue
+
+                local_target = folder_path / name
+                all_matches = list(base_dir.rglob(name))
+                logger.debug(f"Gefundene Matches für {name}: {[str(p) for p in all_matches]}")
+
+                best_match = None
+                for match in all_matches:
+                    if match.resolve() != local_target.resolve() and match.parent != local_target.parent:
+                        best_match = match
+                        break
+
+                if local_target.exists():
+                    logger.info(f"Ziel existiert bereits: {local_target}")
+                elif best_match:
+                    logger.info(f"Würde verschieben: {best_match} → {local_target}")
+                else:
+                    logger.info(f"Kein Match für {name}, würde ggf. herunterladen (id: {file_id})")
+
+                progress["value"] = int((count / total) * 100)
+
+            # Optional: spätere Speicherung von gallery_hashes
+            # with open(base_dir / "gallery_hashes_simuliert.json", "w", encoding="utf-8") as f:
+            #     json.dump(gallery_hashes, f, indent=2)
+
+            progress["value"] = 100
+        except Exception as e:
+            logger.error(f"Fehler bei map_gdrive_to_local (mit Fortschritt): {e}")
+            progress["value"] = 100
+
+    threading.Thread(target=run_mapping).start()
+    return {"started": True}
+
+
+def download_file(service, file_id, local_path):
+    request = service.files().get_media(fileId=file_id)
+    with open(local_path, 'wb') as f:
+        downloader = MediaIoBaseDownload(f, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
 
 def local():
     global service
-    Settings.IMAGE_FILE_CACHE_DIR = "../cache/imagefiles"
-    Settings.TEXT_FILE_CACHE_DIR = "../cache/textfiles"
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
-
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
 
 if __name__ == "__main__":
     local()

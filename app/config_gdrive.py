@@ -1,21 +1,18 @@
 import hashlib
+import pickle
 import re
+from os import path
 from pathlib import Path
 from typing import List
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-
-from app.routes.auth import SCOPES, TOKEN_FILE
+from app.config import Settings
 
 
-def load_drive_service():
-    load_drive_service(TOKEN_FILE)
+class SettingsGdrive:
+    GDRIVE_FOLDERS_PKL = Path(Settings.DATA_DIR) / "gdrive_folders.pkl"
 
 
-def load_drive_service(token_file):
-    creds = Credentials.from_authorized_user_file(token_file, SCOPES)
-    return build("drive", "v3", credentials=creds)
+_cached_folder_dict = None
 
 
 def sanitize_filename(name: str) -> str:
@@ -63,3 +60,56 @@ def get_all_subfolders(service, parent_id: str) -> List[str]:
             folders.append(f['id'])
             queue.append(f['id'])
     return folders
+
+
+def save_dict(data, file: path):
+    with open(file, "wb") as f:
+        pickle.dump(data, f)
+
+
+def load_dict(file: path):
+    if file.exists():
+        with open(file, "rb") as f:
+            return pickle.load(f)
+    return {"name_to_id": {}, "id_to_name": {}}
+
+
+def collect_all_folders(service, parent_id, name_to_id, id_to_name):
+    page_token = None
+    while True:
+        response = service.files().list(
+            q=f"mimeType = 'application/vnd.google-apps.folder' and trashed = false and '{parent_id}' in parents",
+            spaces="drive",
+            fields="nextPageToken, files(id, name)",
+            pageToken=page_token
+        ).execute()
+
+        for file in response.get("files", []):
+            name_to_id[file["name"]] = file["id"]
+            id_to_name[file["id"]] = file["name"]
+            # Rekursiv auch Unterordner sammeln
+            collect_all_folders(service, file["id"], name_to_id, id_to_name)
+
+        page_token = response.get("nextPageToken", None)
+        if page_token is None:
+            break
+
+
+def folder_name_by_id(folder_id):
+    global _cached_folder_dict
+    if _cached_folder_dict is None:
+        print("[INFO] Lade Folder-Cache aus Datei...")
+        _cached_folder_dict = load_dict(SettingsGdrive.GDRIVE_FOLDERS_PKL)
+    name = _cached_folder_dict.get("id_to_name", {}).get(folder_id)
+    print(f"[LOOKUP] folder_name_by_id('{folder_id}') → '{name}'")
+    return name
+
+
+def folder_id_by_name(folder_name):
+    global _cached_folder_dict
+    if _cached_folder_dict is None:
+        print("[INFO] Lade Folder-Cache aus Datei...")
+        _cached_folder_dict = load_dict(SettingsGdrive.GDRIVE_FOLDERS_PKL)
+    folder_id = _cached_folder_dict.get("name_to_id", {}).get(folder_name)
+    print(f"[LOOKUP] folder_id_by_name('{folder_name}') → '{folder_id}'")
+    return folder_id

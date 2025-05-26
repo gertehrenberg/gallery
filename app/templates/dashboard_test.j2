@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Fortschritt</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 text-gray-900 p-6">
+<h1 class="text-2xl font-bold mb-6">Dateiübertragung – Fortschritt</h1>
+
+<div class="w-full bg-gray-200 rounded-full h-6 mb-4 overflow-hidden">
+    <div id="progressBar" class="bg-blue-600 h-6 text-white text-center text-sm leading-6" style="width: 0%">
+        0%
+    </div>
+</div>
+
+<button onclick="startTransfer()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
+    Übertragung starten
+</button>
+
+<script>
+    let interval = null;
+
+    async function startTransfer() {
+        await fetch("/gallery/dashboard/start", { method: "POST" });
+        if (!interval) {
+            interval = setInterval(updateProgress, 200);
+        }
+    }
+
+    async function updateProgress() {
+        const response = await fetch("/gallery/dashboard/progress");
+        const data = await response.json();
+        const value = data.progress;
+
+        const progressBar = document.getElementById("progressBar");
+        progressBar.style.width = value + "%";
+        progressBar.textContent = value + "%";
+
+        if (value >= 100) {
+            clearInterval(interval);
+            interval = null;
+            setTimeout(() => window.location.href = "/gallery/dashboard", 500);
+        }
+    }
+</script>
+</body>
+</html>

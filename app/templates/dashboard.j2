@@ -27,26 +27,50 @@
 
         <!-- GDrive -->
         <div class="bg-white rounded-xl shadow p-4">
-            <h2 class="text-lg font-semibold mb-2">GDrive</h2>
+            <h2 class="text-lg font-semibold mb-2">GDrive vs. Lokal</h2>
             <table class="w-full text-sm text-left">
                 <thead>
                 <tr>
                     <th class="font-medium">Kategorie</th>
                     <th class="font-medium text-right">GDrive</th>
-                    <th class="font-medium text-right">Lokal</th>
+                    <th class="font-medium text-center">
+                        <div class="flex justify-center gap-4">
+                            <a href="/gallery/dashboard" class="text-xl">←</a>
+                            <a href="/gallery/dashboard" class="text-xl">→</a>
+                        </div>
+                    </th>
+                    <th class="font-medium text-left">Lokal</th>
                 </tr>
                 </thead>
                 <tbody>
                 {% for stat in gdrive_stats %}
                     <tr class="border-t">
-                        <td>{{ stat.ordner|safe }}</td>
+                        <td>
+                            <div class="flex items-center gap-2">
+                                <span>{{ stat.icon }}</span>
+                                <a href="/gallery/?page=1&amp;count=6&amp;folder={{ stat.key }}&amp;textflag=1" class="hover:underline">
+                                    {{ stat.label }}
+                                </a>
+                            </div>
+                        </td>
                         <td class="text-right">{{ stat.gdrive_count }}</td>
-                        <td class="text-right">{{ stat.local_count }}</td>
+                        <td class="text-center">
+                            <div class="flex justify-center gap-4">
+                                <a href="/gallery/dashboard" class="text-xl">←</a>
+                                <a href="/gallery/dashboard" class="text-xl">→</a>
+                            </div>
+                        </td>
+                        <td class="text-left pl-2">{{ stat.local_count }}</td>
                     </tr>
                 {% endfor %}
-                </tbody>
-            </table>
+                </tbody>            </table>
         </div>
+    </div>
+
+    <!-- Dateiübertragung -->
+    <div class="bg-white rounded-xl shadow p-4">
+        <h2 class="text-lg font-semibold mb-2">Dateiübertragung</h2>
+        <a href="/gallery/dashboard/test" class="text-blue-600 underline">Fortschritt anzeigen</a>
     </div>
 
     <!-- Balkenanzeige -->
