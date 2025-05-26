@@ -16,6 +16,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from starlette.responses import JSONResponse
 
 from app.config import Settings
+from app.database import count_folder_entries
 from app.routes.auth import load_drive_service, load_drive_service_token
 
 router = APIRouter()
@@ -90,6 +91,8 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
         except:
             local_data = {}
 
+        db_count = count_folder_entries(Settings.DB_PATH, subdir.name)
+
         entry = icon_map.get(subdir.name)
         if entry:
             icon, label = entry
@@ -98,7 +101,17 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
                 "label": label,
                 "key": subdir.name,
                 "gdrive_count": len(gdrive_data),
-                "local_count": len(local_data)
+                "local_count": len(local_data),
+                "db_count": db_count
+            })
+        else:
+            result.append({
+                "icon": "📄",
+                "label": "Tesxtfiles",
+                "key": subdir.name,
+                "gdrive_count": len(gdrive_data),
+                "local_count": len(local_data),
+                "db_count": db_count
             })
     return sorted(result, key=lambda x: x["local_count"], reverse=True)
 
@@ -106,12 +119,12 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
 def compare_hashfile_counts(file_folder_dir, subfolders: bool = True):
     results = compare_hashfile_counts_dash(file_folder_dir, subfolders=subfolders)
 
-    header = f"{'Ordner':<15}{'GDrive-Hashes':>15}{'Lokal-Hashes':>15}"
+    header = f"{'Ordner':<15}{'GDrive-Hashes':>15}{'Lokal-Hashes':>15}{'DB-Count':>15}"
     print(header)
     print("-" * len(header))
 
     for entry in results:
-        print(f"{entry['label']:<15}{entry['gdrive_count']:>15}{entry['local_count']:>15}")
+        print(f"{entry['label']:<15}{entry['gdrive_count']:>15}{entry['local_count']:>15}{entry['db_count']:>15}")
 
 
 def get_monthly_costs(dataset: str, table: str, start: str, end: str):

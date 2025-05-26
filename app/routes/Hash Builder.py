@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 from pathlib import Path
 from typing import Dict, List
@@ -10,6 +11,11 @@ from app.config_gdrive import folder_id_by_name, get_all_subfolders, sanitize_fi
     calculate_md5, SettingsGdrive
 from app.routes.auth import load_drive_service_token
 from app.routes.dashboard import compare_hashfile_counts
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 
 def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_path: Path):
@@ -124,6 +130,9 @@ def local():
     global service
     Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
     Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    Settings.DB_PATH = '../../gallery_local.db'
+
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
     return load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
@@ -131,8 +140,14 @@ def local():
 if __name__ == "__main__":
     service = local()
 
-    images(service)
-    text(service)
+    # fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
+
+    # clear_folder_status_db('../../gallery_local.db')
+    # fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
+    # fill_file_parents_cache(Settings.DB_PATH)
+
+    # images(service)
+    # text(service)
 
     compare_hashfile_counts(Settings.IMAGE_FILE_CACHE_DIR)
     compare_hashfile_counts(Settings.TEXT_FILE_CACHE_DIR, False)

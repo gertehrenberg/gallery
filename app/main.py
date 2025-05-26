@@ -16,7 +16,7 @@ from app.database import init_db
 from app.routes import auth, gallery, static, admin, login, dashboard
 from app.scores.nsfw import log_missing_scores_from_cache
 # Importiere die Cache-Funktionen aus app/services/cache_management.py
-from app.services.cache_management import fillcache_local, fill_folder_cache
+from app.services.cache_management import fillcache_local, fill_file_parents_cache
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
 
@@ -64,7 +64,7 @@ def slow_start():
     try:
         init_db(Settings.DB_PATH)
         fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
-        fill_folder_cache(Settings.DB_PATH)
+        fill_file_parents_cache(Settings.DB_PATH)
     except Exception as e:
         logger.error(f"Fehler bei der Initialisierung: {e}")
         # Anwendungsstart abbrechen

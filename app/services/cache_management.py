@@ -1,4 +1,3 @@
-import hashlib
 import json
 import logging
 import os
@@ -8,6 +7,10 @@ from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import save_folder_status_to_db, clear_folder_status_db, load_folder_status_from_db
 from app.tools import fill_pair_cache
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
     """Füllt den Cache für Bild- und Textdateien aus dem lokalen Dateisystem."""
@@ -28,7 +31,7 @@ def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
     fill_pair_cache(image_file_cache_dir, pair_cache, pair_cache_path_local)
 
 
-def fill_folder_cache(db_path: str):
+def fill_file_parents_cache(db_path: str):
     """Füllt den Cache für die Zuordnung von Bildern zu Ordnern."""
     file_parents_cache = Settings.CACHE["file_parents_cache"]
     file_parents_cache.clear()
@@ -55,7 +58,6 @@ def fill_folder_cache(db_path: str):
 
     for kat in Settings.kategorien:
         folder_name = kat["key"]
-        current_loading_folder = kat["label"]
         file_parents_cache[folder_name] = []
         folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name
         if not folder_path.exists():
@@ -67,26 +69,20 @@ def fill_folder_cache(db_path: str):
                 continue
         logging.info(f"[fill_folder_cache] 📂 Lese Bilder aus: {folder_name}")
         for image_file in folder_path.iterdir():
-            if not image_file.is_file():
+            if not image_file.is_file() or image_file.suffix.lower() not in Settings.IMAGE_EXTENSIONS:
                 continue
             image_name = image_file.name.lower()
             pair = Settings.CACHE["pair_cache"].get(image_name)
             if not pair:
                 logging.warning(f"[fill_folder_cache] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
                 continue
+            logging.warning(f"[fill_folder_cache] ✅️ Eintrag im pair_cache für: {folder_name} / {image_name}")
             image_id = pair["image_id"]
             file_parents_cache[folder_name].append(image_id)
             save_folder_status_to_db(db_path, image_id, folder_name)
         Settings.folders_loaded += 1
         logging.info(
             f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_name}")
-
-
-def clear_folder_parents_cache(folder_id: str):
-    file_parents_cache = Settings.CACHE["file_parents_cache"]
-    if folder_id in file_parents_cache:
-        del file_parents_cache[folder_id]
-
 
 def load_rendered_html_file(file_dir: Path, file_name: str) -> str | None:
     file_path = file_dir / (file_name + ".j2")
