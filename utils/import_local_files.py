@@ -3,9 +3,9 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from config import IMAGE_EXTENSIONS, IMAGE_FILE_CACHE_DIR
-from config import TEXT_FILE_CACHE_DIR
-from config import compare_hashfile_counts, sanitize_filename
+from app.config_gdrive import IMAGE_EXTENSIONS, IMAGE_FILE_CACHE_DIR
+from app.config_gdrive import TEXT_FILE_CACHE_DIR
+from app.config_gdrive import compare_hashfile_counts, sanitize_filename
 
 
 def import_local_files():

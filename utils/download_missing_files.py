@@ -7,8 +7,8 @@ from typing import Dict, List
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from tqdm import tqdm
 
-from config import TEXT_EXTENSIONS, TEXT_FILE_CACHE_DIR, TEXT_FOLDER_ID
-from config import calculate_md5, compare_hashfile_counts, load_drive_service, get_all_subfolders
+from app.config_gdrive import TEXT_EXTENSIONS, TEXT_FILE_CACHE_DIR, TEXT_FOLDER_ID
+from app.config_gdrive import calculate_md5, compare_hashfile_counts, load_drive_service, get_all_subfolders
 
 
 def upload_to_drive(service, file_path: Path, parent_id: str):

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body class="bg-gray-100 text-gray-900">
 <div class="p-6">
@@ -23,13 +24,14 @@
                 {% endif %}
             {% endfor %}
         </div>
+
         <!-- GDrive -->
         <div class="bg-white rounded-xl shadow p-4">
             <h2 class="text-lg font-semibold mb-2">GDrive</h2>
             <table class="w-full text-sm text-left">
                 <thead>
                 <tr>
-                    <th class="font-medium">Ordner</th>
+                    <th class="font-medium">Kategorie</th>
                     <th class="font-medium text-right">GDrive</th>
                     <th class="font-medium text-right">Lokal</th>
                 </tr>
@@ -37,7 +39,7 @@
                 <tbody>
                 {% for stat in gdrive_stats %}
                     <tr class="border-t">
-                        <td>{{ stat.ordner }}</td>
+                        <td>{{ stat.ordner|safe }}</td>
                         <td class="text-right">{{ stat.gdrive_count }}</td>
                         <td class="text-right">{{ stat.local_count }}</td>
                     </tr>
@@ -45,6 +47,38 @@
                 </tbody>
             </table>
         </div>
+    </div>
+
+    <!-- Balkenanzeige -->
+    <div class="mt-6 bg-white rounded-xl shadow p-4">
+        <h2 class="text-lg font-semibold mb-4">Tagesgenaue Kosten im aktuellen Monat</h2>
+        <canvas id="dailyCostsChart" height="100"></canvas>
+        <script>
+            const ctx = document.getElementById('dailyCostsChart').getContext('2d');
+            const dailyChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: {{ labels | tojson }},
+                    datasets: [{
+                        label: 'Kosten in CHF',
+                        data: {{ values | tojson }},
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            title: {
+                                display: true,
+                                text: 'CHF'
+                            }
+                        }
+                    }
+                }
+            });
+        </script>
     </div>
 </div>
 </body>

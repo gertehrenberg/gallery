@@ -5,8 +5,8 @@ from typing import Dict
 from googleapiclient.http import MediaFileUpload
 from tqdm import tqdm
 
-from config import IMAGE_FILE_CACHE_DIR
-from config import load_drive_service, compare_hashfile_counts
+from app.config_gdrive import IMAGE_FILE_CACHE_DIR
+from app.config_gdrive import load_drive_service, compare_hashfile_counts
 
 
 def build_folder_id_map(service) -> Dict[str, str]:

@@ -5,10 +5,10 @@ from pathlib import Path
 from googleapiclient.http import MediaIoBaseDownload
 from tqdm import tqdm
 
-from config import REAL_FOLDER_ID
-from config import TEXT_FOLDER_ID, TEXT_FILE_CACHE_DIR
-from config import load_drive_service, compare_hashfile_counts
-from config import sanitize_filename
+from app.config_gdrive import REAL_FOLDER_ID
+from app.config_gdrive import TEXT_FOLDER_ID, TEXT_FILE_CACHE_DIR
+from app.config_gdrive import load_drive_service, compare_hashfile_counts
+from app.config_gdrive import sanitize_filename
 
 TEXT_FILE_CACHE_DIR = Path(TEXT_FILE_CACHE_DIR)
 

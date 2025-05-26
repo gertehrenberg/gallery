@@ -330,6 +330,12 @@
         </div>
         <hr style="margin: 10px 0"/>
         <div style="display: flex; flex-direction: column; gap: 6px;">
+            <div style="display: flex; gap: 6px;">
+                <button onclick="dashboard()"
+                        style="padding: 6px 10px; border-radius: 5px; width: 180px;">
+                    📊 Dashboard
+                </button>
+            </div>
             {% for k in kategorien %}
                 <div style="display: flex; gap: 6px;">
                     <button onclick="moveToFolder({{ kategorien }}, '{{ k.key }}')"
@@ -343,33 +349,14 @@
                     </button>
                 </div>
             {% endfor %}
+            <div style="display: flex; gap: 6px;">
+                <button onclick="logout()"
+                        style="padding: 6px 10px; border-radius: 5px; width: 180px;">
+                    🔒 Logout
+                </button>
+            </div>
         </div>
-        <!-- Neuer Dashboard-Link -->
-        <a href="/gallery/dashboard" style="
-            display: block;
-            padding: 6px 10px;
-            border-radius: 5px;
-            width: 180px;
-            background: #ddf;
-            text-align: center;
-            text-decoration: none;
-            color: #000;
-            margin: 10px 0;
-        ">
-            📊 Dashboard
-        </a>
-        <div style="padding: 6px 10px; border-radius: 5px; width: 80px; background: #eef; text-align: center; margin-bottom: 6px;">
-            <button onclick="logout()" style="
-        background: none;
-        border: none;
-        color: #000;
-        font-size: 0.9em;
-        cursor: pointer;
-        padding: 0;
-    ">
-                🔒 Logout
-            </button>
-        </div>
+
         <button class="section-toggle" onclick="toggleConfigSection()">▶ Configuration</button>
         <div id="configSection" class="config-section">
             <form id="configForm">
@@ -668,6 +655,17 @@
 
         const url = new URL(window.location.href);
         url.pathname = "/gallery/logout";
+        window.location.href = url.toString();
+    }
+
+    function dashboard() {
+        // Menü ausblenden
+        const menu = document.getElementById("menu");
+        menu.style.display = "none";
+        localStorage.setItem("menuOpen", false);
+
+        const url = new URL(window.location.href);
+        url.pathname = "/gallery/dashboard";
         window.location.href = url.toString();
     }
 
