@@ -2,18 +2,21 @@ import calendar
 import json
 import logging
 import os
+import shutil
 from datetime import datetime, date
 from pathlib import Path
+from typing import Dict
 
 from fastapi import APIRouter, Request
 from fastapi import Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from google.cloud import bigquery
-from googleapiclient.http import MediaIoBaseDownload
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from starlette.responses import JSONResponse
 
 from app.config import Settings
+from app.config_gdrive import folder_id_by_name
 from app.routes.auth import load_drive_service
 
 router = APIRouter()
@@ -72,7 +75,7 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
 
     for subdir in sorted(all_dirs):
         gdrive_path = subdir / "hashes.json"
-        local_path = subdir / "gallery202505_hashes.json"
+        local_path = subdir / Settings.GALLERY_HASH_FILE
 
         try:
             with gdrive_path.open("r", encoding="utf-8") as f:
@@ -171,10 +174,10 @@ async def dashboard_test(request: Request):
 
     kat = kategorientabelle.get(folder_name)
     if kat:
-        if direction == "gdrive2lokal":
-            button_text = f'Übertrage "{kat["label"]}" von GDrive zu lokal'
-        elif direction == "lokal2gdrive":
-            button_text = f'Übertrage "{kat["label"]}" von lokal zu GDrive'
+        if direction == "gdrive_from_lokal":
+            button_text = f'Passe für "{kat["label"]}" lokal so an wie GDrive'
+        elif direction == "lokal_from_gdrive":
+            button_text = f'Passe für "{kat["label"]}" GDrive so an wie lokal'
         else:
             return None
     else:
@@ -202,16 +205,16 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
     kategorientabelle = {k["key"]: k for k in Settings.kategorien}
     kat = kategorientabelle.get(folder)
 
-    if not kat or direction not in ("gdrive2lokal", "lokal2gdrive"):
+    if not kat or direction not in ("gdrive_from_lokal", "lokal_from_gdrive"):
         return JSONResponse(content={"error": "Ungültiger Parameter"}, status_code=400)
 
     def runner():
         progress["value"] = 0
         try:
-            if direction == "gdrive2lokal":
-                gdrive2lokal(folder)
-            elif direction == "lokal2gdrive":
-                lokal2gdrive(folder)
+            if direction == "gdrive_from_lokal":
+                gdrive_from_lokal(folder)
+            elif direction == "lokal_from_gdrive":
+                lokal_from_gdrive(folder)
         finally:
             progress["value"] = 100
 
@@ -219,27 +222,176 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
     return {"started": True}
 
 
-import time
+def gdrive_from_lokal(folder_name: str):
+    logger.info(f"gdrive_from_lokal: {folder_name}")
+
+    cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
+
+    global_gdrive_hashes = load_all_gdrive_hashes(cache_dir)
+    service = load_drive_service()
+    folder_id_map = build_folder_id_map(service)
+    hashfiles = list(cache_dir.rglob("gallery202505_hashes.json"))
+
+    for gallery_hashfile in hashfiles:
+        try:
+            with gallery_hashfile.open("r", encoding="utf-8") as f:
+                local_hashes = json.load(f)
+        except Exception:
+            continue
+
+    for gallery_hashfile in hashfiles:
+        folder_path = gallery_hashfile.parent
+        folder = folder_path.name
+        logger.info(f"folder: {folder}")
+        if not (folder == folder_name):
+            continue
+
+        gdrive_hashfile = folder_path / "hashes.json"
+
+        try:
+            with gallery_hashfile.open("r", encoding="utf-8") as f:
+                local_hashes = json.load(f)
+        except Exception as e:
+            print(f"[Fehler] {gallery_hashfile}: {e}")
+            continue
+
+        try:
+            with gdrive_hashfile.open("r", encoding="utf-8") as f:
+                gdrive_hashes = json.load(f)
+        except Exception:
+            gdrive_hashes = {}
+
+        updated = False
+        processed_files = 0
+        progress["value"] = 0
+        total_files = len(local_hashes)
+
+        for name, md5 in local_hashes.items():
+            existing = gdrive_hashes.get(name)
+            current_md5 = existing.get("md5") if isinstance(existing, dict) else existing
+
+            if name not in gdrive_hashes or current_md5 != md5:
+                file_info = global_gdrive_hashes.get(md5)
+                if file_info:
+                    print(f"[✓] {name} fehlt in {folder}, aber global vorhanden als: {file_info['name']}")
+                    file_id = file_info.get("id")
+                    if file_id:
+                        target_folder_id = folder_id_map.get(folder)
+                        if not target_folder_id:
+                            print(f"[!] Keine Ordner-ID für {folder} gefunden")
+                            processed_files += 1
+                            progress["value"] = int((processed_files / total_files) * 100)
+                            continue
+                        try:
+                            move_file_to_folder(service, file_id, target_folder_id)
+                            gdrive_hashes[name] = {
+                                "md5": file_info["md5"],
+                                "id": file_id
+                            }
+                            updated = True
+                        except Exception as e:
+                            print(f"[Fehler beim Verschieben] {name}: {e}")
+                else:
+                    local_file = folder_path / name
+                    if local_file.exists():
+                        target_folder_id = folder_id_map.get(folder)
+                        if target_folder_id:
+                            try:
+                                file_metadata = {"name": name, "parents": [target_folder_id]}
+                                media = MediaFileUpload(str(local_file), resumable=True)
+                                uploaded = service.files().create(
+                                    body=file_metadata,
+                                    media_body=media,
+                                    fields="id"
+                                ).execute()
+                                gdrive_hashes[name] = {
+                                    "md5": md5,
+                                    "id": uploaded["id"]
+                                }
+                                updated = True
+                                print(f"[↑] {name} hochgeladen in {folder}")
+                            except Exception as e:
+                                print(f"[Fehler beim Hochladen] {name}: {e}")
+                        else:
+                            print(f"[!] Keine Zielordner-ID für {folder} gefunden")
+                    else:
+                        print(f"[!] {name} fehlt in {folder} und global nicht gefunden")
+
+            processed_files += 1
+            if total_files > 0:
+                progress["value"] = int((processed_files / total_files) * 100)
+
+        if updated:
+            with gdrive_hashfile.open("w", encoding="utf-8") as f:
+                json.dump(gdrive_hashes, f, indent=2)
+            print(f"[↑] hashes.json aktualisiert für Ordner {folder}")
+
+    progress["value"] = 100
 
 
-def gdrive2lokal(folder_name: str):
-    logger.info(f"Starte GDrive → Lokal für: {folder_name}")
-    steps = 50
-    for i in range(1, steps + 1):
-        progress["value"] = int(i * 100 / steps)
-        logger.info(f"Fortschritt {progress['value']}% bei {folder_name}")
-        time.sleep(0.5)  # kurze Pause, z. B. 100 ms
-    logger.info(f"Fertig mit GDrive → Lokal für: {folder_name}")
+def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict[str, str]]:
+    global_hashes = {}
+    hashfiles = list(cache_dir.rglob("hashes.json"))
+    for hashfile in hashfiles:
+        try:
+            with hashfile.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                for name, entry in data.items():
+                    if isinstance(entry, dict) and 'md5' in entry and 'id' in entry:
+                        global_hashes[entry['md5']] = {
+                            "name": name,
+                            "id": entry['id'],
+                            "md5": entry['md5']
+                        }
+        except Exception as e:
+            print(f"[Fehler] {hashfile}: {e}")
+    return global_hashes
 
 
-def lokal2gdrive(folder_name: str):
-    logger.info(f"Starte Lokal → GDrive für: {folder_name}")
+def build_folder_id_map(service) -> Dict[str, str]:
+    folder_map = {}
+    page_token = None
+    while True:
+        response = service.files().list(
+            q="mimeType='application/vnd.google-apps.folder' and trashed=false",
+            spaces="drive",
+            fields="nextPageToken, files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            pageSize=1000,
+            pageToken=page_token
+        ).execute()
+        for file in response.get("files", []):
+            folder_map[file["name"]] = file["id"]
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+    return folder_map
+
+
+def move_file_to_folder(service, file_id: str, target_folder_id: str):
+    file = service.files().get(fileId=file_id, fields="parents").execute()
+    previous_parents = ",".join(file.get("parents", []))
+    service.files().update(
+        fileId=file_id,
+        addParents=target_folder_id,
+        removeParents=previous_parents,
+        fields="id, parents"
+    ).execute()
+
+
+def lokal_from_gdrive(folder_name: str):
+    logger.info(f"lokal_from_gdrive: {folder_name}")
     try:
         progress["value"] = 0
         count = 0
         base_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
         service = load_drive_service()
-        all_local_folders = [p for p in base_dir.iterdir() if p.is_dir() and p.name != "real"]
+        if folder_name:
+            all_local_folders = [base_dir / folder_name]
+        else:
+            all_local_folders = [p for p in base_dir.iterdir() if p.is_dir()]
+
         all_entries = []
 
         for folder_path in sorted(all_local_folders):
@@ -259,8 +411,8 @@ def lokal2gdrive(folder_name: str):
         gallery_hashes = {}
 
         for folder_path, name, entry in all_entries:
-            count += 1
-            logger.info(f"[{count}/{total}] Verarbeitung: {name}")
+            if name in processed_files:
+                continue
 
             md5 = None
             file_id = None
@@ -271,13 +423,10 @@ def lokal2gdrive(folder_name: str):
                 md5 = entry
 
             if not md5:
-                logger.warning(f"Kein MD5 für Datei {name} gefunden – übersprungen")
                 continue
 
             local_target = folder_path / name
             all_matches = list(base_dir.rglob(name))
-            logger.debug(f"Gefundene Matches für {name}: {[str(p) for p in all_matches]}")
-
             best_match = None
             for match in all_matches:
                 if match.resolve() != local_target.resolve() and match.parent != local_target.parent:
@@ -285,23 +434,42 @@ def lokal2gdrive(folder_name: str):
                     break
 
             if local_target.exists():
-                logger.info(f"Ziel existiert bereits: {local_target}")
+                processed_files.add(name)
+                gallery_hashes[name] = {"md5": md5, "id": file_id} if file_id else md5
             elif best_match:
-                logger.info(f"Würde verschieben: {best_match} → {local_target}")
-            else:
-                logger.info(f"Kein Match für {name}, würde ggf. herunterladen (id: {file_id})")
+                try:
+                    shutil.move(str(best_match), str(local_target))
+                    if local_target.exists():
+                        print(f"[MOVE] {name} → {folder_name}")
+                        processed_files.add(name)
+                        gallery_hashes[name] = {"md5": md5, "id": file_id} if file_id else md5
+                    else:
+                        raise RuntimeError("Ziel existiert nach Move nicht")
+                except Exception as e:
+                    print(f"[MOVE-FEHLER] {name}: {e}")
+                    raise SystemExit(f"Abbruch: Datei konnte nicht verschoben werden: {best_match} → {local_target}")
+            elif file_id:
+                try:
+                    download_file(service, file_id, local_target)
+                    if local_target.exists():
+                        print(f"[DL] {name} ↓ {folder_name}")
+                        processed_files.add(name)
+                        gallery_hashes[name] = {"md5": md5, "id": file_id} if file_id else md5
+                except Exception as e:
+                    print(f"[Fehler beim Herunterladen] {name}: {e}")
+            elif best_match:
+                print(f"\033[94m[FEHLT] {name} → kein Download möglich, aber lokal gefunden\033[0m")
 
             progress["value"] = int((count / total) * 100)
 
-        # Optional: spätere Speicherung von gallery_hashes
-        # with open(base_dir / "gallery_hashes_simuliert.json", "w", encoding="utf-8") as f:
-        #     json.dump(gallery_hashes, f, indent=2)
+        gallery_hash_path = base_dir / Settings.GALLERY_HASH_FILE
+        with open(gallery_hash_path, "w", encoding="utf-8") as f:
+            json.dump(gallery_hashes, f, indent=2)
 
         progress["value"] = 100
     except Exception as e:
         logger.error(f"Fehler bei map_gdrive_to_local (mit Fortschritt): {e}")
         progress["value"] = 100
-    # TODO: Implementiere den eigentlichen Ablauf hier
 
 
 def download_file(service, file_id, local_path):

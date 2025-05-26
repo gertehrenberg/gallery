@@ -100,7 +100,7 @@ def write_local_hashes(extensions, file_folder_dir, subfolders: bool = True):
                     except Exception as e:
                         tqdm.write(f"[Fehler] {file.name}: {e}")
                     inner.update(1)
-            hashfile_name = "gallery202505_hashes.json"
+            hashfile_name = Settings.GALLERY_HASH_FILE
             save_simple_hashes(local_hashes, subdir / hashfile_name)
             tqdm.write(f"[✓] Lokale Hashes gespeichert: {subdir / hashfile_name}")
             pbar.update(1)

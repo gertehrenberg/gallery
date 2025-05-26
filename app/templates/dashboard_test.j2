@@ -20,11 +20,13 @@
 
 <script>
     let interval = null;
+    const FOLDER = "{{ folder_name }}";
+    const DIRECTION = "{{ direction }}";
 
     async function startTransfer() {
         const formData = new FormData();
-        formData.append("folder", "delete");
-        formData.append("direction", "gdrive2lokal");
+        formData.append("folder", FOLDER);
+        formData.append("direction", DIRECTION);
 
         await fetch("/gallery/dashboard/start", {
             method: "POST",
