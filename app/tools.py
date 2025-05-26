@@ -1,4 +1,8 @@
+import hashlib
+import json
 import logging
+import os
+from pathlib import Path
 
 from app.config import Settings  # Importiere die Settings-Klasse
 
@@ -25,3 +29,40 @@ def find_image_name_by_id(image_id: str):
             return image_name
     logging.warning(f"[find_image_name_by_id] ❌ Kein Bildname gefunden für ID: {image_id}")
     return None
+
+
+def fill_pair_cache(image_file_cache_dir, pair_cache, pair_cache_path_local):
+    pair_cache.clear()
+    for name in os.listdir(image_file_cache_dir):
+        full_path = os.path.join(image_file_cache_dir, name)
+        if os.path.isdir(full_path):
+            if any(full_path.lower().endswith(key) for key in Settings.CHECKBOX_CATEGORIES):
+                readimages(full_path, pair_cache)
+        elif os.path.isdir(full_path):
+            for subname in os.listdir(image_file_cache_dir):
+                subpath = os.path.join(full_path, subname)
+                if os.path.isfile(subpath):
+                    if any(subpath.lower().endswith(key) for key in Settings.CHECKBOX_CATEGORIES):
+                        readimages(full_path, pair_cache)
+    try:
+        with open(pair_cache_path_local, 'w') as f:
+            json.dump(pair_cache, f)
+        logging.info(f"[fillcache_local] Pair-Cache gespeichert: {len(pair_cache)} Paare")
+    except Exception as e:
+        logging.warning(f"[fillcache_local] Fehler beim Speichern von pair_cache.json: {e}")
+    logging.info(
+        f"[fillcache_local] Cache vollständig aktualisiert: "
+        f"{len(pair_cache)} Bilder"
+    )
+
+
+def readimages(folder_path: str, pair_cache: dict):
+    folder = Path(folder_path)
+    for file_path in folder.iterdir():
+        if file_path.is_file() and file_path.suffix.lower() in Settings.IMAGE_EXTENSIONS:
+            image_name = file_path.name.lower()
+            md5_hash = hashlib.md5(image_name.encode()).hexdigest()
+            pair_cache[image_name] = {
+                "image_id": md5_hash,
+                "folder": str(file_path.parent)
+            }

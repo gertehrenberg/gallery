@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import save_folder_status_to_db, clear_folder_status_db, load_folder_status_from_db
+from app.tools import fill_pair_cache
 
 
 def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
@@ -24,45 +25,7 @@ def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
         except Exception as e:
             logging.warning(f"[fillcache_local] Fehler beim Laden von pair_cache.json: {e}")
 
-    image_paths = []
-    for name in os.listdir(image_file_cache_dir):
-        full_path = os.path.join(image_file_cache_dir, name)
-        if os.path.isfile(full_path) and name.lower().endswith(tuple(Settings.IMAGE_EXTENSIONS)):
-            image_paths.append(full_path)
-        elif os.path.isdir(full_path):
-            for subname in os.listdir(image_file_cache_dir):
-                subpath = os.path.join(full_path, subname)
-                if os.path.isfile(subpath) and subname.lower().endswith(tuple(Settings.IMAGE_EXTENSIONS)):
-                    image_paths.append(subpath)
-
-    image_paths.sort(key=lambda p: os.path.getctime(p), reverse=True)
-    image_name_cache = {os.path.basename(p).lower(): (p, "") for p in image_paths}
-
-    logging.info(f"[image_name_cache] 📂 Gelesen Bilder aus: {len(image_name_cache)}")
-
-    for image_name in list(image_name_cache.keys()):
-        image_path, _ = image_name_cache[image_name]
-        if not os.path.exists(image_path):
-            logging.warning(f"[fillcache_local] Bild fehlt und wird aus dem Cache entfernt: {image_name}")
-            continue
-        md5_hash = hashlib.md5(image_name.encode()).hexdigest()
-        pair_cache[image_name] = {
-            "image_id": md5_hash,
-            "text_id": "",
-            "web_link": ""
-        }
-
-    try:
-        with open(pair_cache_path_local, 'w') as f:
-            json.dump(pair_cache, f)
-        logging.info(f"[fillcache_local] Pair-Cache gespeichert: {len(pair_cache)} Paare")
-    except Exception as e:
-        logging.warning(f"[fillcache_local] Fehler beim Speichern von pair_cache.json: {e}")
-
-    logging.info(
-        f"[fillcache_local] Cache vollständig aktualisiert: "
-        f"{len(image_name_cache)} Bilder, "
-        f"{len(pair_cache)} Paare ")
+    fill_pair_cache(image_file_cache_dir, pair_cache, pair_cache_path_local)
 
 
 def fill_folder_cache(db_path: str):

@@ -69,8 +69,6 @@ def slow_start():
         logger.error(f"Fehler bei der Initialisierung: {e}")
         # Anwendungsstart abbrechen
         os._exit(1)
-    logger.info("📂 nsfw ...")
-    log_missing_scores_from_cache(Settings.DB_PATH)
     Settings.app_ready = True
     logger.info("🚀 Anwendung bereit!")
 
@@ -83,7 +81,7 @@ app.include_router(static.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 
-if __name__ == "__main__":
+def local():
     import uvicorn
 
     """Initialisiert Dienste beim Start der Anwendung."""
@@ -98,3 +96,13 @@ if __name__ == "__main__":
     Settings.RENDERED_HTML_DIR = "../cache/rendered_html"
 
     uvicorn.run(app, host="0.0.0.0", port=Settings.DEFAULT_PORT)
+
+
+if __name__ == "__main__":
+
+    Settings.PAIR_CACHE_PATH = "../cache/pair_cache_local.json"
+    Settings.IMAGE_FILE_CACHE_DIR = "../cache/imagefiles"
+    fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
+
+
+
