@@ -82,7 +82,8 @@ def sync_image_files(service, from_folder_name, to_folder_name):
     from_files = list_image_files(service, from_folder_id)
     to_files = list_image_files(service, to_folder_id)
     existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
-    downloaded = perform_local_sync(service, from_files, Path(Settings.IMAGE_FILE_CACHE_DIR) / to_folder_name, existing_hashes)
+    downloaded = perform_local_sync(service, from_files, Path(Settings.IMAGE_FILE_CACHE_DIR) / to_folder_name,
+                                    existing_hashes)
     moved, deleted = perform_gdrive_sync(service, from_files, to_files, existing_hashes, to_folder_id, from_folder_id)
 
     print("Zusammenfassung:")

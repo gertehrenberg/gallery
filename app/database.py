@@ -415,6 +415,22 @@ def load_folder_status_from_db(db_path: str):
         return []
 
 
+def load_folder_status_from_db_by_name(db_path: str, gfolder_name: str):
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM image_folder_status WHERE folder_id = ?",
+            (gfolder_name,)
+        ).fetchone()
+
+        if row and row[0] > 0:
+            return conn.execute(
+                "SELECT image_id, folder_id FROM image_folder_status WHERE folder_id = ?",
+                (gfolder_name,)
+            ).fetchall()
+
+        return []
+
+
 def count_folder_entries(db_path: str, folder_id: str) -> int:
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
@@ -427,6 +443,14 @@ def count_folder_entries(db_path: str, folder_id: str) -> int:
 def clear_folder_status_db(db_path: str):
     with sqlite3.connect(db_path) as conn:
         conn.execute("DELETE FROM image_folder_status")
+        conn.commit()
+
+
+def clear_folder_status_db_by_name(db_path: str, gfolder_name: str):
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "DELETE FROM image_folder_status WHERE folder_id = ?",
+            (gfolder_name,))
         conn.commit()
 
 

@@ -4,7 +4,8 @@ import os
 from pathlib import Path
 
 from app.config import Settings  # Importiere die Settings-Klasse
-from app.database import save_folder_status_to_db, clear_folder_status_db, load_folder_status_from_db
+from app.database import save_folder_status_to_db, clear_folder_status_db, load_folder_status_from_db, \
+    load_folder_status_from_db_by_name
 from app.tools import fill_pair_cache
 
 logging.basicConfig(
@@ -77,13 +78,69 @@ def fill_file_parents_cache(db_path: str):
             if not pair:
                 logging.warning(f"[fill_folder_cache] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
                 continue
-            logging.warning(f"[fill_folder_cache] ✅️ Eintrag im pair_cache für: {folder_name} / {image_name}")
+            logging.info(f"[fill_folder_cache] ✅️ Eintrag im pair_cache für: {folder_name} / {image_name}")
             image_id = pair["image_id"]
             file_parents_cache[folder_name].append(image_id)
             save_folder_status_to_db(db_path, image_id, folder_name)
         Settings.folders_loaded += 1
         logging.info(
             f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_name}")
+
+
+def fill_file_parents_cache_by_name(db_path: str, gfolder_name: str):
+    file_parents_cache = Settings.CACHE["file_parents_cache"]
+
+    to_delete = [key for key in file_parents_cache
+                 if str(key) == "ki"]
+    for key in to_delete:
+        del file_parents_cache[key]
+
+    rows = load_folder_status_from_db_by_name(db_path, gfolder_name)
+    if rows:
+        logging.info("[fill_folder_cache] 📦 Lade file_parents_cache aus der Datenbank...")
+        for image_id, gfolder_name in rows:
+            if gfolder_name not in file_parents_cache:
+                Settings.folders_loaded += 1
+                file_parents_cache[gfolder_name] = []
+                logging.info(
+                    f"[fill_folder_cache] ✅ Cache aus DB geladen: {Settings.folders_loaded}/{Settings.folders_total} {gfolder_name}")
+            file_parents_cache[gfolder_name].append(image_id)
+
+        if Settings.folders_loaded != Settings.folders_total:
+            Settings.folders_loaded = Settings.folders_total
+            logging.info(
+                f"[fill_folder_cache] ✅ Cache aus DB geladen: {Settings.folders_loaded}/{Settings.folders_total}")
+        return
+
+    logging.info("[fill_folder_cache] 🛰️ Keine Cache-Daten vorhanden, lade von lokal...")
+    clear_folder_status_db(db_path)
+
+    file_parents_cache[gfolder_name] = []
+    folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / gfolder_name
+    if not folder_path.exists():
+        try:
+            folder_path.mkdir(parents=True, exist_ok=True)
+            logging.info(f"[fill_folder_cache] 📁 Ordner automatisch erstellt: {folder_path}")
+        except Exception as e:
+            logging.warning(f"[fill_folder_cache] ⚠️ Ordner konnte nicht erstellt werden: {folder_path} → {e}")
+            return
+
+    logging.info(f"[fill_folder_cache] 📂 Lese Bilder aus: {gfolder_name}")
+    for image_file in folder_path.iterdir():
+        if not image_file.is_file() or image_file.suffix.lower() not in Settings.IMAGE_EXTENSIONS:
+            continue
+        image_name = image_file.name.lower()
+        pair = Settings.CACHE["pair_cache"].get(image_name)
+        if not pair:
+            logging.warning(f"[fill_folder_cache] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
+            continue
+        logging.info(f"[fill_folder_cache] ✅️ Eintrag im pair_cache für: {gfolder_name} / {image_name}")
+        image_id = pair["image_id"]
+        file_parents_cache[gfolder_name].append(image_id)
+        save_folder_status_to_db(db_path, image_id, gfolder_name)
+    Settings.folders_loaded += 1
+    logging.info(
+        f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {gfolder_name}")
 
 
 def load_rendered_html_file(file_dir: Path, file_name: str) -> str | None:

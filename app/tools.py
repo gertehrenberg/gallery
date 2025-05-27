@@ -44,6 +44,10 @@ def fill_pair_cache(image_file_cache_dir, pair_cache, pair_cache_path_local):
                 if os.path.isfile(subpath):
                     if any(subpath.lower().endswith(key) for key in Settings.CHECKBOX_CATEGORIES):
                         readimages(full_path, pair_cache)
+    save_pair_cache(pair_cache, pair_cache_path_local)
+
+
+def save_pair_cache(pair_cache, pair_cache_path_local):
     try:
         with open(pair_cache_path_local, 'w') as f:
             json.dump(pair_cache, f)
@@ -64,5 +68,5 @@ def readimages(folder_path: str, pair_cache: dict):
             md5_hash = hashlib.md5(image_name.encode()).hexdigest()
             pair_cache[image_name] = {
                 "image_id": md5_hash,
-                "folder": str(file_path.parent)
+                "folder": str(file_path.parent.name)
             }
