@@ -1,13 +1,15 @@
 import json
+import os
 import shutil
 from collections import defaultdict
 from pathlib import Path
 
 from tqdm import tqdm
 
-from config import IMAGE_FILE_CACHE_DIR, TEMP_FILE_DIR
-from config import load_drive_service
+from app.config import Settings
+from app.routes.auth import load_drive_service, load_drive_service_token
 
+TEMP_FILE_DIR = "../temp"
 
 def rename_file(service, file_id: str, new_name: str):
     service.files().update(
@@ -40,7 +42,7 @@ def find_duplicate_md5_filenames(cache_dir: Path):
             bar.update(1)
 
     print("\n[Duplikate basierend auf MD5-Hash]")
-    service = load_drive_service()
+    service = load_drive_service_token(Path("../secrets/") /"token.json")
     temp_dir = Path(TEMP_FILE_DIR)
     temp_dir.mkdir(parents=True, exist_ok=True)
 
@@ -84,5 +86,13 @@ def find_duplicate_md5_filenames(cache_dir: Path):
                     print(f"  [Fehler beim Löschen auf GDrive] {name}: {e}")
 
 
+def local():
+    Settings.RENDERED_HTML_DIR = "../cache/rendered_html"
+    Settings.PAIR_CACHE_PATH = "../cache/pair_cache_local.json"
+    Settings.IMAGE_FILE_CACHE_DIR = "../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../cache/textfiles"
+
+
 if __name__ == "__main__":
-    find_duplicate_md5_filenames(Path(IMAGE_FILE_CACHE_DIR))
+    local()
+    find_duplicate_md5_filenames(Path(Settings.IMAGE_FILE_CACHE_DIR))
