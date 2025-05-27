@@ -24,6 +24,40 @@ router = APIRouter()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
 logger = logging.getLogger(__name__)
 
+progress_state = None
+
+
+def init_progress_state():
+    global progress_state
+    if not progress_state:
+        progress_state = {
+            "progress": 0,
+            "status": "Warte auf Start...",
+            "running": False
+        }
+    else:
+        progress_state["progress"] = 0
+        progress_state["status"] = "Warte auf Start..."
+        progress_state["running"] = False
+
+    return progress_state
+
+
+init_progress_state()
+
+
+def stop_progress():
+    progress_state["status"] = "Abgeschlossen."
+    progress_state["progress"] = 100
+
+
+@router.get("/dashboard/progress")
+async def get_multi_progress():
+    return JSONResponse({
+        "progress": progress_state["progress"],
+        "status": progress_state["status"]
+    })
+
 
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request):
@@ -520,19 +554,6 @@ def download_file(service, file_id, local_path):
             status, done = downloader.next_chunk()
 
 
-def init_progress_state():
-    global progress_state
-    progress_state = {
-        "cycle": 0,
-        "step": 0,
-        "progress": 0,
-        "status": "Warte auf Start...",
-        "running": False
-    }
-
-
-progress_state = {}
-
 steps = [
     "Cache wird aktualisiert...",
     "Seiten werden generiert...",
@@ -548,14 +569,6 @@ async def start_multi_transfer(folder: str = Form(...), direction: str = Form(..
     return {"status": "ok"}
 
 
-@router.get("/dashboard/progress")
-async def get_multi_progress():
-    return JSONResponse({
-        "progress": progress_state["progress"],
-        "status": progress_state["status"]
-    })
-
-
 async def simulate_multi_progress():
     init_progress_state()
     progress_state["running"] = True
@@ -567,16 +580,9 @@ async def simulate_multi_progress():
             await asyncio.sleep(0.2)
         await asyncio.sleep(0.5)
 
-    await stop_progress()
+    stop_progress()
     await asyncio.sleep(1.0)
-    progress_state["running"] = False
-    progress_state["progress"] = 0
-    progress_state["status"] = "Warte auf Start..."
-
-
-def stop_progress():
-    progress_state["status"] = "Abgeschlossen."
-    progress_state["progress"] = 100
+    init_progress_state()
 
 
 def local():
