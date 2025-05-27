@@ -12,6 +12,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
+
 def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
     """Füllt den Cache für Bild- und Textdateien aus dem lokalen Dateisystem."""
     pair_cache = Settings.CACHE["pair_cache"]
@@ -83,6 +84,7 @@ def fill_file_parents_cache(db_path: str):
         Settings.folders_loaded += 1
         logging.info(
             f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_name}")
+
 
 def load_rendered_html_file(file_dir: Path, file_name: str) -> str | None:
     file_path = file_dir / (file_name + ".j2")

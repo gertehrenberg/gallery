@@ -10,38 +10,46 @@
             background-color: #f3f4f6;
             color: #1f2937;
         }
+
         .dashboard-title {
             font-size: 1.5rem;
             font-weight: bold;
             margin-bottom: 1rem;
         }
+
         .card {
             background-color: #ffffff;
             border-radius: 0.75rem;
             box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
             padding: 1rem;
         }
+
         .icon-link {
             display: flex;
             align-items: center;
             gap: 0.5rem;
             font-size: 1.125rem;
         }
+
         .icon-link-sm {
             display: flex;
             align-items: center;
             gap: 0.25rem;
             font-size: 0.875rem;
         }
+
         .icon {
             font-size: 1.25rem;
         }
+
         .icon-sm {
             font-size: 1rem;
         }
+
         .text-blue {
             color: #2563eb;
         }
+
         .text-blue:hover {
             text-decoration: underline;
         }
@@ -88,7 +96,8 @@
                         <td>
                             <div class="icon-link-sm">
                                 <span class="icon-sm">{{ stat.icon }}</span>
-                                <a href="/gallery/?page=1&amp;count=6&amp;folder={{ stat.key }}&amp;textflag=1" class="text-blue">
+                                <a href="/gallery/?page=1&amp;count=6&amp;folder={{ stat.key }}&amp;textflag=1"
+                                   class="text-blue">
                                     {{ stat.label }}
                                 </a>
                             </div>

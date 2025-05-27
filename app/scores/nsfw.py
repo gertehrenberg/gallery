@@ -1,12 +1,10 @@
 import logging
 from pathlib import Path
 
-import httpx
-
 from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores
 
-NSFW_SERVICE_URL = "http://127.0.0.1/nsfw/check-nsfw-path/"
+NSFW_SERVICE_URL = "http://nsfw-service:8000/check-nsfw-path/"
 
 mapping = {
     "drawings": 10,
@@ -111,7 +109,11 @@ def log_missing_scores_from_cache(db_path: str) -> None:
         logging.error(f"Fehler bei der Prüfung fehlender NSFW-Scores: {e}")
 
 
-def test_all_nsfw_urls(pathname: str, filename: str):
+import time
+import httpx
+
+
+def test_all_nsfw_urls(pathname: str, filename: str, max_retries: int = 3, delay: float = 2.0):
     urls = [
         "http://127.0.0.1/nsfw/check-nsfw-path/",
         "http://localhost:8000/check-nsfw-path/",
@@ -120,10 +122,17 @@ def test_all_nsfw_urls(pathname: str, filename: str):
         "http://nsfw-service/check-nsfw-path/"
     ]
     payload = {"pathname": pathname, "filename": filename}
+
     for url in urls:
-        try:
-            print(f"🌐 Teste NSFW-Service: {url} mit {payload}")
-            response = httpx.post(url, json=payload, timeout=5.0)
-            print(f"✅ Antwort von {url}: {response.status_code} → {response.text[:200]}")
-        except Exception as e:
-            print(f"❌ Fehler bei {url}: {e}")
+        for attempt in range(1, max_retries + 1):
+            try:
+                print(f"🌐 [{attempt}/{max_retries}] Teste NSFW-Service: {url} mit {payload}")
+                response = httpx.post(url, json=payload, timeout=5.0)
+                print(f"✅ Antwort von {url}: {response.status_code} → {response.text[:200]}")
+                break  # Erfolgreich, nächste URL testen
+            except Exception as e:
+                print(f"❌ Fehler bei {url} (Versuch {attempt}): {e}")
+                if attempt < max_retries:
+                    time.sleep(delay)
+                else:
+                    print(f"⛔ {url} endgültig fehlgeschlagen.\n")

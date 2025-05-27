@@ -14,13 +14,11 @@ from app.config import Settings
 from app.database import init_db
 # Importiere die Routen
 from app.routes import auth, gallery, static, admin, login, dashboard
-from app.scores.nsfw import log_missing_scores_from_cache
+from app.routes.auth import SCOPES, TOKEN_FILE
 # Importiere die Cache-Funktionen aus app/services/cache_management.py
 from app.services.cache_management import fillcache_local, fill_file_parents_cache
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
-
-from app.routes.auth import SCOPES, TOKEN_FILE
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO)
@@ -81,6 +79,7 @@ app.include_router(static.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 
+
 def local():
     import uvicorn
 
@@ -99,10 +98,6 @@ def local():
 
 
 if __name__ == "__main__":
-
     Settings.PAIR_CACHE_PATH = "../cache/pair_cache_local.json"
     Settings.IMAGE_FILE_CACHE_DIR = "../cache/imagefiles"
     fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
-
-
-

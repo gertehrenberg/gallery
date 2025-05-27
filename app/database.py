@@ -414,6 +414,7 @@ def load_folder_status_from_db(db_path: str):
             return conn.execute("SELECT image_id, folder_id FROM image_folder_status").fetchall()
         return []
 
+
 def count_folder_entries(db_path: str, folder_id: str) -> int:
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
@@ -421,6 +422,7 @@ def count_folder_entries(db_path: str, folder_id: str) -> int:
             (folder_id,)
         ).fetchone()
         return row[0] if row else 0
+
 
 def clear_folder_status_db(db_path: str):
     with sqlite3.connect(db_path) as conn:
