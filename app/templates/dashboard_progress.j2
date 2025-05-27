@@ -7,6 +7,7 @@
 </head>
 <body class="bg-gray-100 text-gray-900 p-6">
 <h1 class="text-2xl font-bold mb-6">Dateiübertragung – Fortschritt</h1>
+<div id="status" class="mb-4 text-sm text-gray-700 italic">Warte auf Start...</div>
 
 <div class="w-full bg-gray-200 rounded-full h-6 mb-4 overflow-hidden">
     <div id="progressBar" class="bg-blue-600 h-6 text-white text-center text-sm leading-6" style="width: 0%">
@@ -19,6 +20,8 @@
 </button>
 
 <script>
+    const START_URL = "{{ start_url }}";
+    const PROGRESS_URL = "{{ progress_url }}";
     let interval = null;
     const FOLDER = "{{ folder_name }}";
     const DIRECTION = "{{ direction }}";
@@ -28,7 +31,7 @@
         formData.append("folder", FOLDER);
         formData.append("direction", DIRECTION);
 
-        await fetch("/gallery/dashboard/start", {
+        await fetch(START_URL, {
             method: "POST",
             body: formData
         });
@@ -39,15 +42,17 @@
     }
 
     async function updateProgress() {
-        const response = await fetch("/gallery/dashboard/progress");
+        const response = await fetch(PROGRESS_URL);
         const data = await response.json();
         const value = data.progress;
+        const statusText = document.getElementById("status");
+        statusText.textContent = data.status;
 
         const progressBar = document.getElementById("progressBar");
         progressBar.style.width = value + "%";
         progressBar.textContent = value + "%";
 
-        if (value >= 100) {
+        if (data.status === "Abgeschlossen.") {
             clearInterval(interval);
             interval = null;
             setTimeout(() => window.location.href = "/gallery/dashboard", 500);

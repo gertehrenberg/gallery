@@ -1,3 +1,4 @@
+import asyncio
 import calendar
 import json
 import logging
@@ -20,7 +21,6 @@ from app.database import count_folder_entries
 from app.routes.auth import load_drive_service, load_drive_service_token
 
 router = APIRouter()
-progress = {"value": 0}
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
 logger = logging.getLogger(__name__)
 
@@ -57,7 +57,8 @@ async def dashboard(request: Request):
 
     tool_links = [
         {"label": "n8n", "url": "http://localhost", "icon": "🧩"},
-        {"label": "Sync mit \"Save\" (GDrive)", "url": "/tools/sync", "icon": "☁️"},
+        {"label": "Sync mit \"Save\" (GDrive)", "url": "/gallery/dashboard/test?folder=save&direction=manage_save",
+         "icon": "☁️"},
         {"label": "Refresh Caches", "url": "/tools/refresh", "icon": "🔁"},
         {"label": "Generate Pages", "url": "/tools/generate", "icon": "📄"}
     ]
@@ -187,10 +188,21 @@ kategorientabelle = {k["key"]: k for k in Settings.kategorien}
 
 
 @router.get("/dashboard/test", response_class=HTMLResponse)
-async def dashboard_test(request: Request):
+async def dashboard_progress(request: Request):
     folder_name = request.query_params.get("folder", None)
     direction = request.query_params.get('direction', None)
-    logger.info(f"🔄 dashboard_test: {folder_name} {direction}")
+    logger.info(f"🔄 dashboard_progress: {folder_name} {direction}")
+
+    if direction == "manage_save":
+        button_text = f'Verarbeite Dateien aus Save (GDrive/lokal)'
+        return templates.TemplateResponse("dashboard_progress.j2", {
+            "request": request,
+            "button_text": button_text,
+            "folder_name": folder_name,
+            "direction": direction,
+            "start_url": "/gallery/dashboard/multi/start",
+            "progress_url": "/gallery/dashboard/progress"
+        })
 
     kat = kategorientabelle.get(folder_name)
     if kat:
@@ -203,17 +215,14 @@ async def dashboard_test(request: Request):
     else:
         return None
 
-    return templates.TemplateResponse("dashboard_test.j2", {
+    return templates.TemplateResponse("dashboard_progress.j2", {
         "request": request,
         "button_text": button_text,
         "folder_name": folder_name,
-        "direction": direction
+        "direction": direction,
+        "start_url": "/gallery/dashboard/start",
+        "progress_url": "/gallery/dashboard/progress"
     })
-
-
-@router.get("/dashboard/progress")
-async def get_progress():
-    return {"progress": progress["value"]}
 
 
 @router.post("/dashboard/start")
@@ -225,18 +234,20 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
     kategorientabelle = {k["key"]: k for k in Settings.kategorien}
     kat = kategorientabelle.get(folder)
 
-    if not kat or direction not in ("gdrive_from_lokal", "lokal_from_gdrive"):
+    if not kat or direction not in ("gdrive_from_lokal", "lokal_from_gdrive", "manage_save"):
         return JSONResponse(content={"error": "Ungültiger Parameter"}, status_code=400)
 
     def runner():
-        progress["value"] = 0
+        init_progress_state()
         try:
             if direction == "gdrive_from_lokal":
                 gdrive_from_lokal(load_drive_service(), folder)
             elif direction == "lokal_from_gdrive":
                 lokal_from_gdrive(load_drive_service(), folder)
+            elif direction == "manage_save":
+                manage_save(load_drive_service())
         finally:
-            progress["value"] = 100
+            stop_progress()
 
     threading.Thread(target=runner).start()
     return {"started": True}
@@ -282,11 +293,11 @@ def gdrive_from_lokal(service, folder_name: str):
 
         updated = False
         count = 0
-        progress["value"] = 0
+        progress_state["progress"] = 0
 
         total = len(local_hashes)
         if total == 0:
-            progress["value"] = 100
+            stop_progress()
             return
 
         for name, md5 in local_hashes.items():
@@ -303,7 +314,7 @@ def gdrive_from_lokal(service, folder_name: str):
                         if not target_folder_id:
                             print(f"[!] Keine Ordner-ID für {folder} gefunden")
                             count += 1
-                            progress["value"] = int((count / total) * 100)
+                            progress_state["progress"] = int((count / total) * 100)
                             continue
                         try:
                             move_file_to_folder(service, file_id, target_folder_id)
@@ -342,14 +353,14 @@ def gdrive_from_lokal(service, folder_name: str):
 
             count += 1
             if total > 0:
-                progress["value"] = int((count / total) * 100)
+                progress_state["progress"] = int((count / total) * 100)
 
         if updated:
             with gdrive_hashfile.open("w", encoding="utf-8") as f:
                 json.dump(gdrive_hashes, f, indent=2)
             print(f"[↑] hashes.json aktualisiert für Ordner {folder}")
 
-    progress["value"] = 100
+    stop_progress()
 
 
 def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict[str, str]]:
@@ -403,10 +414,15 @@ def move_file_to_folder(service, file_id: str, target_folder_id: str):
     ).execute()
 
 
+def manage_save(service):
+    logger.info(f"manage_save")
+    return None
+
+
 def lokal_from_gdrive(service, folder_name: str):
     logger.info(f"lokal_from_gdrive: {folder_name}")
     try:
-        progress["value"] = 0
+        progress_state["progress"] = 0
         count = 0
         base_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
         if folder_name:
@@ -426,7 +442,7 @@ def lokal_from_gdrive(service, folder_name: str):
 
         total = len(all_entries)
         if total == 0:
-            progress["value"] = 100
+            stop_progress()
             return
 
         processed_files = set()
@@ -483,16 +499,16 @@ def lokal_from_gdrive(service, folder_name: str):
                 print(f"\033[94m[FEHLT] {name} → kein Download möglich, aber lokal gefunden\033[0m")
 
             if total > 0:
-                progress["value"] = int((count / total) * 100)
+                progress_state["progress"] = int((count / total) * 100)
 
         gallery_hash_path = base_dir / Settings.GALLERY_HASH_FILE
         with open(gallery_hash_path, "w", encoding="utf-8") as f:
             json.dump(gallery_hashes, f, indent=2)
 
-        progress["value"] = 100
+        stop_progress()
     except Exception as e:
         logger.error(f"Fehler bei map_gdrive_to_local (mit Fortschritt): {e}")
-        progress["value"] = 100
+        stop_progress()
 
 
 def download_file(service, file_id, local_path):
@@ -502,6 +518,65 @@ def download_file(service, file_id, local_path):
         done = False
         while not done:
             status, done = downloader.next_chunk()
+
+
+def init_progress_state():
+    global progress_state
+    progress_state = {
+        "cycle": 0,
+        "step": 0,
+        "progress": 0,
+        "status": "Warte auf Start...",
+        "running": False
+    }
+
+
+progress_state = {}
+
+steps = [
+    "Cache wird aktualisiert...",
+    "Seiten werden generiert...",
+    "Bilder werden verglichen...",
+    "Abgleich mit GDrive..."
+]
+
+
+@router.post("/dashboard/multi/start")
+async def start_multi_transfer(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        asyncio.create_task(simulate_multi_progress())
+    return {"status": "ok"}
+
+
+@router.get("/dashboard/progress")
+async def get_multi_progress():
+    return JSONResponse({
+        "progress": progress_state["progress"],
+        "status": progress_state["status"]
+    })
+
+
+async def simulate_multi_progress():
+    init_progress_state()
+    progress_state["running"] = True
+
+    for step_text in steps:
+        progress_state["status"] = step_text
+        for i in range(0, 101, 10):
+            progress_state["progress"] = i
+            await asyncio.sleep(0.2)
+        await asyncio.sleep(0.5)
+
+    await stop_progress()
+    await asyncio.sleep(1.0)
+    progress_state["running"] = False
+    progress_state["progress"] = 0
+    progress_state["status"] = "Warte auf Start..."
+
+
+def stop_progress():
+    progress_state["status"] = "Abgeschlossen."
+    progress_state["progress"] = 100
 
 
 def local():
