@@ -2,15 +2,12 @@ import hashlib
 from io import BytesIO
 from pathlib import Path
 
-from gdrive_folder_dict import folder_id_by_name
 from googleapiclient.http import MediaIoBaseDownload
 from tqdm import tqdm
 
-from app.config_gdrive import TEXT_FILE_CACHE_DIR, IMAGE_FILE_CACHE_DIR
-from app.config_gdrive import load_drive_service, compare_hashfile_counts
-from app.config_gdrive import sanitize_filename
-
-TEXT_FILE_CACHE_DIR = Path(TEXT_FILE_CACHE_DIR)
+from app.config import Settings
+from app.config_gdrive import folder_id_by_name, sanitize_filename
+from app.routes.auth import load_drive_service
 
 
 def move_file_to_folder(service, file_id, old_parents, new_parent):
@@ -85,7 +82,7 @@ def sync_image_files(service, from_folder_name, to_folder_name):
     from_files = list_image_files(service, from_folder_id)
     to_files = list_image_files(service, to_folder_id)
     existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
-    downloaded = perform_local_sync(service, from_files, Path(IMAGE_FILE_CACHE_DIR) / to_folder_name, existing_hashes)
+    downloaded = perform_local_sync(service, from_files, Path(Settings.IMAGE_FILE_CACHE_DIR) / to_folder_name, existing_hashes)
     moved, deleted = perform_gdrive_sync(service, from_files, to_files, existing_hashes, to_folder_id, from_folder_id)
 
     print("Zusammenfassung:")
@@ -125,7 +122,7 @@ def sync_txt_files(service, from_folder_name, to_folder_name):
     to_files = list_txt_files(service, to_folder_id)
     existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
 
-    downloaded = perform_local_sync(service, from_files, TEXT_FILE_CACHE_DIR, existing_hashes)
+    downloaded = perform_local_sync(service, from_files, Settings.TEXT_FILE_CACHE_DIR, existing_hashes)
     moved, deleted = perform_gdrive_sync(service, from_files, to_files, existing_hashes, to_folder_id, from_folder_id)
 
     print("Zusammenfassung:")

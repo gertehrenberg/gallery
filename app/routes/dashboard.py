@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import shutil
+import time
 from datetime import datetime, date
 from pathlib import Path
 from typing import Dict
@@ -17,38 +18,39 @@ from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from starlette.responses import JSONResponse
 
 from app.config import Settings
+from app.config_gdrive import folder_id_by_name, folder_name_by_id, sanitize_filename, calculate_md5
 from app.database import count_folder_entries
 from app.routes.auth import load_drive_service, load_drive_service_token
+from app.services.cache_management import fillcache_local
+from app.tools import readimages
 
 router = APIRouter()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
 logger = logging.getLogger(__name__)
 
-progress_state = None
+progress_state = {
+    "progress": 0,
+    "status": "Warte auf Start...",
+    "running": False
+}
+
+
+def update_progress(status: str, progress: int):
+    progress_state["status"] = status
+    progress_state["progress"] = progress
+    # logger.info(f"{status}: {progress}")
 
 
 def init_progress_state():
-    global progress_state
-    if not progress_state:
-        progress_state = {
-            "progress": 0,
-            "status": "Warte auf Start...",
-            "running": False
-        }
-    else:
-        progress_state["progress"] = 0
-        progress_state["status"] = "Warte auf Start..."
-        progress_state["running"] = False
-
-    return progress_state
+    update_progress("Warte auf Start...", 0)
+    progress_state["running"] = False
 
 
 init_progress_state()
 
 
 def stop_progress():
-    progress_state["status"] = "Abgeschlossen."
-    progress_state["progress"] = 100
+    update_progress("Abgeschlossen.", 100)
 
 
 @router.get("/dashboard/progress")
@@ -268,7 +270,7 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
     kategorientabelle = {k["key"]: k for k in Settings.kategorien}
     kat = kategorientabelle.get(folder)
 
-    if not kat or direction not in ("gdrive_from_lokal", "lokal_from_gdrive", "manage_save"):
+    if not kat or direction not in ("gdrive_from_lokal", "lokal_from_gdrive"):
         return JSONResponse(content={"error": "Ungültiger Parameter"}, status_code=400)
 
     def runner():
@@ -278,8 +280,6 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
                 gdrive_from_lokal(load_drive_service(), folder)
             elif direction == "lokal_from_gdrive":
                 lokal_from_gdrive(load_drive_service(), folder)
-            elif direction == "manage_save":
-                manage_save(load_drive_service())
         finally:
             stop_progress()
 
@@ -448,9 +448,13 @@ def move_file_to_folder(service, file_id: str, target_folder_id: str):
     ).execute()
 
 
-def manage_save(service):
-    logger.info(f"manage_save")
-    return None
+def move_file_to_folder_new(service, file_id, old_parents, new_parent):
+    service.files().update(
+        fileId=file_id,
+        addParents=new_parent,
+        removeParents=",".join(old_parents),
+        fields='id, parents'
+    ).execute()
 
 
 def lokal_from_gdrive(service, folder_name: str):
@@ -554,14 +558,6 @@ def download_file(service, file_id, local_path):
             status, done = downloader.next_chunk()
 
 
-steps = [
-    "Cache wird aktualisiert...",
-    "Seiten werden generiert...",
-    "Bilder werden verglichen...",
-    "Abgleich mit GDrive..."
-]
-
-
 @router.post("/dashboard/multi/start")
 async def start_multi_transfer(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
@@ -573,19 +569,261 @@ async def simulate_multi_progress():
     init_progress_state()
     progress_state["running"] = True
 
-    for step_text in steps:
-        progress_state["status"] = step_text
-        for i in range(0, 101, 10):
-            progress_state["progress"] = i
-            await asyncio.sleep(0.2)
-        await asyncio.sleep(0.5)
+    service = load_drive_service()
+    from_folder_name = "save"
+    to_folder_name = "recheck"
+
+    from_folder_id = folder_id_by_name(from_folder_name)
+    from_files = await list_files(from_folder_id, service, "=")
+    if len(from_files) > 0:
+        to_folder_id = folder_id_by_name(to_folder_name)
+        to_files = await list_files(to_folder_id, service, "=")
+
+        existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
+
+        downloaded = await perform_local_sync(service, from_files, Path(Settings.IMAGE_FILE_CACHE_DIR) / to_folder_name,
+                                              existing_hashes)
+        moved, deleted = await perform_gdrive_sync(service, from_files, to_files, existing_hashes, to_folder_id,
+                                                   from_folder_id)
+
+        await fill_pair_cache_folder(
+            to_folder_name,
+            Settings.IMAGE_FILE_CACHE_DIR,
+            Settings.CACHE.get("pair_cache"),
+            Settings.PAIR_CACHE_PATH)
+
+        print("Zusammenfassung Images:")
+        print(f"🔢 Zu verarbeiten: {len(from_files)}")
+        print(f"📥 Heruntergeladen lokal: {downloaded}")
+        print(f"📦 Verschoben nach GDrive: {moved}")
+        print(f"🗑️  Gelöscht auf GDrive: {deleted}")
+
+    from_files = await list_files(from_folder_id, service, "!=")
+    if len(from_files) > 0:
+        to_folder_id = folder_id_by_name("textfiles")
+        to_files = await list_files(to_folder_id, service, "!=")
+
+        existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
+
+        downloaded = await perform_local_sync(service, from_files, Settings.TEXT_FILE_CACHE_DIR, existing_hashes)
+
+        moved, deleted = await perform_gdrive_sync(service, from_files, to_files, existing_hashes, to_folder_id,
+                                                   from_folder_id)
+
+        print("Zusammenfassung Text:")
+        print(f"🔢 Zu verarbeiten: {len(from_files)}")
+        print(f"📥 Heruntergeladen lokal: {downloaded}")
+        print(f"📦 Verschoben nach GDrive: {moved}")
+        print(f"🗑️  Gelöscht auf GDrive: {deleted}")
 
     stop_progress()
-    await asyncio.sleep(1.0)
-    init_progress_state()
+    await asyncio.sleep(0.1)  # <<< Damit der Balken Zeit zur Anzeige bekommt
+
+
+async def fill_pair_cache_folder(folder_name: str, image_file_cache_dir, pair_cache, pair_cache_path_local):
+    folder_path = os.path.join(image_file_cache_dir, folder_name)
+
+    if not os.path.isdir(folder_path):
+        logging.warning(f"[fill_pair_cache] Kein gültiger Ordner: {folder_path}")
+        return
+
+    logging.info(f"[fill_pair_cache] Aktualisiere Cache für Ordner: {folder_name}")
+
+    # Entferne nur die Paare aus dem angegebenen Ordner
+    keys_to_delete = [k for k in pair_cache if k.startswith(f"{folder_name}/") or f"/{folder_name}/" in k]
+    for k in keys_to_delete:
+        del pair_cache[k]
+
+    for name in os.listdir(folder_path):
+        subpath = os.path.join(folder_path, name)
+        if os.path.isfile(subpath):
+            if any(subpath.lower().endswith(key) for key in [folder_name]):
+                readimages(folder_path, pair_cache)
+    try:
+        with open(pair_cache_path_local, 'w') as f:
+            json.dump(pair_cache, f)
+        logging.info(f"[fill_pair_cache] Pair-Cache gespeichert: {len(pair_cache)} Paare")
+    except Exception as e:
+        logging.warning(f"[fill_pair_cache] Fehler beim Speichern von pair_cache.json: {e}")
+
+    logging.info(f"[fill_pair_cache] Cache für {folder_name} aktualisiert.")
+
+
+def delete_file(service, file_id):
+    service.files().delete(fileId=file_id).execute()
+
+
+async def perform_gdrive_sync(service, save_files, _files, existing_hashes, to_folder_id, from_folder_id):
+    moved = 0
+    deleted = 0
+    total = len(save_files)
+
+    for index, file in enumerate(save_files, start=1):
+        original_name = file['name']
+        file_id = file['id']
+        remote_md5 = file.get('md5Checksum')
+
+        update_progress(f"GDrive: {original_name}", int(index / total * 100))
+
+        status = []
+        if remote_md5 in existing_hashes:
+            status.append("✅ bereits vorhanden (MD5 match)")
+            remote_size = int(file.get("size", 0))
+            target_file = next(
+                (f for f in _files if f.get("md5Checksum") == remote_md5 and f.get("name") == file.get("name")),
+                None)
+            target_size = int(target_file.get("size", 0)) if target_file else 0
+
+            if remote_size > target_size:
+                move_file_to_folder_new(service, file_id, file['parents'], to_folder_id)
+                moved += 1
+                status.append("📦 verschoben (größer)")
+            else:
+                delete_file(service, file_id)
+                deleted += 1
+                status.append("🗑️ gelöscht (nicht größer oder gleichnamig)")
+        else:
+            move_file_to_folder_new(service, file_id, file['parents'], to_folder_id)
+            moved += 1
+            status.append("📦 verschoben (neuer Hash)")
+
+        logger.info(f"{original_name}: {', '.join(status)}")
+        await asyncio.sleep(0.05)  # sichtbare Aktualisierung
+
+    update_progress(f"{moved} Dateien verschoben, {deleted} Dateien gelöscht.", 100)
+    await asyncio.sleep(0.5)
+
+    return moved, deleted
+
+
+async def perform_local_sync(service, save_files, local_file_dir, existing_hashes):
+    total = len(save_files)
+    downloaded = 0
+
+    for index, file in enumerate(save_files, start=1):
+        original_name = file['name']
+        sanitized_name = sanitize_filename(original_name)
+        file_id = file['id']
+        remote_md5 = file.get('md5Checksum')
+        local_path = local_file_dir / sanitized_name
+
+        update_progress(f"Lokal: {original_name}", int(index / total * 100))
+
+        status = []
+        if remote_md5 in existing_hashes:
+            status.append("✅ bereits vorhanden (MD5 match)")
+        elif local_path.exists():
+            local_md5 = calculate_md5(local_path)
+            if remote_md5 == local_md5:
+                status.append("✅ lokal identisch")
+            else:
+                download_file(service, file_id, local_path)
+                downloaded += 1
+                status.append("🔁 lokal aktualisiert")
+        else:
+            download_file(service, file_id, local_path)
+            downloaded += 1
+            status.append("⬇️ heruntergeladen")
+
+        logger.info(f"{original_name}: {', '.join(status)}")
+        await asyncio.sleep(0.05)  # für sichtbare Fortschrittsaktualisierung
+
+    update_progress(f"{downloaded} Dateien geladen.", 100)
+    logger.info(f"✅ Insgesamt {downloaded} Dateien geladen.")
+    await asyncio.sleep(0.5)
+
+    return downloaded
+
+
+async def list_files(folder_id, service, sign="!="):
+    files = []
+    page_token = None
+    count = 0
+    folder_name = folder_name_by_id(folder_id)
+    logger.info(f"📂 Starte Dateiliste für Folder-ID: {folder_name}")
+    update_progress(f"Dateien werden aus Google Drive geladen ({folder_name})...", 0)
+    while True:
+        logger.info(f"📄 Lade Seite {count + 1} ...")
+        response = service.files().list(
+            q=f"'{folder_id}' in parents and mimeType {sign} 'text/plain' and trashed=false",
+            fields="nextPageToken, files(id, name, size, md5Checksum, parents)",
+            pageToken=page_token,
+            pageSize=50
+        ).execute()
+
+        files_batch = response.get('files', [])
+        logger.info(f"🔢 {len(files_batch)} Dateien auf dieser Seite gefunden")
+
+        files.extend(files_batch)
+        count += 1
+
+        progress_state["progress"] += 1
+        if progress_state["progress"] > 100:
+            progress_state["progress"] = 0
+        await asyncio.sleep(0.1)  # <<< Damit der Balken Zeit zur Anzeige bekommt
+
+        page_token = response.get('nextPageToken', None)
+        if not page_token:
+            break
+
+    update_progress(f"{len(files)} Dateien geladen.", 100)
+    logger.info(f"✅ Insgesamt {len(files)} Dateien geladen aus {count} Seiten")
+    await asyncio.sleep(0.5)
+
+    return files
+
+
+def is_today(filepath: Path) -> bool:
+    """Prüft, ob die Datei heute erstellt oder zuletzt geändert wurde."""
+    stat = filepath.stat()
+    # Verwende die letzte Änderungszeit (ctime ist auf Unix oft Change-Time, nicht Creation-Time)
+    modified_time = stat.st_mtime
+    today_start = time.mktime(time.strptime(time.strftime("%Y-%m-%d"), "%Y-%m-%d"))
+    tomorrow_start = today_start + 86400
+    return today_start <= modified_time < tomorrow_start
+
+
+def load_today_files_with_progress(directory: Path):
+    today_files = []
+    all_files = list(directory.rglob("*.txt"))  # rekursiv
+    total = len(all_files)
+
+    for index, file in enumerate(all_files):
+        if file.is_file() and is_today(file):
+            today_files.append(file)
+
+        update_progress(f"Lokal: {file.name}", int(index / total * 100))
+
+    update_progress(f"Fertig: {len(today_files)} Dateien gefunden", 100)
+
+    return today_files
+
+
+def manage_txt_files(files, html_path: Path):
+    count = 0
+    pair_cache = Settings.CACHE["pair_cache"]
+    for f in result:
+        pair = pair_cache.get(f.name[:-4])
+        if not pair:
+            logger.error(f"Datei: {f} nicht im Cache!")
+        else:
+            image_id = pair["image_id"]
+            count += delete_files_with_prefix(html_path, image_id)
+    return count
+
+
+def delete_files_with_prefix(html_path: Path, image_id: str):
+    count = 0
+    for file in html_path.iterdir():
+        if file.is_file() and file.name.startswith(image_id):
+            count += 1
+            file.unlink()
+    return count
 
 
 def local():
+    Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
     Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
     Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
@@ -593,4 +831,8 @@ def local():
 
 
 if __name__ == "__main__":
-    lokal_from_gdrive(local(), "ki")
+    local()
+
+    fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
+    result = load_today_files_with_progress(Path(Settings.TEXT_FILE_CACHE_DIR))
+    manage_txt_files(result, Path(Settings.RENDERED_HTML_DIR))

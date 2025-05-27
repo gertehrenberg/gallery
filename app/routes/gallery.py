@@ -149,22 +149,24 @@ def show_images_gallery(
                                                                     Settings.KEIN_TEXT_GEFUNDEN)  # Verwende Caches aus Settings
                     if Settings.KEIN_TEXT_GEFUNDEN == text_content:
                         set_status(image_name, recheck_category)
-                    lines = text_content.splitlines()
-                    if lines and lines[0].startswith("Aufgenommen:"):
-                        text_content = lines[0]
+
+                    if isinstance(text_content, str):
+                        lines = text_content.splitlines()
+                        if lines and lines[0].startswith("Aufgenommen:"):
+                            text_content = lines[0]
+
                 case '4':
                     text_content = Settings.CACHE["text_cache"].get(image_name,
                                                                     Settings.KEIN_TEXT_GEFUNDEN)  # Verwende Caches aus Settings
                     if Settings.KEIN_TEXT_GEFUNDEN == text_content:
                         set_status(image_name, recheck_category)
 
-                    index1 = text_content.find("\n\nThe")
-                    index2 = text_content.find("\n\nClose")
-
-                    indices = [i for i in (index1, index2) if i != -1]
-
-                    if indices:
-                        text_content = text_content[:min(indices)]
+                    if isinstance(text_content, str):
+                        index1 = text_content.find("\n\nThe")
+                        index2 = text_content.find("\n\nClose")
+                        indices = [i for i in (index1, index2) if i != -1]
+                        if indices:
+                            text_content = text_content[:min(indices)]
 
             rendered_html = templates.get_template("image_entry_local.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],

@@ -5,7 +5,7 @@ from pathlib import Path
 from tqdm import tqdm
 
 from config import IMAGE_FILE_CACHE_DIR, TEXT_FILE_CACHE_DIR
-from config import sanitize_filename, IMAGE_EXTENSIONS, TEMP_FILE_DIR
+from config import IMAGE_EXTENSIONS, TEMP_FILE_DIR
 
 def find_missing_text_files(image_cache_dir: Path, text_dir: Path):
     missing = []

@@ -20,7 +20,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
-
 def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_path: Path):
     hashfile_path.parent.mkdir(parents=True, exist_ok=True)
     with hashfile_path.open("w", encoding="utf-8") as f:
