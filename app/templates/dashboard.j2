@@ -5,13 +5,53 @@
     <title>Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
+    <style>
+        body {
+            background-color: #f3f4f6;
+            color: #1f2937;
+        }
+        .dashboard-title {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+        .card {
+            background-color: #ffffff;
+            border-radius: 0.75rem;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+            padding: 1rem;
+        }
+        .icon-link {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 1.125rem;
+        }
+        .icon-link-sm {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.875rem;
+        }
+        .icon {
+            font-size: 1.25rem;
+        }
+        .icon-sm {
+            font-size: 1rem;
+        }
+        .text-blue {
+            color: #2563eb;
+        }
+        .text-blue:hover {
+            text-decoration: underline;
+        }
+    </style>
 <body class="bg-gray-100 text-gray-900">
 <div class="p-6">
-    <h1 class="text-2xl font-bold mb-4">Dashboard</h1>
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <h1 class="dashboard-title">Dashboard</h1>
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <!-- Übersicht -->
-        <div class="bg-white rounded-xl shadow p-4">
+        <div class="card">
             <h2 class="text-lg font-semibold mb-2">Übersicht</h2>
             <p>Projektname: n8n-Test</p>
             <p>Projekt-ID: innate-setup-454010-i9</p>
@@ -46,10 +86,9 @@
                 {% for stat in gdrive_stats %}
                     <tr class="border-t">
                         <td>
-                            <div class="flex items-center gap-2">
-                                <span>{{ stat.icon }}</span>
-                                <a href="/gallery/?page=1&amp;count=6&amp;folder={{ stat.key }}&amp;textflag=1"
-                                   class="hover:underline">
+                            <div class="icon-link-sm">
+                                <span class="icon-sm">{{ stat.icon }}</span>
+                                <a href="/gallery/?page=1&amp;count=6&amp;folder={{ stat.key }}&amp;textflag=1" class="text-blue">
                                     {{ stat.label }}
                                 </a>
                             </div>
@@ -75,6 +114,21 @@
                 {% endfor %}
                 </tbody>
             </table>
+        </div>
+
+        <!-- Tools -->
+        <div class="bg-white rounded-xl shadow p-4">
+            <h2 class="text-lg font-semibold mb-2">Tools</h2>
+            <ul class="space-y-2 text-lg">
+                {% for tool in tool_links %}
+                    <li class="icon-link">
+                        <span class="icon">{{ tool.icon }}</span>
+                        <a href="{{ tool.url }}" class="text-blue">
+                            {{ tool.label }}
+                        </a>
+                    </li>
+                {% endfor %}
+            </ul>
         </div>
     </div>
 

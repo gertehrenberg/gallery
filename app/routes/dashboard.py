@@ -55,6 +55,13 @@ async def dashboard(request: Request):
 
     logger.info(info)
 
+    tool_links = [
+        {"label": "n8n", "url": "http://localhost", "icon": "🧩"},
+        {"label": "Sync mit \"Save\" (GDrive)", "url": "/tools/sync", "icon": "☁️"},
+        {"label": "Refresh Caches", "url": "/tools/refresh", "icon": "🔁"},
+        {"label": "Generate Pages", "url": "/tools/generate", "icon": "📄"}
+    ]
+
     gdrive_stats = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
 
     return templates.TemplateResponse("dashboard.j2", {
@@ -62,7 +69,8 @@ async def dashboard(request: Request):
         "gdrive_stats": gdrive_stats,
         "info": info,
         "labels": labels,
-        "values": values
+        "values": values,
+        "tool_links": tool_links  # <<< hier übergeben
     })
 
 
