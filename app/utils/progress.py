@@ -13,20 +13,18 @@ progress_state = {
 }
 
 
-async def update_progress(status: str, progress: int, ctime=0.1):
+async def update_progress(status: str, progress: int, ctime=0.1, showlog=False):
     if isinstance(status, str) and len(status) > 0:
         progress_state["status"] = status
     progress_state["progress"] = progress
-    logging.info(f"{status} : {progress}")
+    if showlog:
+        logging.info(f"{status} : {progress}")
     await asyncio.sleep(ctime)  # <<< Damit der Balken Zeit zur Anzeige bekommt
 
 
-def init_progress_state():
+async def init_progress_state():
     progress_state["running"] = False
-    update_progress("Warte auf Start...", 0)
-
-
-init_progress_state()
+    await update_progress("Warte auf Start...", 0)
 
 
 async def stop_progress():

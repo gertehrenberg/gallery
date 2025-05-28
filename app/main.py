@@ -24,6 +24,8 @@ from app.services.google_drive import verify_folders_exist
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)  # Verwende einen benannten Logger
 
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
 # FastAPI application setup
 app = FastAPI()
 app.add_middleware(SessionMiddleware, secret_key="**idefix**")  # Secret Key aus Config laden!
