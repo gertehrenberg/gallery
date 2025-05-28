@@ -425,29 +425,29 @@ def load_folder_status_from_db(db_path: str):
         return []
 
 
-def load_folder_status_from_db_by_name(db_path: str, gfolder_name: str):
-    logger.info(f"[load_folder_status_from_db_by_name] Start – db_path={db_path}, gfolder_name={gfolder_name}")
+def load_folder_status_from_db_by_name(db_path: str, folder_key: str):
+    logger.info(f"[load_folder_status_from_db_by_name] Start – db_path={db_path}, folder_key={folder_key}")
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
             "SELECT COUNT(*) FROM image_folder_status WHERE folder_id = ?",
-            (gfolder_name,)
+            (folder_key,)
         ).fetchone()
 
         if row and row[0] > 0:
             return conn.execute(
                 "SELECT image_id, folder_id FROM image_folder_status WHERE folder_id = ?",
-                (gfolder_name,)
+                (folder_key,)
             ).fetchall()
 
         return []
 
 
-def count_folder_entries(db_path: str, folder_id: str) -> int:
-    logger.info(f"[count_folder_entries] Start – db_path={db_path}, folder_id={folder_id}")
+def count_folder_entries(db_path: str, folder_key: str) -> int:
+    logger.info(f"[count_folder_entries] Start – db_path={db_path}, folder_key={folder_key}")
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
             "SELECT COUNT(*) FROM image_folder_status WHERE folder_id = ?",
-            (folder_id,)
+            (folder_key,)
         ).fetchone()
         return row[0] if row else 0
 
@@ -459,23 +459,23 @@ def clear_folder_status_db(db_path: str):
         conn.commit()
 
 
-def clear_folder_status_db_by_name(db_path: str, gfolder_key: str) -> None:
-    logger.info(f"[clear_folder_status_db_by_name] Start – db_path={db_path}, gfolder_key={gfolder_key}")
+def clear_folder_status_db_by_name(db_path: str, folder_key: str) -> None:
+    logger.info(f"[clear_folder_status_db_by_name] Start – db_path={db_path}, folder_key={folder_key}")
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             "DELETE FROM image_folder_status WHERE folder_id = ?",
-            (gfolder_key,))
+            (folder_key,))
         conn.commit()
 
 
-def save_folder_status_to_db(db_path: str, image_id: str, folder_id: str):
-    logger.info(f"[save_folder_status_to_db] Start – db_path={db_path}, image_id={image_id}, folder_id={folder_id}")
+def save_folder_status_to_db(db_path: str, image_id: str, folder_key: str):
+    logger.info(f"[save_folder_status_to_db] Start – db_path={db_path}, image_id={image_id}, folder_key={folder_key}")
     try:
         with sqlite3.connect(db_path) as conn:
             conn.execute("""
                 INSERT OR REPLACE INTO image_folder_status (image_id, folder_id)
                 VALUES (?, ?)
-            """, (image_id, folder_id))
+            """, (image_id, folder_key))
             conn.commit()
     except Exception as e:
-        logging.warning(f"[fill_folder_cache] Fehler beim Speichern von {image_id} → {folder_id}: {e}")
+        logging.warning(f"[fill_folder_cache] Fehler beim Speichern von {image_id} → {folder_key}: {e}")

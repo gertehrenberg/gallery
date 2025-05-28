@@ -20,13 +20,13 @@ def _load_file_parents_cache_from_db(db_path: str, file_parents_cache: dict) -> 
     if not rows:
         return False
     logging.info("[fill_folder_cache] 📦 Lade file_parents_cache aus der Datenbank...")
-    for image_id, folder_id in rows:
-        if folder_id not in file_parents_cache:
+    for image_id, folder_key in rows:
+        if folder_key not in file_parents_cache:
             Settings.folders_loaded += 1
-            file_parents_cache[folder_id] = []
+            file_parents_cache[folder_key] = []
             logging.info(
-                f"[fill_folder_cache] ✅ Cache aus DB geladen: {Settings.folders_loaded}/{Settings.folders_total} {folder_id}")
-        file_parents_cache[folder_id].append(image_id)
+                f"[fill_folder_cache] ✅ Cache aus DB geladen: {Settings.folders_loaded}/{Settings.folders_total} {folder_key}")
+        file_parents_cache[folder_key].append(image_id)
     if Settings.folders_loaded != Settings.folders_total:
         Settings.folders_loaded = Settings.folders_total
         logging.info(
@@ -171,30 +171,41 @@ async def fill_file_parents_cache_progress(db_path: str, folder_key: None):
                 f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
 
 
-def load_rendered_html_file(path: Path) -> str:
-    if path.exists():
+def load_rendered_html_file(file_dir: Path, file_name: str) -> str | None:
+    file_path = file_dir / (file_name + ".j2")
+    if file_path.is_file():
         try:
-            return path.read_text(encoding='utf-8')
+            logging.info(f"[load_rendered_html_file] ✅ {file_path}")
+            return file_path.read_text(encoding='utf-8')
         except Exception as e:
-            logging.warning(f"[rendered_html] ⚠️ Fehler beim Lesen: {path} → {e}")
-    return ""
+            logging.error(f"Fehler beim Laden der Datei {file_path}: {e}")
+            return None
+    else:
+        logging.info(f"[load_rendered_html_file] ⚠️ {file_path}")
+        return None
 
 
-def save_rendered_html_file(path: Path, content: str):
+def save_rendered_html_file(file_dir: Path, file_name: str, content: str) -> bool:
+    file_path = file_dir / (file_name + ".j2")
     try:
-        path.write_text(content, encoding='utf-8')
-        logging.info(f"[rendered_html] 💾 Gespeichert: {path}")
+        file_dir.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+        return True
     except Exception as e:
-        logging.warning(f"[rendered_html] ⚠️ Fehler beim Speichern: {path} → {e}")
+        logging.error(f"Fehler beim Speichern der Datei {file_path}: {e}")
+        return False
 
 
-def delete_rendered_html_file(path: Path):
-    try:
-        if path.exists():
-            path.unlink()
-            logging.info(f"[rendered_html] ❌ Gelöscht: {path}")
-    except Exception as e:
-        logging.warning(f"[rendered_html] ⚠️ Fehler beim Löschen: {path} → {e}")
+def delete_rendered_html_file(file_dir: Path, file_name: str) -> bool:
+    file_path = file_dir / (file_name + ".j2")
+    if file_path.is_file():
+        try:
+            file_path.unlink()
+            return True
+        except Exception as e:
+            logging.error(f"Fehler beim Löschen der Datei {file_path}: {e}")
+            return False
+    return False
 
 
 def fill_file_parents_cache_by_name(db_path: str, folder_key: str):
