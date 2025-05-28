@@ -23,34 +23,12 @@ from app.database import count_folder_entries
 from app.routes.auth import load_drive_service, load_drive_service_token
 from app.services.cache_management import fillcache_local
 from app.tools import readimages
+from app.utils.progress import progress_state, init_progress_state, stop_progress, update_progress
+from app.utils.reloadcache_progress import reloadcache_progress
 
 router = APIRouter()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
 logger = logging.getLogger(__name__)
-
-progress_state = {
-    "progress": 0,
-    "status": "Warte auf Start...",
-    "running": False
-}
-
-
-def update_progress(status: str, progress: int):
-    progress_state["status"] = status
-    progress_state["progress"] = progress
-    # logger.info(f"{status}: {progress}")
-
-
-def init_progress_state():
-    update_progress("Warte auf Start...", 0)
-    progress_state["running"] = False
-
-
-init_progress_state()
-
-
-def stop_progress():
-    update_progress("Abgeschlossen.", 100)
 
 
 @router.get("/dashboard/progress")
@@ -95,7 +73,7 @@ async def dashboard(request: Request):
         {"label": "n8n", "url": "http://localhost", "icon": "🧩"},
         {"label": "Sync mit \"Save\" (GDrive)", "url": "/gallery/dashboard/test?folder=save&direction=manage_save",
          "icon": "☁️"},
-        {"label": "Refresh Caches", "url": "/tools/refresh", "icon": "🔁"},
+        {"label": "Reload Caches", "url": "/gallery/dashboard/test?direction=reloadcache", "icon": "🔁"},
         {"label": "Generate Pages", "url": "/tools/generate", "icon": "📄"}
     ]
 
@@ -236,7 +214,17 @@ async def dashboard_progress(request: Request):
             "button_text": button_text,
             "folder_name": folder_name,
             "direction": direction,
-            "start_url": "/gallery/dashboard/multi/start",
+            "start_url": "/gallery/dashboard/multi/manage_save",
+            "progress_url": "/gallery/dashboard/progress"
+        })
+    elif direction == "reloadcache":
+        button_text = f'Aktualisiere alle internen Caches'
+        return templates.TemplateResponse("dashboard_progress.j2", {
+            "request": request,
+            "button_text": button_text,
+            "folder_name": folder_name,
+            "direction": direction,
+            "start_url": "/gallery/dashboard/multi/reloadcache",
             "progress_url": "/gallery/dashboard/progress"
         })
 
@@ -558,14 +546,21 @@ def download_file(service, file_id, local_path):
             status, done = downloader.next_chunk()
 
 
-@router.post("/dashboard/multi/start")
-async def start_multi_transfer(folder: str = Form(...), direction: str = Form(...)):
+@router.post("/dashboard/multi/reloadcache")
+async def manage_save(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
-        asyncio.create_task(simulate_multi_progress())
+        asyncio.create_task(reloadcache_progress())
     return {"status": "ok"}
 
 
-async def simulate_multi_progress():
+@router.post("/dashboard/multi/manage_save")
+async def manage_save(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        asyncio.create_task(manage_save_progress())
+    return {"status": "ok"}
+
+
+async def manage_save_progress():
     init_progress_state()
     progress_state["running"] = True
 
@@ -617,7 +612,6 @@ async def simulate_multi_progress():
         print(f"🗑️  Gelöscht auf GDrive: {deleted}")
 
     stop_progress()
-    await asyncio.sleep(0.1)  # <<< Damit der Balken Zeit zur Anzeige bekommt
 
 
 async def fill_pair_cache_folder(folder_name: str, image_file_cache_dir, pair_cache, pair_cache_path_local):

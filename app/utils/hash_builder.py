@@ -9,11 +9,10 @@ from tqdm import tqdm
 from app.config import Settings
 from app.config_gdrive import folder_id_by_name, get_all_subfolders, sanitize_filename, delete_all_hashfiles, \
     calculate_md5, SettingsGdrive
-from app.database import clear_folder_status_db_by_name, clear_folder_status_db
+from app.database import clear_folder_status_db_by_name, load_folder_status_from_db_by_name
 from app.routes.auth import load_drive_service_token
-from app.routes.dashboard import compare_hashfile_counts
-from app.services.cache_management import fill_file_parents_cache_by_name, fillcache_local, fill_file_parents_cache
-from app.tools import readimages, save_pair_cache, fill_pair_cache
+from app.services.cache_management import fill_file_parents_cache_by_name, fillcache_local
+from app.tools import readimages, save_pair_cache
 
 logging.basicConfig(
     level=logging.INFO,
@@ -144,6 +143,9 @@ def onefolder(folder_id):
     pair_cache = Settings.CACHE.get("pair_cache")
     pair_cache_path_local = Settings.PAIR_CACHE_PATH
 
+    rows = load_folder_status_from_db_by_name(Settings.DB_PATH, folder_id)
+    logging.info(f"Anzahl DB: {len(rows)}")
+
     clear_folder_status_db_by_name(Settings.DB_PATH, folder_id)
     to_delete = [key for key, value in pair_cache.items()
                  if value.get("folder", "") == folder_id]
@@ -161,14 +163,14 @@ if __name__ == "__main__":
 
     fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
 
-    clear_folder_status_db(Settings.DB_PATH)
-    fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
-    fill_file_parents_cache(Settings.DB_PATH)
+    # clear_folder_status_db(Settings.DB_PATH)
+    # fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
+    # fill_file_parents_cache(Settings.DB_PATH)
 
-    images(service)
-    text(service)
+    # images(service)
+    # text(service)
 
-    compare_hashfile_counts(Settings.IMAGE_FILE_CACHE_DIR)
-    compare_hashfile_counts(Settings.TEXT_FILE_CACHE_DIR, False)
+    # compare_hashfile_counts(Settings.IMAGE_FILE_CACHE_DIR)
+    # compare_hashfile_counts(Settings.TEXT_FILE_CACHE_DIR, False)
 
-    # onefolder("ki")
+    onefolder("ki")
