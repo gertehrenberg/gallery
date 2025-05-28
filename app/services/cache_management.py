@@ -4,7 +4,8 @@ import os
 from pathlib import Path
 
 from app.config import Settings
-from app.database import save_folder_status_to_db, clear_folder_status_db, load_folder_status_from_db
+from app.database import save_folder_status_to_db, clear_folder_status_db, load_folder_status_from_db, \
+    clear_folder_status_db_by_name
 from app.tools import fill_pair_cache
 from app.utils.progress import update_progress
 
@@ -59,7 +60,8 @@ def _process_image_files(image_files, folder_name, file_parents_cache, db_path):
         save_folder_status_to_db(db_path, image_id, folder_name)
 
 
-async def _process_image_files_progress(image_files, folder_name, file_parents_cache, db_path):
+async def _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path):
+    folder_name = label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
     total = len(image_files)
     for index, image_file in enumerate(image_files):
         await update_progress(f"Kategorie: {folder_name} : {total} Dateien ({image_file})",
@@ -69,12 +71,12 @@ async def _process_image_files_progress(image_files, folder_name, file_parents_c
         image_name = image_file.name.lower()
         pair = Settings.CACHE["pair_cache"].get(image_name)
         if not pair:
-            logging.warning(f"[fill_folder_cache] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
+            logging.warning(f"[_process_image_files_progress] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
             continue
-        logging.info(f"[fill_folder_cache] ✅️ Eintrag im pair_cache für: {folder_name} / {image_name}")
+        logging.info(f"[_process_image_files_progress] ✅️ Eintrag im pair_cache für: {folder_key} / {image_name}")
         image_id = pair["image_id"]
-        file_parents_cache[folder_name].append(image_id)
-        save_folder_status_to_db(db_path, image_id, folder_name)
+        file_parents_cache[folder_key].append(image_id)
+        save_folder_status_to_db(db_path, image_id, folder_key)
 
 
 def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
@@ -119,29 +121,54 @@ def fill_file_parents_cache(db_path: str):
             f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_name}")
 
 
-async def fill_file_parents_cache_progress(db_path: str):
-    file_parents_cache = Settings.CACHE["file_parents_cache"]
-    file_parents_cache.clear()
+async def fill_file_parents_cache_progress(db_path: str, folder_key: None):
+    if folder_key:
 
-    if _load_file_parents_cache_from_db(db_path, file_parents_cache):
-        return
+        file_parents_cache = Settings.CACHE["file_parents_cache"]
+        if folder_key in file_parents_cache:
+            del file_parents_cache[folder_key]
 
-    logging.info("[fill_folder_cache] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
-    clear_folder_status_db(db_path)
+        folder_name = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
 
-    for kat in Settings.kategorien:
-        folder_name = kat["key"]
-        file_parents_cache[folder_name] = []
-        folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name
+        clear_folder_status_db_by_name(db_path, folder_key)
+
+        logging.info("[fill_folder_cache] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
+
+        file_parents_cache[folder_key] = []
+        folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
         if not _prepare_folder(folder_path):
-            continue
-        logging.info(f"[fill_folder_cache] 📂 Lese Bilder aus: {folder_name}")
+            return
         image_files = list(folder_path.iterdir())
-        await update_progress(f"Kategorie: {folder_name} : {len(image_files)} Dateien", 0)
-        await _process_image_files_progress(image_files, folder_name, file_parents_cache, db_path)
+        await update_progress(f"{folder_name}: Kategorie: {folder_key} : {len(image_files)} Dateien", 0)
+        await _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path)
         Settings.folders_loaded += 1
         logging.info(
-            f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_name}")
+            f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
+    else:
+        file_parents_cache = Settings.CACHE["file_parents_cache"]
+        file_parents_cache.clear()
+
+        if _load_file_parents_cache_from_db(db_path, file_parents_cache):
+            return
+
+        logging.info("[fill_folder_cache] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
+        clear_folder_status_db(db_path)
+
+        for kat in Settings.kategorien:
+            if folder_key and kat != folder_key:
+                continue
+            folder_key = kat["key"]
+            file_parents_cache[folder_key] = []
+            folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
+            if not _prepare_folder(folder_path):
+                continue
+            logging.info(f"[fill_folder_cache] 📂 Lese Bilder aus: {folder_key}")
+            image_files = list(folder_path.iterdir())
+            await update_progress(f"Kategorie: {folder_key} : {len(image_files)} Dateien", 0)
+            await _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path)
+            Settings.folders_loaded += 1
+            logging.info(
+                f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
 
 
 def load_rendered_html_file(path: Path) -> str:
@@ -170,15 +197,15 @@ def delete_rendered_html_file(path: Path):
         logging.warning(f"[rendered_html] ⚠️ Fehler beim Löschen: {path} → {e}")
 
 
-def fill_file_parents_cache_by_name(db_path: str, folder_name: str):
+def fill_file_parents_cache_by_name(db_path: str, folder_key: str):
     file_parents_cache = Settings.CACHE["file_parents_cache"]
-    if folder_name not in file_parents_cache:
-        file_parents_cache[folder_name] = []
+    if folder_key not in file_parents_cache:
+        file_parents_cache[folder_key] = []
 
-    folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name
+    folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
     if not _prepare_folder(folder_path):
         return
 
     image_files = list(folder_path.iterdir())
-    _process_image_files(image_files, folder_name, file_parents_cache, db_path)
-    logging.info(f"[fill_folder_cache] ✅ Einzelner Ordner verarbeitet: {folder_name}")
+    _process_image_files(image_files, folder_key, file_parents_cache, db_path)
+    logging.info(f"[fill_folder_cache] ✅ Einzelner Ordner verarbeitet: {folder_key}")

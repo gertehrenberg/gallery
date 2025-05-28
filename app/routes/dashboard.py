@@ -203,32 +203,36 @@ kategorientabelle = {k["key"]: k for k in Settings.kategorien}
 
 @router.get("/dashboard/test", response_class=HTMLResponse)
 async def dashboard_progress(request: Request):
-    folder_name = request.query_params.get("folder", None)
+    folder_key = request.query_params.get("folder", None)
     direction = request.query_params.get('direction', None)
-    logger.info(f"🔄 dashboard_progress: {folder_name} {direction}")
+    logger.info(f"🔄 dashboard_progress: {folder_key} {direction}")
 
     if direction == "manage_save":
         button_text = f'Verarbeite Dateien aus Save (GDrive/lokal)'
         return templates.TemplateResponse("dashboard_progress.j2", {
             "request": request,
             "button_text": button_text,
-            "folder_name": folder_name,
+            "folder_name": folder_key,
             "direction": direction,
             "start_url": "/gallery/dashboard/multi/manage_save",
             "progress_url": "/gallery/dashboard/progress"
         })
     elif direction == "reloadcache":
-        button_text = f'Aktualisiere alle internen Caches'
+        if folder_key:
+            label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
+            button_text = f'Aktualisiere für \"{label}\" internen Caches'
+        else:
+            button_text = f'Aktualisiere alle internen Caches'
         return templates.TemplateResponse("dashboard_progress.j2", {
             "request": request,
             "button_text": button_text,
-            "folder_name": folder_name,
+            "folder_name": folder_key,
             "direction": direction,
             "start_url": "/gallery/dashboard/multi/reloadcache",
             "progress_url": "/gallery/dashboard/progress"
         })
 
-    kat = kategorientabelle.get(folder_name)
+    kat = kategorientabelle.get(folder_key)
     if kat:
         if direction == "gdrive_from_lokal":
             button_text = f'Passe für "{kat["label"]}" lokal so an wie GDrive'
@@ -242,7 +246,7 @@ async def dashboard_progress(request: Request):
     return templates.TemplateResponse("dashboard_progress.j2", {
         "request": request,
         "button_text": button_text,
-        "folder_name": folder_name,
+        "folder_name": folder_key,
         "direction": direction,
         "start_url": "/gallery/dashboard/start",
         "progress_url": "/gallery/dashboard/progress"
@@ -549,7 +553,7 @@ def download_file(service, file_id, local_path):
 @router.post("/dashboard/multi/reloadcache")
 async def manage_save(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
-        asyncio.create_task(reloadcache_progress())
+        asyncio.create_task(reloadcache_progress(folder))
     return {"status": "ok"}
 
 
@@ -561,7 +565,7 @@ async def manage_save(folder: str = Form(...), direction: str = Form(...)):
 
 
 async def manage_save_progress():
-    init_progress_state()
+    await init_progress_state()
     progress_state["running"] = True
 
     service = load_drive_service()
@@ -611,7 +615,7 @@ async def manage_save_progress():
         print(f"📦 Verschoben nach GDrive: {moved}")
         print(f"🗑️  Gelöscht auf GDrive: {deleted}")
 
-    stop_progress()
+    await stop_progress()
 
 
 async def fill_pair_cache_folder(folder_name: str, image_file_cache_dir, pair_cache, pair_cache_path_local):
@@ -657,7 +661,7 @@ async def perform_gdrive_sync(service, save_files, _files, existing_hashes, to_f
         file_id = file['id']
         remote_md5 = file.get('md5Checksum')
 
-        update_progress(f"GDrive: {original_name}", int(index / total * 100))
+        await update_progress(f"GDrive: {original_name}", int(index / total * 100))
 
         status = []
         if remote_md5 in existing_hashes:
@@ -684,7 +688,7 @@ async def perform_gdrive_sync(service, save_files, _files, existing_hashes, to_f
         logger.info(f"{original_name}: {', '.join(status)}")
         await asyncio.sleep(0.05)  # sichtbare Aktualisierung
 
-    update_progress(f"{moved} Dateien verschoben, {deleted} Dateien gelöscht.", 100)
+    await update_progress(f"{moved} Dateien verschoben, {deleted} Dateien gelöscht.", 100)
     await asyncio.sleep(0.5)
 
     return moved, deleted
@@ -701,7 +705,7 @@ async def perform_local_sync(service, save_files, local_file_dir, existing_hashe
         remote_md5 = file.get('md5Checksum')
         local_path = local_file_dir / sanitized_name
 
-        update_progress(f"Lokal: {original_name}", int(index / total * 100))
+        await update_progress(f"Lokal: {original_name}", int(index / total * 100))
 
         status = []
         if remote_md5 in existing_hashes:
@@ -722,7 +726,7 @@ async def perform_local_sync(service, save_files, local_file_dir, existing_hashe
         logger.info(f"{original_name}: {', '.join(status)}")
         await asyncio.sleep(0.05)  # für sichtbare Fortschrittsaktualisierung
 
-    update_progress(f"{downloaded} Dateien geladen.", 100)
+    await update_progress(f"{downloaded} Dateien geladen.", 100)
     logger.info(f"✅ Insgesamt {downloaded} Dateien geladen.")
     await asyncio.sleep(0.5)
 
@@ -735,7 +739,7 @@ async def list_files(folder_id, service, sign="!="):
     count = 0
     folder_name = folder_name_by_id(folder_id)
     logger.info(f"📂 Starte Dateiliste für Folder-ID: {folder_name}")
-    update_progress(f"Dateien werden aus Google Drive geladen ({folder_name})...", 0)
+    await update_progress(f"Dateien werden aus Google Drive geladen ({folder_name})...", 0)
     while True:
         logger.info(f"📄 Lade Seite {count + 1} ...")
         response = service.files().list(
@@ -760,7 +764,7 @@ async def list_files(folder_id, service, sign="!="):
         if not page_token:
             break
 
-    update_progress(f"{len(files)} Dateien geladen.", 100)
+    await update_progress(f"{len(files)} Dateien geladen.", 100)
     logger.info(f"✅ Insgesamt {len(files)} Dateien geladen aus {count} Seiten")
     await asyncio.sleep(0.5)
 

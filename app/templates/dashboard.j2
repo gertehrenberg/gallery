@@ -81,13 +81,9 @@
                 <tr>
                     <th class="font-medium">Kategorie</th>
                     <th class="font-medium text-right">GDrive</th>
-                    <th class="font-medium text-center">
-                        <div class="flex justify-center gap-4">
-                            <span class="text-xl">→</span>
-                            <span class="text-xl">←</span>
-                        </div>
-                    </th>
+                    <th class="font-medium text-center"></th>
                     <th class="font-medium text-left">Lokal</th>
+                    <th class="font-medium text-left">DB Cache</th>
                 </tr>
                 </thead>
                 <tbody>
@@ -118,7 +114,13 @@
                             </div>
                         </td>
                         <td class="text-left pl-2">{{ stat.local_count }}</td>
-                        <td class="text-left pl-2">{{ stat.db_count }}</td>
+                        <td class="text-left pl-2">
+                            <form action="/gallery/dashboard/test">
+                                <input type="hidden" name="folder" value="{{ stat.key }}">
+                                <input type="hidden" name="direction" value="reloadcache">
+                                <button type="submit">🔁{{ stat.db_count }}</button>
+                            </form>
+                        </td>
                     </tr>
                 {% endfor %}
                 </tbody>

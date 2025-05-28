@@ -271,6 +271,7 @@ def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, 
 
 
 def delete_checkbox_status(image_name: str):
+    logger.info(f"[delete_checkbox_status] Start – image_name={image_name}")
     with sqlite3.connect(Settings.DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -281,6 +282,7 @@ def delete_checkbox_status(image_name: str):
 
 
 def delete_quality_scores(image_name: str):
+    logger.info(f"[delete_quality_scores] Start – image_name={image_name}")
     with sqlite3.connect(Settings.DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -342,6 +344,7 @@ def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -> int:
 
 
 def get_checkbox_count(checkbox: str):
+    logger.info(f"[get_checkbox_count] Start – checkbox={checkbox}")
     if checkbox not in Settings.CHECKBOX_CATEGORIES:
         logger.warning("⚠️ Ungültige Checkbox-Kategorie")
         return {"count": 0}
@@ -357,6 +360,7 @@ def get_checkbox_count(checkbox: str):
 
 
 def load_nsfw_from_db(db_path: str, image_name: str):
+    logger.info(f"[load_nsfw_from_db] Start – db_path={db_path}, image_name={image_name}")
     with sqlite3.connect(db_path) as conn:
         return conn.execute("""
                             SELECT score_type, score
@@ -367,6 +371,7 @@ def load_nsfw_from_db(db_path: str, image_name: str):
 
 
 def save_nsfw_scores(db_path: str, image_name: str, nsfw_scores: dict[str, int], mapping):
+    logger.info(f"[save_nsfw_scores] Start – db_path={db_path}, image_name={image_name}, nsfw_scores={nsfw_scores}")
     with sqlite3.connect(db_path) as conn:
         for label, value in nsfw_scores.items():
             type_id = mapping.get(label)
@@ -378,6 +383,7 @@ def save_nsfw_scores(db_path: str, image_name: str, nsfw_scores: dict[str, int],
 
 
 def load_all_nsfw_scores(db_path: str):
+    logger.info(f"[load_all_nsfw_scores] Start – db_path={db_path}")
     with sqlite3.connect(db_path) as conn:
         return conn.execute("""
                             SELECT image_name, score_type, score
@@ -387,6 +393,7 @@ def load_all_nsfw_scores(db_path: str):
 
 
 def load_quality_from_db(db_path: str, image_name: str):
+    logger.info(f"[load_quality_from_db] Start – db_path={db_path}, image_name={image_name}")
     with sqlite3.connect(db_path) as conn:
         return conn.execute("""
                             SELECT score_type, score
@@ -397,6 +404,8 @@ def load_quality_from_db(db_path: str, image_name: str):
 
 
 def save_quality_scores(db_path: str, image_name: str, quality_scores: dict[str, int], mapping):
+    logger.info(
+        f"[save_quality_scores] Start – db_path={db_path}, image_name={image_name}, quality_scores={quality_scores}")
     with sqlite3.connect(db_path) as conn:
         for label, value in quality_scores.items():
             type_id = mapping.get(label)
@@ -408,6 +417,7 @@ def save_quality_scores(db_path: str, image_name: str, quality_scores: dict[str,
 
 
 def load_folder_status_from_db(db_path: str):
+    logger.info(f"[load_folder_status_from_db] Start – db_path={db_path}")
     with sqlite3.connect(db_path) as conn:
         row = conn.execute("SELECT COUNT(*) FROM image_folder_status").fetchone()
         if row and row[0] > 0:
@@ -416,6 +426,7 @@ def load_folder_status_from_db(db_path: str):
 
 
 def load_folder_status_from_db_by_name(db_path: str, gfolder_name: str):
+    logger.info(f"[load_folder_status_from_db_by_name] Start – db_path={db_path}, gfolder_name={gfolder_name}")
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
             "SELECT COUNT(*) FROM image_folder_status WHERE folder_id = ?",
@@ -432,6 +443,7 @@ def load_folder_status_from_db_by_name(db_path: str, gfolder_name: str):
 
 
 def count_folder_entries(db_path: str, folder_id: str) -> int:
+    logger.info(f"[count_folder_entries] Start – db_path={db_path}, folder_id={folder_id}")
     with sqlite3.connect(db_path) as conn:
         row = conn.execute(
             "SELECT COUNT(*) FROM image_folder_status WHERE folder_id = ?",
@@ -441,20 +453,23 @@ def count_folder_entries(db_path: str, folder_id: str) -> int:
 
 
 def clear_folder_status_db(db_path: str):
+    logger.info(f"[clear_folder_status_db] Start – db_path={db_path}")
     with sqlite3.connect(db_path) as conn:
         conn.execute("DELETE FROM image_folder_status")
         conn.commit()
 
 
-def clear_folder_status_db_by_name(db_path: str, gfolder_name: str):
+def clear_folder_status_db_by_name(db_path: str, gfolder_key: str) -> None:
+    logger.info(f"[clear_folder_status_db_by_name] Start – db_path={db_path}, gfolder_key={gfolder_key}")
     with sqlite3.connect(db_path) as conn:
         conn.execute(
             "DELETE FROM image_folder_status WHERE folder_id = ?",
-            (gfolder_name,))
+            (gfolder_key,))
         conn.commit()
 
 
 def save_folder_status_to_db(db_path: str, image_id: str, folder_id: str):
+    logger.info(f"[save_folder_status_to_db] Start – db_path={db_path}, image_id={image_id}, folder_id={folder_id}")
     try:
         with sqlite3.connect(db_path) as conn:
             conn.execute("""
