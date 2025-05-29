@@ -5,7 +5,16 @@ import cv2
 import numpy as np
 from skimage import feature
 
-from app.database import save_quality_scores, load_quality_from_db
+from app.config import Settings
+from app.database import save_quality_scores, load_quality_from_db, delete_scores_by_type
+from app.tools import readimages
+from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 
 def scale_score_to_0_100(score):
@@ -117,3 +126,39 @@ def save(db_path, image_id, scores: dict[str, int] | None = None):
     if scores:
         logging.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
         save_quality_scores(db_path, image_id, scores, mapping)
+
+
+def delete_quality_by_type():
+    for score_type in mapping.values():
+        delete_scores_by_type(score_type)
+
+
+async def reload_quality():
+    await init_progress_state()
+    progress_state["running"] = True
+
+    logger.info("➡️  Quality-Score wird gelöscht...")
+    delete_quality_by_type()
+    logger.info("✅️  Quality-Score gelöscht.")
+
+    for eintrag in Settings.kategorien:
+        folder_key = eintrag["key"]
+
+        local_files = {}
+
+        readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
+
+        all_files = []
+
+        for image_name, entry in local_files.items():
+            entry["image_name"] = image_name
+            all_files.append(entry)
+
+        label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
+        await update_progress(f"Bilder in \"{label}\"", 0)
+        for i, file_info in enumerate(all_files, 1):
+            percent = int(i / len(all_files) * 100)
+            await update_progress(f"Bilder in \"{label}\": {i}/{len(all_files)}", percent)
+            load_quality(Settings.DB_PATH, Settings.IMAGE_FILE_CACHE_DIR, folder_key, file_info["image_name"])
+
+    await stop_progress()

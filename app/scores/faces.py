@@ -6,7 +6,6 @@ import cv2
 from app.config import Settings
 from app.database import load_face_from_db, save_quality_scores
 from app.routes.what import remove_items
-from app.services.image_processing import load_faces
 from app.tools import readimages
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
 

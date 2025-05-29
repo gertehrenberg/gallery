@@ -22,6 +22,9 @@ from app.config_gdrive import folder_id_by_name, folder_name_by_id, sanitize_fil
 from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
+from app.scores.faces import reload_faces
+from app.scores.nsfw import reload_nsfw
+from app.scores.quality import reload_quality
 from app.services.cache_management import fillcache_local
 from app.tools import readimages
 from app.utils.progress import progress_state, init_progress_state, stop_progress, update_progress
@@ -82,14 +85,20 @@ async def dashboard(request: Request):
         {"label": "Lösche File Cache(s)", "url": "/gallery/dashboard/what?what=reloadfilecache", "icon": "♻️"},
         {"label": "Reload Gesichter (kann lange dauern)", "url": "/gallery/dashboard/test?direction=reload_faces",
          "icon": "🔁"},
+        {"label": "Reload Quality-Scores (kann lange dauern)",
+         "url": "/gallery/dashboard/test?direction=reload_quality",
+         "icon": "🔁"},
+        {"label": "Reload NSFW-Scores (kann lange dauern)", "url": "/gallery/dashboard/test?direction=reload_nsfw",
+         "icon": "🔁"},
         {"label": "Generate Pages", "url": "/tools/generate", "icon": "📄"}
     ]
 
-    gdrive_stats = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
+    gdrive_stats1 = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
+    gdrive_stats2 = compare_hashfile_counts_dash(Settings.TEXT_FILE_CACHE_DIR, subfolders=False)
 
     return templates.TemplateResponse("dashboard.j2", {
         "request": request,
-        "gdrive_stats": gdrive_stats,
+        "gdrive_stats": gdrive_stats1+gdrive_stats2,
         "info": info,
         "labels": labels,
         "values": values,
@@ -147,17 +156,6 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
     return sorted(result, key=lambda x: x["local_count"], reverse=True)
 
 
-def compare_hashfile_counts(file_folder_dir, subfolders: bool = True):
-    results = compare_hashfile_counts_dash(file_folder_dir, subfolders=subfolders)
-
-    header = f"{'Ordner':<15}{'GDrive-Hashes':>15}{'Lokal-Hashes':>15}{'DB-Count':>15}"
-    print(header)
-    print("-" * len(header))
-
-    for entry in results:
-        print(f"{entry['label']:<15}{entry['gdrive_count']:>15}{entry['local_count']:>15}{entry['db_count']:>15}")
-
-
 def get_monthly_costs(dataset: str, table: str, start: str, end: str):
     client = bigquery.Client()
     query = f"""
@@ -207,6 +205,16 @@ def get_daily_costs(dataset: str, table: str, year: int, month: int):
 
 
 calls = {
+    "reload_quality": {
+        "label": "Erstell die NFFW-Scoresr neu ...",
+        "start_url": "/gallery/dashboard/multi/reload_quality",
+        "progress_url": "/gallery/dashboard/progress"
+    },
+    "reload_nsfw": {
+        "label": "Erstell die NFFW-Scoresr neu ...",
+        "start_url": "/gallery/dashboard/multi/reload_nsfw",
+        "progress_url": "/gallery/dashboard/progress"
+    },
     "reload_faces": {
         "label": "Erstell die Gesichter neu ...",
         "start_url": "/gallery/dashboard/multi/reload_faces",
@@ -812,19 +820,6 @@ def load_today_files_with_progress(directory: Path):
     return today_files
 
 
-def manage_txt_files(files, html_path: Path):
-    count = 0
-    pair_cache = Settings.CACHE["pair_cache"]
-    for f in result:
-        pair = pair_cache.get(f.name[:-4])
-        if not pair:
-            logger.error(f"Datei: {f} nicht im Cache!")
-        else:
-            image_id = pair["image_id"]
-            count += delete_files_with_prefix(html_path, image_id)
-    return count
-
-
 def delete_files_with_prefix(html_path: Path, image_id: str):
     count = 0
     for file in html_path.iterdir():
@@ -835,13 +830,28 @@ def delete_files_with_prefix(html_path: Path, image_id: str):
 
 
 @router.post("/dashboard/multi/reload_faces")
-async def reload_faces(folder: str = Form(...), direction: str = Form(...)):
+async def _reload_faces(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
         asyncio.create_task(reload_faces())
     return {"status": "ok"}
 
 
+@router.post("/dashboard/multi/reload_nsfw")
+async def _reload_nsfw(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        asyncio.create_task(reload_nsfw())
+    return {"status": "ok"}
+
+
+@router.post("/dashboard/multi/reload_quality")
+async def _reload_quality(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        asyncio.create_task(reload_quality())
+    return {"status": "ok"}
+
+
 def local():
+    Settings.DB_PATH = '../../gallery_local.db'
     Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
     Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
     Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
@@ -853,6 +863,11 @@ def local():
 if __name__ == "__main__":
     local()
 
-    fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
-    result = load_today_files_with_progress(Path(Settings.TEXT_FILE_CACHE_DIR))
-    manage_txt_files(result, Path(Settings.RENDERED_HTML_DIR))
+    gdrive_stats1 = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
+    gdrive_stats2 = compare_hashfile_counts_dash(Settings.TEXT_FILE_CACHE_DIR, subfolders=False)
+
+    gdrive_stats = gdrive_stats1 + gdrive_stats2
+
+    for entry in gdrive_stats:
+        print(f"{entry['label']:<15}{entry['gdrive_count']:>15}{entry['local_count']:>15}{entry['db_count']:>15}")
+

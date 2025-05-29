@@ -2,7 +2,15 @@ import logging
 from pathlib import Path
 
 from app.config import Settings  # Importiere die Settings-Klasse
-from app.database import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores
+from app.database import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores, delete_scores_by_type
+from app.tools import readimages
+from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 NSFW_SERVICE_URL = "http://nsfw-service:8000/check-nsfw-path/"
 
@@ -107,6 +115,42 @@ def log_missing_scores_from_cache(db_path: str) -> None:
 
     except Exception as e:
         logging.error(f"Fehler bei der Prüfung fehlender NSFW-Scores: {e}")
+
+
+def delete_nsfw_by_type():
+    for score_type in mapping.values():
+        delete_scores_by_type(score_type)
+
+
+async def reload_nsfw():
+    await init_progress_state()
+    progress_state["running"] = True
+
+    logger.info("➡️  NSFW-Score wird gelöscht...")
+    delete_nsfw_by_type()
+    logger.info("✅️  NSFW-Score gelöscht.")
+
+    for eintrag in Settings.kategorien:
+        folder_key = eintrag["key"]
+
+        local_files = {}
+
+        readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
+
+        all_files = []
+
+        for image_name, entry in local_files.items():
+            entry["image_name"] = image_name
+            all_files.append(entry)
+
+        label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
+        await update_progress(f"Bilder in \"{label}\"", 0)
+        for i, file_info in enumerate(all_files, 1):
+            percent = int(i / len(all_files) * 100)
+            await update_progress(f"Bilder in \"{label}\": {i}/{len(all_files)}", percent)
+            load_nsfw(Settings.DB_PATH, folder_key, file_info["image_name"])
+
+    await stop_progress()
 
 
 import time
