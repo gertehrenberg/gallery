@@ -19,7 +19,7 @@ from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from starlette.responses import JSONResponse
 
 from app.config import Settings
-from app.config_gdrive import sanitize_filename, calculate_md5, folder_id_by_name
+from app.config_gdrive import sanitize_filename, calculate_md5, folder_id_by_name, SettingsGdrive
 from app.database import clear_folder_status_db, load_folder_status_from_db, save_folder_status_to_db, \
     clear_folder_status_db_by_name
 from app.database import count_folder_entries
@@ -99,7 +99,8 @@ async def dashboard(request: Request):
          "icon": "🔁"},
         {"label": "Reload NSFW-Scores (kann lange dauern)", "url": "/gallery/dashboard/test?direction=reload_nsfw",
          "icon": "🔁"},
-        {"label": "Reload ComfyUI nur in \"KI\" (kann lange dauern)", "url": "/gallery/dashboard/test?direction=reload_comfyui",
+        {"label": "Reload ComfyUI nur in \"KI\" (kann lange dauern)",
+         "url": "/gallery/dashboard/test?direction=reload_comfyui",
          "icon": "🔁"},
         {"label": "Generate Pages", "url": "/tools/generate", "icon": "📄"}
     ]
@@ -636,19 +637,20 @@ def delete_file(service, file_id):
     service.files().delete(fileId=file_id).execute()
 
 
-async def manage_save_progress():
+async def manage_save_progress(service : None):
     await init_progress_state()
     progress_state["running"] = True
 
-    service = load_drive_service()
+    if not service:
+        service = load_drive_service()
     from_folder_name = "save"
     to_folder_name = "recheck"
 
     from_folder_id = folder_id_by_name(from_folder_name)
-    from_files = await list_files(from_folder_id, service, "=")
+    from_files = await list_files(from_folder_id, service, "!=")
     if len(from_files) > 0:
         to_folder_id = folder_id_by_name(to_folder_name)
-        to_files = await list_files(to_folder_id, service, "=")
+        to_files = await list_files(to_folder_id, service, "!=")
 
         existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
 
@@ -669,10 +671,10 @@ async def manage_save_progress():
         print(f"📦 Verschoben nach GDrive: {moved}")
         print(f"🗑️  Gelöscht auf GDrive: {deleted}")
 
-    from_files = await list_files(from_folder_id, service, "!=")
+    from_files = await list_files(from_folder_id, service, "=")
     if len(from_files) > 0:
         to_folder_id = folder_id_by_name("textfiles")
-        to_files = await list_files(to_folder_id, service, "!=")
+        to_files = await list_files(to_folder_id, service, "=")
 
         existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
 
@@ -751,7 +753,7 @@ async def perform_local_sync(service, save_files, local_file_dir, existing_hashe
             sanitized_name = sanitize_filename(original_name)
             file_id = file['id']
             remote_md5 = file.get('md5Checksum')
-            local_path = local_file_dir / sanitized_name
+            local_path = local_file_dir + "/" + sanitized_name
 
             await update_progress(f"Lokal: {original_name}", int(index / total * 100))
             entry_time = datetime.now().isoformat(timespec='seconds')
@@ -1105,5 +1107,21 @@ def p2():
         print(f"{entry['label']:<15}{entry['gdrive_count']:>15}{entry['local_count']:>15}{entry['db_count']:>15}")
 
 
+def localp3():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.SAVE_LOG_FILE = "../../cache/from_save_"
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+    return load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+
+
+def p3():
+    asyncio.run(manage_save_progress(localp3()))
+
+
 if __name__ == "__main__":
-    p1()
+    p3()
