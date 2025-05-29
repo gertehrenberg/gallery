@@ -49,10 +49,10 @@ def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, fl
         return None
 
 
-def save(db_path, image_name, nsfw_scores: dict[str, int] | None = None):
-    if nsfw_scores:
-        logging.info(f"[save] 📂 Schreiben für: {nsfw_scores}")
-        save_nsfw_scores(db_path, image_name, nsfw_scores, mapping)
+def save(db_path, image_id, scores: dict[str, int] | None = None):
+    if scores:
+        logging.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
+        save_nsfw_scores(db_path, image_id, scores, mapping)
 
 
 def load_all_scores(db_path: str) -> dict[str, dict[str, float]]:

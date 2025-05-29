@@ -20,8 +20,11 @@ from starlette.responses import JSONResponse
 from app.config import Settings
 from app.config_gdrive import folder_id_by_name, folder_name_by_id, sanitize_filename, calculate_md5
 from app.database import count_folder_entries
+from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
+from app.routes.what import remove_items
 from app.services.cache_management import fillcache_local
+from app.services.image_processing import load_faces
 from app.tools import readimages
 from app.utils.progress import progress_state, init_progress_state, stop_progress, update_progress
 from app.utils.reloadcache_progress import reloadcache_progress
@@ -31,6 +34,8 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), ".
 logger = logging.getLogger(__name__)
 
 kategorientabelle = {k["key"]: k for k in Settings.kategorien}
+
+router.include_router(what.router)
 
 
 @router.get("/dashboard/progress")
@@ -76,7 +81,9 @@ async def dashboard(request: Request):
         {"label": "Sync mit \"Save\" (GDrive)", "url": "/gallery/dashboard/test?folder=save&direction=manage_save",
          "icon": "☁️"},
         {"label": "Reload Caches", "url": "/gallery/dashboard/test?direction=reloadcache", "icon": "🔁"},
-        {"label": "Reload File Caches", "url": "/gallery/dashboard/what?what=reloadfilecache", "icon": "♻️"},
+        {"label": "Lösche File Cache(s)", "url": "/gallery/dashboard/what?what=reloadfilecache", "icon": "♻️"},
+        {"label": "Reload Gesichter (kann lange dauern)", "url": "/gallery/dashboard/test?direction=reload_faces",
+         "icon": "🔁"},
         {"label": "Generate Pages", "url": "/tools/generate", "icon": "📄"}
     ]
 
@@ -201,105 +208,65 @@ def get_daily_costs(dataset: str, table: str, year: int, month: int):
     return [{"tag": row["tag"].strftime("%Y-%m-%d"), "kosten_chf": row["kosten_chf"]} for row in results]
 
 
-@router.get("/dashboard/what", response_class=HTMLResponse)
-async def what(request: Request):
-    checkboxes = [
-        ("thumbnail", "Thumbnail"),
-        ("rendered", "Rendered"),
-        ("faces", "Gesichter")
-    ]
-    return templates.TemplateResponse("what.j2", {"request": request, "checkboxes": checkboxes})
-
-
-@router.post("/dashboard/what/confirm", response_class=HTMLResponse)
-async def confirm_what(request: Request):
-    form = await request.form()
-    selected = form.getlist("option")
-
-    logger.info(f"✅ Ausgewählt für Reload: {selected}")
-    messages = []
-
-    if "thumbnail" in selected:
-        await remove_items(Path(Settings.THUMBNAIL_CACHE_DIR_300), "thumbnail")
-        messages.append("Thumbnails gelöscht")
-
-    if "rendered" in selected:
-        logger.info("➡️  Gerenderte HTML-Seiten werden gelöscht...")
-        await remove_items(Path(Settings.RENDERED_HTML_DIR), "thumbnail")
-        messages.append("Gerenderte HTML-Seiten gelöscht")
-
-    if "faces" in selected:
-        logger.info("➡️  Gesichter werden gelöscht...")
-        await remove_items(Path(Settings.GESICHTER_FILE_CACHE_DIR), "thumbnail")
-        messages.append("Gesichter gelöscht")
-
-    return JSONResponse({
-        "status": "ok",
-        "message": " | ".join(messages),
-        "selected": selected
-    })
-
-async def remove_items(dir, name):
-    if dir.exists() and dir.is_dir():
-        for item in dir.iterdir():
-            try:
-                if item.is_dir():
-                    shutil.rmtree(item)
-                else:
-                    item.unlink()
-            except Exception as e:
-                logger.warning(f"❌ [{name}] Fehler beim Löschen von {item}: {e}")
+calls = {
+    "reload_faces": {
+        "label": "Erstell die Gesichter neu ...",
+        "start_url": "/gallery/dashboard/multi/reload_faces",
+        "progress_url": "/gallery/dashboard/progress"
+    },
+    "manage_save": {
+        "label": "Verarbeite Dateien aus Save (GDrive/lokal) ...",
+        "start_url": "/gallery/dashboard/multi/manage_save",
+        "progress_url": "/gallery/dashboard/progress"
+    },
+    "reloadcache": {
+        "label": lambda folder_key: (
+            f'Aktualisiere für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" internen Caches ...'
+            if folder_key else "Aktualisiere alle internen Caches"
+        ),
+        "start_url": "/gallery/dashboard/multi/reloadcache",
+        "progress_url": "/gallery/dashboard/progress"
+    },
+    "gdrive_from_lokal": {
+        "label": lambda folder_key: (
+            f'Passe für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" lokal so an wie GDrive ...'
+            if folder_key else "Passe lokal so an wie GDrive"
+        ),
+        "start_url": "/gallery/dashboard/start",
+        "progress_url": "/gallery/dashboard/progress"
+    },
+    "lokal_from_gdrive": {
+        "label": lambda folder_key: (
+            f'Passe für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" GDrive so an wie lokal ...'
+            if folder_key else "Passe GDrive so an wie lokal"
+        ),
+        "start_url": "/gallery/dashboard/start",
+        "progress_url": "/gallery/dashboard/progress"
+    }
+}
 
 
 @router.get("/dashboard/test", response_class=HTMLResponse)
 async def dashboard_progress(request: Request):
-    folder_key = request.query_params.get("folder", None)
-    direction = request.query_params.get('direction', None)
+    folder_key = request.query_params.get("folder")
+    direction = request.query_params.get("direction")
     logger.info(f"🔄 dashboard_progress: {folder_key} {direction}")
 
-    if direction == "manage_save":
-        button_text = f'Verarbeite Dateien aus Save (GDrive/lokal)'
-        return templates.TemplateResponse("dashboard_progress.j2", {
-            "request": request,
-            "button_text": button_text,
-            "folder_name": folder_key,
-            "direction": direction,
-            "start_url": "/gallery/dashboard/multi/manage_save",
-            "progress_url": "/gallery/dashboard/progress"
-        })
-    elif direction == "reloadcache":
-        if folder_key:
-            label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
-            button_text = f'Aktualisiere für \"{label}\" internen Caches'
-        else:
-            button_text = f'Aktualisiere alle internen Caches'
-        return templates.TemplateResponse("dashboard_progress.j2", {
-            "request": request,
-            "button_text": button_text,
-            "folder_name": folder_key,
-            "direction": direction,
-            "start_url": "/gallery/dashboard/multi/reloadcache",
-            "progress_url": "/gallery/dashboard/progress"
-        })
+    call = calls.get(direction)
+    if not call:
+        return HTMLResponse("Ungültige direction", status_code=400)
 
-    kat = kategorientabelle.get(folder_key)
-    if kat:
-        if direction == "gdrive_from_lokal":
-            button_text = f'Passe für "{kat["label"]}" lokal so an wie GDrive'
-        elif direction == "lokal_from_gdrive":
-            button_text = f'Passe für "{kat["label"]}" GDrive so an wie lokal'
-        else:
-            return None
-    else:
-        return None
+    label = call["label"]
+    if callable(label):
+        label = label(folder_key)
 
     return templates.TemplateResponse("dashboard_progress.j2", {
         "request": request,
-        "button_text": button_text,
+        "button_text": label,
         "folder_name": folder_key,
         "direction": direction,
-        "start_url": "/gallery/dashboard/start",
-        "progress_url": "/gallery/dashboard/progress"
+        "start_url": call["start_url"],
+        "progress_url": call["progress_url"]
     })
 
 
@@ -867,6 +834,46 @@ def delete_files_with_prefix(html_path: Path, image_id: str):
             count += 1
             file.unlink()
     return count
+
+
+@router.post("/dashboard/multi/reload_faces")
+async def manage_save(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        asyncio.create_task(reload_faces())
+    return {"status": "ok"}
+
+
+async def reload_faces():
+    await init_progress_state()
+    progress_state["running"] = True
+
+    logger.info("➡️  Gesichter werden gelöscht...")
+    await remove_items(Path(Settings.GESICHTER_FILE_CACHE_DIR), "faces")
+    logger.info("✅️  Gesichter gelöscht.")
+
+    for eintrag in Settings.kategorien:
+        folder_key = eintrag["key"]
+
+        local_files = {}
+
+        readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
+
+        all_files = []
+
+        for image_name, entry in local_files.items():
+            entry["image_name"] = image_name
+            all_files.append(entry)
+
+        count = 0
+        label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
+        await update_progress(f"Bilder in \"{label}\"", 0)
+        for i, file_info in enumerate(all_files, 1):
+            percent = int(i / len(all_files) * 100)
+            await update_progress(f"Bilder in \"{label}\": {i}/{len(all_files)} (erzeugt: {count})", percent)
+            erg = load_faces(Settings.DB_PATH, folder_key, file_info["image_name"], file_info["image_id"])
+            count += len(erg)
+
+    await stop_progress()
 
 
 def local():

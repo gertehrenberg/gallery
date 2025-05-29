@@ -34,6 +34,8 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.routes.auth import router as auth_router
 from app.login import router as login_router
 
+from app.services.image_processing import load_faces
+
 script_dir = os.path.dirname(os.path.abspath(__file__))
 if script_dir not in sys.path:
     sys.path.insert(0, script_dir)
@@ -41,7 +43,6 @@ if script_dir not in sys.path:
 from save.app.config_old import IMAGE_EXTENSIONS, CACHE_DATEI_NAME
 from save.app.config_old import DB_PATH, IMAGE_FILE_CACHE_DIR, GESICHTER_FILE_CACHE_DIR
 
-from app.scores.faces import gen_faces
 from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality
 
@@ -894,14 +895,14 @@ def prepare_image_data(count: int, folder_name: str, image_name: str):
     quality_scores = load_quality(DB_PATH, IMAGE_FILE_CACHE_DIR, folder_name, image_name)
     nsfw_scores = load_nsfw(DB_PATH, folder_name, image_name)
 
-    extra_thumbnails = get_faces(folder_name, image_name)
+    faces = load_faces(folder_name, image_name, image_id)
 
     return {
         "thumbnail_src": thumbnail_src,
         "image_id": image_id,
         "quality_scores": quality_scores,
         "nsfw_scores": nsfw_scores,
-        "extra_thumbnails": extra_thumbnails
+        "extra_thumbnails": faces
     }
 
 
@@ -1359,23 +1360,6 @@ def egal():
     sync_out()
 
 
-def get_faces(folder_name: str, image_name: str) -> list[dict]:
-    full_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
-    gen_faces(folder_name, image_name)
-
-    stem = full_path.stem
-    face_dir = Path(GESICHTER_FILE_CACHE_DIR)
-    base_url = "/static/facefiles"
-    return [
-        {
-            "src": f"/gallery{base_url}/{thumb.name}",
-            "link": f"/gallery{base_url}/{thumb.name}",
-            "image_name": f"{thumb.name}"
-        }
-        for thumb in sorted(face_dir.glob(f"{stem}_*.jpg"))
-    ]  # Beispiel
-
-
 def ensure_category_dirs(image_file_cache_dir, kategorien):
     image_file_cache_dir = Path(image_file_cache_dir)  # absichern
     for k in kategorien:
@@ -1493,26 +1477,6 @@ def batch_generate_thumbnails(cats):
             if not result:
                 print("Fehler bei batch_generate_thumbnails:", image)
 
-
-def batch_generate_faces(cats):
-    from tqdm import tqdm
-
-    for k in kategorien:
-        folder_name = k["key"]
-        folder_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name
-
-        if not folder_path.exists():
-            print("Ordner nicht gefunden:", folder_path)
-            return
-
-        image_files = [f.name for f in folder_path.iterdir() if f.is_file()]
-
-        for image in tqdm(image_files):
-            result = gen_faces(folder_name, image)
-            if not result:
-                print("Fehler bei batch_generate_faces:", image)
-
-
 def batch_generate_quality(cats):
     from tqdm import tqdm
 
@@ -1539,6 +1503,5 @@ if __name__ == "__main__":
 
     print_file_counts(IMAGE_FILE_CACHE_DIR, kategorien)
 
-    # batch_generate_faces(kategorien)
     # batch_generate_thumbnails(kategorien)
     batch_generate_quality(kategorien)

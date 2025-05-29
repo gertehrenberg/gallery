@@ -113,7 +113,7 @@ def calculateq1andq2(image_path):
     return scoreq1, scoreq2
 
 
-def save(db_path, image_name, nsfw_scores: dict[str, int] | None = None):
-    """Speichert die Qualitätswerte inklusive optionaler NSFW-Werte in der Datenbank."""
-    if nsfw_scores:
-        save_quality_scores(db_path, image_name, nsfw_scores, mapping)
+def save(db_path, image_id, scores: dict[str, int] | None = None):
+    if scores:
+        logging.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
+        save_quality_scores(db_path, image_id, scores, mapping)

@@ -281,8 +281,8 @@ def delete_checkbox_status(image_name: str):
                        """, (image_name,))
 
 
-def delete_quality_scores(image_name: str):
-    logger.info(f"[delete_quality_scores] Start – image_name={image_name}")
+def delete_scores(image_name: str):
+    logger.info(f"[delete_scores] Start – image_name={image_name}")
     with sqlite3.connect(Settings.DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute("""
@@ -290,6 +290,17 @@ def delete_quality_scores(image_name: str):
                        FROM image_quality_scores
                        WHERE LOWER(image_name) = LOWER(?)
                        """, (image_name,))
+
+
+def delete_scores_by_type(score_type: int):
+    logger.info(f"[delete_scores_by_type] Start – score_type={score_type}")
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+                       DELETE
+                       FROM image_quality_scores
+                       WHERE score_type = ?
+                       """, (score_type,))
 
 
 def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -> int:
@@ -357,6 +368,17 @@ def get_checkbox_count(checkbox: str):
                              """, (checkbox,)).fetchone()[0]
     logger.info(f"🔢 Anzahl markierter Bilder in '{checkbox}': {count}")
     return {"count": count}
+
+
+def load_face_from_db(db_path: str, image_name: str):
+    logger.info(f"[load_face_from_db] Start – db_path={db_path}, image_name={image_name}")
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("""
+                            SELECT score_type, score
+                            FROM image_quality_scores
+                            WHERE LOWER(image_name) = LOWER(?)
+                              AND score_type BETWEEN 5 AND 5
+                            """, (image_name,)).fetchall()
 
 
 def load_nsfw_from_db(db_path: str, image_name: str):

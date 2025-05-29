@@ -10,7 +10,8 @@ from geopy.geocoders import Nominatim
 from starlette.responses import JSONResponse
 
 from app.config import Settings  # Importiere die Settings-Klasse
-from app.database import delete_checkbox_status, delete_quality_scores
+from app.database import delete_checkbox_status, delete_scores
+from app.scores.faces import generate_faces
 from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality
 from app.services.thumbnail import get_thumbnail_path, generate_thumbnail, thumbnail
@@ -151,17 +152,16 @@ def download_and_save_image(folder_name: str, image_name: str, image_id: str) ->
     return thumbnail_path
 
 
-def get_faces(folder_name: str, image_name: str) -> list[dict]:
-    logging.info(f"🔍 Starte get_faces() für {image_name}")
-    full_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
-    stem = full_path.stem
-    face_dir = Path(Settings.GESICHTER_FILE_CACHE_DIR)
+def load_faces(db_path, folder_key: str, image_name: str, image_id: str) -> list[dict]:
+    logging.info(f"🔍 Starte get_faces() für {image_id}")
+
+    generate_faces(db_path, folder_key, image_name, image_id)
+
     base_url = "/static/facefiles"
-    thumbs = sorted(face_dir.glob(f"{stem}_*.jpg"))
+    face_dir = Path(Settings.GESICHTER_FILE_CACHE_DIR)
+    thumbs = sorted(face_dir.glob(f"{image_id}_*.jpg"))
     if thumbs:
         logging.info(f"[get_faces] ✅ {len(thumbs)} gefunden")
-    else:
-        logging.info(f"[get_faces] 🚫 Keine Gesichter gefunden")
     return [
         {
             "src": f"/gallery{base_url}/{thumb.name}",
@@ -190,7 +190,7 @@ def prepare_image_data(count: int, folder_name: str, image_name: str):
 
     quality_scores = load_quality(Settings.DB_PATH, Settings.IMAGE_FILE_CACHE_DIR, folder_name, image_name)
     nsfw_scores = load_nsfw(Settings.DB_PATH, folder_name, image_name)
-    faces = get_faces(folder_name, image_name)
+    faces = load_faces(Settings.DB_PATH, folder_name, image_name, image_id)
 
     return {
         "thumbnail_src": thumbnail_src,
@@ -217,14 +217,16 @@ def clean(image_name: str):
     logging.info(f"🧹 Starte clean() für: {image_name}")
     text_cache = Settings.CACHE.get("text_cache")
 
-    delete_checkbox_status(image_name)
-    delete_quality_scores(image_name)
-
     if image_name in text_cache:
         text_cache.pop(image_name, None)
         logging.info(f"[clean] ✅ text_cache gelöscht: {image_name}")
 
     image_id = find_image_id_by_name(image_name)
+
+    delete_checkbox_status(image_name)
+    delete_scores(image_name)
+    delete_scores(image_id)
+
     for i in range(1, 5):
         key = f"{image_id}_{i}"
         if delete_rendered_html_file(Settings.RENDERED_HTML_DIR, key):
@@ -236,8 +238,7 @@ def clean(image_name: str):
         logging.info(f"[clean] ✅ Thumbnail gelöscht: {thumbnail_path}")
 
     face_dir = Path(Settings.GESICHTER_FILE_CACHE_DIR)
-    base_name = Path(image_name).stem
-    for file in face_dir.glob(f"{base_name}_*.jpg"):
+    for file in face_dir.glob(f"{image_id}_*.jpg"):
         try:
             file.unlink()
             logging.info(f"[clean] ✅ Gesicht gelöscht: {file}")

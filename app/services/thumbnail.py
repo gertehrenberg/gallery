@@ -6,6 +6,7 @@ from PIL import Image, ImageOps
 
 from app.config import Settings  # Importiere die Settings-Klasse
 
+
 def get_thumbnail_path(image_id) -> Path:
     return Path(Settings.THUMBNAIL_CACHE_DIR_300) / f"{image_id}.png"
 
