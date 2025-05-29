@@ -25,11 +25,12 @@ from app.database import clear_folder_status_db, load_folder_status_from_db, sav
 from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
-from app.routes.dachboard_help import _prepare_folder, _process_image_files, write_local_hashes
+from app.routes.dachboard_help import _prepare_folder, _process_image_files
 from app.scores.faces import reload_faces
 from app.scores.nsfw import reload_nsfw
 from app.scores.quality import reload_quality
 from app.tools import readimages, save_pair_cache, fill_pair_cache
+from app.utils.comfyUI import reload_comfyui
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
     write_local_hashes_progress
 from app.utils.progress import list_files
@@ -97,6 +98,8 @@ async def dashboard(request: Request):
          "url": "/gallery/dashboard/test?direction=reload_quality",
          "icon": "🔁"},
         {"label": "Reload NSFW-Scores (kann lange dauern)", "url": "/gallery/dashboard/test?direction=reload_nsfw",
+         "icon": "🔁"},
+        {"label": "Reload ComfyUI nur in \"KI\" (kann lange dauern)", "url": "/gallery/dashboard/test?direction=reload_comfyui",
          "icon": "🔁"},
         {"label": "Generate Pages", "url": "/tools/generate", "icon": "📄"}
     ]
@@ -213,6 +216,11 @@ def get_daily_costs(dataset: str, table: str, year: int, month: int):
 
 
 calls = {
+    "reload_comfyui": {
+        "label": "Kopiere Bilder mit Workflow in ComfyUI ...",
+        "start_url": "/gallery/dashboard/multi/reload_comfyui",
+        "progress_url": "/gallery/dashboard/progress"
+    },
     "reload_quality": {
         "label": "Erstell die NFFW-Scoresr neu ...",
         "start_url": "/gallery/dashboard/multi/reload_quality",
@@ -835,6 +843,13 @@ async def _reload_nsfw(folder: str = Form(...), direction: str = Form(...)):
 async def _reload_quality(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
         asyncio.create_task(reload_quality())
+    return {"status": "ok"}
+
+
+@router.post("/dashboard/multi/reload_comfyui")
+async def _reload_comfyui(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        asyncio.create_task(reload_comfyui())
     return {"status": "ok"}
 
 

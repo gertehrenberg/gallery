@@ -1,11 +1,12 @@
 import asyncio
+import json
 import logging
+import os
 from pathlib import Path
 from typing import Dict
 
 from app.config import Settings
 from app.config_gdrive import folder_name_by_id, calculate_md5
-from app.routes.dachboard_help import save_simple_hashes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -75,6 +76,7 @@ async def list_files(folder_id, service, sign="!="):
 
     return files
 
+
 async def write_local_hashes_progress(extensions, file_folder_dir, subfolders: bool = True):
     root = Path(file_folder_dir)
     all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
@@ -106,3 +108,10 @@ async def write_local_hashes_progress(extensions, file_folder_dir, subfolders: b
         print(f"[✓] Lokale Hashes gespeichert: {subdir / hashfile_name}")
 
         dir_counter += 1
+
+
+def save_simple_hashes(hashes: Dict[str, str], hashfile_path: Path):
+    hashfile_path.parent.mkdir(parents=True, exist_ok=True)
+    with hashfile_path.open("w", encoding="utf-8") as f:
+        json.dump(hashes, f, indent=2)
+    os.chmod(hashfile_path, 0o644)

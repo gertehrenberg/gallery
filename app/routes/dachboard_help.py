@@ -2,12 +2,8 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict
-
-from tqdm import tqdm
 
 from app.config import Settings
-from app.config_gdrive import calculate_md5
 from app.database import save_folder_status_to_db
 from app.tools import fill_pair_cache
 
@@ -16,12 +12,6 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
-
-def save_simple_hashes(hashes: Dict[str, str], hashfile_path: Path):
-    hashfile_path.parent.mkdir(parents=True, exist_ok=True)
-    with hashfile_path.open("w", encoding="utf-8") as f:
-        json.dump(hashes, f, indent=2)
-    os.chmod(hashfile_path, 0o644)
 
 
 def _prepare_folder(folder_path: Path) -> bool:
