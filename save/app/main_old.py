@@ -894,7 +894,7 @@ def prepare_image_data(count: int, folder_name: str, image_name: str):
     quality_scores = load_quality(DB_PATH, IMAGE_FILE_CACHE_DIR, folder_name, image_name)
     nsfw_scores = load_nsfw(DB_PATH, folder_name, image_name)
 
-    extra_thumbnails = get_extra_thumbnails(folder_name, image_name)
+    extra_thumbnails = get_faces(folder_name, image_name)
 
     return {
         "thumbnail_src": thumbnail_src,
@@ -1359,7 +1359,7 @@ def egal():
     sync_out()
 
 
-def get_extra_thumbnails(folder_name: str, image_name: str) -> list[dict]:
+def get_faces(folder_name: str, image_name: str) -> list[dict]:
     full_path = Path(IMAGE_FILE_CACHE_DIR) / folder_name / image_name
     gen_faces(folder_name, image_name)
 

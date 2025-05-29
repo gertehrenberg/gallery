@@ -1,0 +1,27 @@
+<div id="what-modal-backdrop" style="
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;">
+    <div id="what-modal" style="
+        background: white;
+        padding: 2em;
+        border-radius: 10px;
+        width: 320px;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        position: relative;">
+        <h2 style="margin-top: 0;">Was soll neu geladen werden?</h2>
+        <form id="what-form" method="post" action="/gallery/dashboard/what/confirm">
+            {% for value, label in checkboxes %}
+                <label><input type="checkbox" name="option" value="{{ value }}"> {{ label }}</label><br>
+            {% endfor %}
+            <div style="margin-top: 1.5em; text-align: center;">
+                <button type="submit" style="padding: 0.5em 1em; margin: 0.5em; background: #4CAF50; color: white; border: none; border-radius: 4px;">OK</button>
+                <button type="button" id="what-cancel" style="padding: 0.5em 1em; margin: 0.5em; background: #f44336; color: white; border: none; border-radius: 4px;">Abbrechen</button>
+            </div>
+        </form>
+    </div>
+</div>

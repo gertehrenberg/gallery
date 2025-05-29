@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
 from geopy.geocoders import Nominatim
 from starlette.responses import JSONResponse
@@ -13,6 +13,7 @@ from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import delete_checkbox_status, delete_quality_scores
 from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality
+from app.services.thumbnail import get_thumbnail_path, generate_thumbnail, thumbnail
 from app.tools import find_image_id_by_name
 
 
@@ -124,10 +125,9 @@ def find_file_by_name(root_dir: Path, image_name: str):
     return list(root_dir.rglob(image_name))
 
 
-def download_and_save_image(folder_name: str, image_name: str) -> str | None:
+def download_and_save_image(folder_name: str, image_name: str, image_id: str) -> Path | None:
     logging.info(f"📥 Starte download_and_save_image() für {folder_name}/{image_name}")
     image_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
-    thumbnail_path = os.path.join(Settings.THUMBNAIL_CACHE_DIR_300, image_name)
 
     if not os.path.exists(image_path):
         treffer = find_file_by_name(Path(Settings.IMAGE_FILE_CACHE_DIR), image_name)
@@ -143,39 +143,25 @@ def download_and_save_image(folder_name: str, image_name: str) -> str | None:
         logging.warning(f"[download_and_save_image] ❌ Originalbild nicht gefunden: {image_path}")
         return None
 
+    thumbnail_path = get_thumbnail_path(image_id)
     if not os.path.exists(thumbnail_path):
-        if not generate_thumbnail(image_path, thumbnail_path, image_name):
+        if not generate_thumbnail(image_path, thumbnail_path, image_id):
             return None
 
     return thumbnail_path
 
 
-def generate_thumbnail(image_path: Path, thumbnail_path: str, image_name: str) -> bool:
-    try:
-        logging.info(f"[generate_thumbnail] 🖼️ Erzeuge Thumbnail für {image_name}")
-        img = Image.open(image_path)
-        img = ImageOps.exif_transpose(img)
-        img.thumbnail((300, 300), Image.Resampling.LANCZOS)
-        os.makedirs(os.path.dirname(thumbnail_path), exist_ok=True)
-        img.convert("RGB").save(thumbnail_path, format="JPEG")
-        logging.info(f"[generate_thumbnail] ✅ Thumbnail gespeichert: {thumbnail_path}")
-        return True
-    except Exception as e:
-        logging.error(f"[generate_thumbnail] ❌ Fehler beim Erzeugen von Thumbnail {image_name}: {e}")
-        return False
-
-
-def get_extra_thumbnails(folder_name: str, image_name: str) -> list[dict]:
-    logging.info(f"🔍 Starte get_extra_thumbnails() für {image_name}")
+def get_faces(folder_name: str, image_name: str) -> list[dict]:
+    logging.info(f"🔍 Starte get_faces() für {image_name}")
     full_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
     stem = full_path.stem
     face_dir = Path(Settings.GESICHTER_FILE_CACHE_DIR)
     base_url = "/static/facefiles"
     thumbs = sorted(face_dir.glob(f"{stem}_*.jpg"))
     if thumbs:
-        logging.info(f"[get_extra_thumbnails] ✅ {len(thumbs)} gefunden")
+        logging.info(f"[get_faces] ✅ {len(thumbs)} gefunden")
     else:
-        logging.info(f"[get_extra_thumbnails] 🚫 Keine Thumbnails gefunden")
+        logging.info(f"[get_faces] 🚫 Keine Gesichter gefunden")
     return [
         {
             "src": f"/gallery{base_url}/{thumb.name}",
@@ -200,25 +186,18 @@ def prepare_image_data(count: int, folder_name: str, image_name: str):
         logging.error(f"[prepare_image_data] ❌ Fehler beim Laden von Textdatei: {e}")
         Settings.CACHE["text_cache"][image_name] = f"Fehler beim Laden: {e}"
 
-    local_thumbnail_path = download_and_save_image(folder_name, image_name)
-    if local_thumbnail_path and os.path.exists(local_thumbnail_path):
-        if count != 1:
-            thumbnail_src = f"/gallery/static/thumbnails/{image_name}"
-        else:
-            thumbnail_src = f"/gallery/static/imagefiles/{folder_name}/{image_name}"
-    else:
-        thumbnail_src = "https://via.placeholder.com/150?text=Kein+Bild"
+    thumbnail_src = thumbnail(count, folder_name, image_id, image_name)
 
     quality_scores = load_quality(Settings.DB_PATH, Settings.IMAGE_FILE_CACHE_DIR, folder_name, image_name)
     nsfw_scores = load_nsfw(Settings.DB_PATH, folder_name, image_name)
-    extra_thumbnails = get_extra_thumbnails(folder_name, image_name)
+    faces = get_faces(folder_name, image_name)
 
     return {
         "thumbnail_src": thumbnail_src,
         "image_id": image_id,
         "quality_scores": quality_scores,
         "nsfw_scores": nsfw_scores,
-        "extra_thumbnails": extra_thumbnails
+        "extra_thumbnails": faces
     }
 
 
@@ -251,7 +230,7 @@ def clean(image_name: str):
         if delete_rendered_html_file(Settings.RENDERED_HTML_DIR, key):
             logging.info(f"[clean] ✅ gerendertes HTML gelöscht: {key}")
 
-    thumbnail_path = os.path.join(Settings.THUMBNAIL_CACHE_DIR_300, image_name)
+    thumbnail_path = get_thumbnail_path(image_id)
     if os.path.exists(thumbnail_path):
         os.remove(thumbnail_path)
         logging.info(f"[clean] ✅ Thumbnail gelöscht: {thumbnail_path}")
@@ -261,7 +240,7 @@ def clean(image_name: str):
     for file in face_dir.glob(f"{base_name}_*.jpg"):
         try:
             file.unlink()
-            logging.info(f"[clean] ✅ Gesicht-Thumbnail gelöscht: {file}")
+            logging.info(f"[clean] ✅ Gesicht gelöscht: {file}")
         except Exception as e:
             logging.error(f"[clean] ❌ Fehler beim Löschen von {file}: {e}")
 

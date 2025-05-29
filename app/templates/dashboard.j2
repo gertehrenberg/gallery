@@ -104,12 +104,12 @@
                                 <form action="/gallery/dashboard/test">
                                     <input type="hidden" name="folder" value="{{ stat.key }}">
                                     <input type="hidden" name="direction" value="gdrive_from_lokal">
-                                    <button type="submit" class="text-xl">→</button>
+                                    <button type="submit" class="text-xl">&rarr;</button>
                                 </form>
                                 <form action="/gallery/dashboard/test">
                                     <input type="hidden" name="folder" value="{{ stat.key }}">
                                     <input type="hidden" name="direction" value="gdrive_from_lokal">
-                                    <button type="submit" class="text-xl">←</button>
+                                    <button type="submit" class="text-xl">&larr;</button>
                                 </form>
                             </div>
                         </td>
@@ -131,13 +131,14 @@
         <div class="bg-white rounded-xl shadow p-4">
             <h2 class="text-lg font-semibold mb-2">Tools</h2>
             <ul class="space-y-2 text-lg">
-                {% for tool in tool_links %}
-                    <li class="icon-link">
-                        <span class="icon">{{ tool.icon }}</span>
-                        <a href="{{ tool.url }}" class="text-blue">
-                            {{ tool.label }}
-                        </a>
-                    </li>
+                {% for link in tool_links %}
+                    {% if "dashboard/what" in link.url %}
+                        <a href="#"
+                           onclick="openWhatModal('{{ link.url }}'); return false;">{{ link.icon }} {{ link.label }}</a>
+                        <br>
+                    {% else %}
+                        <a href="{{ link.url }}">{{ link.icon }} {{ link.label }}</a><br>
+                    {% endif %}
                 {% endfor %}
             </ul>
         </div>
@@ -175,5 +176,99 @@
         </script>
     </div>
 </div>
+<script>
+    async function openWhatModal(url) {
+        if (document.getElementById("what-modal-backdrop")) return;
+
+        const response = await fetch(url);
+        const html = await response.text();
+
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = html;
+        const modal = tempDiv.firstElementChild;
+        document.body.appendChild(modal);
+
+        // Disable scroll behind modal
+        document.body.style.overflow = 'hidden';
+
+        // Bind buttons AFTER insert
+        const form = modal.querySelector("#what-form");
+        const cancelBtn = modal.querySelector("#what-cancel");
+
+        if (!form) {
+            console.error("❌ Form not found in modal!");
+            return;
+        }
+
+        form.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            console.log("✅ Submit-Handler aktiv");
+
+            const formData = new FormData(form);
+
+            try {
+                const res = await fetch(form.action, {
+                    method: "POST",
+                    body: formData
+                });
+
+                const result = await res.json();
+                console.log("✅ Antwort erhalten", result);
+
+                if (result.message) {
+                    showSuccessToast(result.message);
+                } else if (result.selected) {
+                    showSuccessToast("✅ Ausgewählt: " + result.selected.join(", "));
+                } else {
+                    showSuccessToast("Aktion abgeschlossen.");
+                }
+
+            } catch (err) {
+                console.error("❌ Fehler bei POST:", err);
+                showSuccessToast("Fehler beim Senden.", true);
+            }
+
+            closeWhatModal();
+        });
+
+        cancelBtn?.addEventListener("click", closeWhatModal);
+        document.addEventListener("keydown", function escClose(e) {
+            if (e.key === "Escape") {
+                closeWhatModal();
+                document.removeEventListener("keydown", escClose);
+            }
+        });
+    }
+
+    function closeWhatModal() {
+        const modal = document.getElementById("what-modal-backdrop");
+        if (modal) modal.remove();
+        document.body.style.overflow = '';
+    }
+
+    function showSuccessToast(text, isError = false) {
+        const msg = document.createElement("div");
+        msg.innerText = text;
+
+        msg.style.position = "fixed";
+        msg.style.top = "10px";
+        msg.style.right = "10px";
+        msg.style.padding = "12px 20px";
+        msg.style.backgroundColor = isError ? "#dc2626" : "#4caf50";
+        msg.style.color = "white";
+        msg.style.borderRadius = "8px";
+        msg.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)";
+        msg.style.zIndex = 10000;
+        msg.style.fontSize = "1rem";
+        msg.style.transition = "opacity 0.3s ease";
+
+        document.body.appendChild(msg);
+
+        setTimeout(() => {
+            msg.style.opacity = "0";
+            setTimeout(() => msg.remove(), 300);
+        }, 2500);
+    }
+</script>
 </body>
 </html>
