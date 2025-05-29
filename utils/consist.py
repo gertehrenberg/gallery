@@ -4,8 +4,8 @@ from pathlib import Path
 
 from app.config import Settings
 from app.database import load_folder_status_from_db_by_name, save_folder_status_to_db
+from app.routes.dachboard_help import save_simple_hashes
 from app.tools import readimages
-from app.utils.hash_builder import save_simple_hashes
 
 logging.basicConfig(
     level=logging.INFO,

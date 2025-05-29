@@ -14,7 +14,7 @@ from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import set_status, load_status, save_status, \
     move_marked_images_by_checkbox, get_checkbox_count  # Importiere die benötigten Funktionen
 from app.dependencies import require_login
-from app.services.cache_management import load_rendered_html_file, save_rendered_html_file
+from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.services.image_processing import prepare_image_data, clean
 
 DEFAULT_COUNT: str = "6"

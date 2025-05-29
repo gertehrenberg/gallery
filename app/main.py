@@ -2,6 +2,7 @@ import logging
 import os
 import threading
 
+# Importiere die Cache-Funktionen aus app/services/cache_management.py
 from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates
 from google.oauth2.credentials import Credentials
@@ -15,8 +16,8 @@ from app.database import init_db
 # Importiere die Routen
 from app.routes import auth, gallery, static, admin, login, dashboard
 from app.routes.auth import SCOPES, TOKEN_FILE
-# Importiere die Cache-Funktionen aus app/services/cache_management.py
-from app.services.cache_management import fillcache_local, fill_file_parents_cache
+from app.routes.dachboard_help import fillcache_local
+from app.routes.dashboard import fill_file_parents_cache
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
 

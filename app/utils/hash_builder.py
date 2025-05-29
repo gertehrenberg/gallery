@@ -8,10 +8,10 @@ from tqdm import tqdm
 
 from app.config import Settings
 from app.config_gdrive import folder_id_by_name, get_all_subfolders, sanitize_filename, delete_all_hashfiles, \
-    calculate_md5, SettingsGdrive
+    SettingsGdrive, calculate_md5
 from app.database import clear_folder_status_db_by_name, load_folder_status_from_db_by_name
 from app.routes.auth import load_drive_service_token
-from app.services.cache_management import fill_file_parents_cache_by_name, fillcache_local
+from app.routes.dachboard_help import fillcache_local, fill_file_parents_cache_by_name, save_simple_hashes
 from app.tools import readimages, save_pair_cache
 
 logging.basicConfig(
@@ -20,14 +20,28 @@ logging.basicConfig(
 )
 
 
+def write_local_hashes(extensions, file_folder_dir, subfolders: bool = True):
+    root = Path(file_folder_dir)
+    all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
+    with tqdm(total=len(all_dirs), desc="Erzeuge lokale Hashes", unit="Ordner") as pbar:
+        for subdir in all_dirs:
+            local_hashes: Dict[str, str] = {}
+            image_files = [f for f in subdir.iterdir() if f.is_file() and f.suffix.lower() in extensions]
+            with tqdm(total=len(image_files), desc=f"{subdir.name}", unit="Bild", leave=False) as inner:
+                for file in image_files:
+                    try:
+                        md5_local = calculate_md5(file)
+                        local_hashes[file.name] = md5_local
+                    except Exception as e:
+                        tqdm.write(f"[Fehler] {file.name}: {e}")
+                    inner.update(1)
+            hashfile_name = Settings.GALLERY_HASH_FILE
+            save_simple_hashes(local_hashes, subdir / hashfile_name)
+            tqdm.write(f"[✓] Lokale Hashes gespeichert: {subdir / hashfile_name}")
+            pbar.update(1)
+
+
 def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_path: Path):
-    hashfile_path.parent.mkdir(parents=True, exist_ok=True)
-    with hashfile_path.open("w", encoding="utf-8") as f:
-        json.dump(hashes, f, indent=2)
-    os.chmod(hashfile_path, 0o644)
-
-
-def save_simple_hashes(hashes: Dict[str, str], hashfile_path: Path):
     hashfile_path.parent.mkdir(parents=True, exist_ok=True)
     with hashfile_path.open("w", encoding="utf-8") as f:
         json.dump(hashes, f, indent=2)
@@ -91,27 +105,6 @@ def process_image_folders(service, extensions, file_folder_dir, folder_ids: List
                 local_dir = Path(file_folder_dir)
             save_structured_hashes(gdrive_hashes, local_dir / "hashes.json")
             print(f"[✓] Gespeichert: {local_dir}/hashes.json")
-
-
-def write_local_hashes(extensions, file_folder_dir, subfolders: bool = True):
-    root = Path(file_folder_dir)
-    all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
-    with tqdm(total=len(all_dirs), desc="Erzeuge lokale Hashes", unit="Ordner") as pbar:
-        for subdir in all_dirs:
-            local_hashes: Dict[str, str] = {}
-            image_files = [f for f in subdir.iterdir() if f.is_file() and f.suffix.lower() in extensions]
-            with tqdm(total=len(image_files), desc=f"{subdir.name}", unit="Bild", leave=False) as inner:
-                for file in image_files:
-                    try:
-                        md5_local = calculate_md5(file)
-                        local_hashes[file.name] = md5_local
-                    except Exception as e:
-                        tqdm.write(f"[Fehler] {file.name}: {e}")
-                    inner.update(1)
-            hashfile_name = Settings.GALLERY_HASH_FILE
-            save_simple_hashes(local_hashes, subdir / hashfile_name)
-            tqdm.write(f"[✓] Lokale Hashes gespeichert: {subdir / hashfile_name}")
-            pbar.update(1)
 
 
 def images(service):

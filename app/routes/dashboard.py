@@ -1,5 +1,6 @@
 import asyncio
 import calendar
+import csv
 import json
 import logging
 import os
@@ -18,21 +19,28 @@ from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from starlette.responses import JSONResponse
 
 from app.config import Settings
-from app.config_gdrive import folder_id_by_name, folder_name_by_id, sanitize_filename, calculate_md5
+from app.config_gdrive import sanitize_filename, calculate_md5, folder_id_by_name
+from app.database import clear_folder_status_db, load_folder_status_from_db, save_folder_status_to_db, \
+    clear_folder_status_db_by_name
 from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
+from app.routes.dachboard_help import _prepare_folder, _process_image_files, write_local_hashes
 from app.scores.faces import reload_faces
 from app.scores.nsfw import reload_nsfw
 from app.scores.quality import reload_quality
-from app.services.cache_management import fillcache_local
-from app.tools import readimages
-from app.utils.progress import progress_state, init_progress_state, stop_progress, update_progress
-from app.utils.reloadcache_progress import reloadcache_progress
+from app.tools import readimages, save_pair_cache, fill_pair_cache
+from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
+    write_local_hashes_progress
+from app.utils.progress import list_files
 
 router = APIRouter()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
 logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 kategorientabelle = {k["key"]: k for k in Settings.kategorien}
 
@@ -98,7 +106,7 @@ async def dashboard(request: Request):
 
     return templates.TemplateResponse("dashboard.j2", {
         "request": request,
-        "gdrive_stats": gdrive_stats1+gdrive_stats2,
+        "gdrive_stats": gdrive_stats1 + gdrive_stats2,
         "info": info,
         "labels": labels,
         "values": values,
@@ -574,17 +582,50 @@ def download_file(service, file_id, local_path):
 
 
 @router.post("/dashboard/multi/reloadcache")
-async def manage_save(folder: str = Form(...), direction: str = Form(...)):
+async def _reloadcache(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
         asyncio.create_task(reloadcache_progress(folder))
     return {"status": "ok"}
 
 
 @router.post("/dashboard/multi/manage_save")
-async def manage_save(folder: str = Form(...), direction: str = Form(...)):
+async def _manage_save(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
         asyncio.create_task(manage_save_progress())
     return {"status": "ok"}
+
+
+async def fill_pair_cache_folder(folder_name: str, image_file_cache_dir, pair_cache, pair_cache_path_local):
+    folder_path = os.path.join(image_file_cache_dir, folder_name)
+
+    if not os.path.isdir(folder_path):
+        logging.warning(f"[fill_pair_cache] Kein gültiger Ordner: {folder_path}")
+        return
+
+    logging.info(f"[fill_pair_cache] Aktualisiere Cache für Ordner: {folder_name}")
+
+    # Entferne nur die Paare aus dem angegebenen Ordner
+    keys_to_delete = [k for k in pair_cache if k.startswith(f"{folder_name}/") or f"/{folder_name}/" in k]
+    for k in keys_to_delete:
+        del pair_cache[k]
+
+    for name in os.listdir(folder_path):
+        subpath = os.path.join(folder_path, name)
+        if os.path.isfile(subpath):
+            if any(subpath.lower().endswith(key) for key in [folder_name]):
+                readimages(folder_path, pair_cache)
+    try:
+        with open(pair_cache_path_local, 'w') as f:
+            json.dump(pair_cache, f)
+        logging.info(f"[fill_pair_cache] Pair-Cache gespeichert: {len(pair_cache)} Paare")
+    except Exception as e:
+        logging.warning(f"[fill_pair_cache] Fehler beim Speichern von pair_cache.json: {e}")
+
+    logging.info(f"[fill_pair_cache] Cache für {folder_name} aktualisiert.")
+
+
+def delete_file(service, file_id):
+    service.files().delete(fileId=file_id).execute()
 
 
 async def manage_save_progress():
@@ -641,39 +682,6 @@ async def manage_save_progress():
     await stop_progress()
 
 
-async def fill_pair_cache_folder(folder_name: str, image_file_cache_dir, pair_cache, pair_cache_path_local):
-    folder_path = os.path.join(image_file_cache_dir, folder_name)
-
-    if not os.path.isdir(folder_path):
-        logging.warning(f"[fill_pair_cache] Kein gültiger Ordner: {folder_path}")
-        return
-
-    logging.info(f"[fill_pair_cache] Aktualisiere Cache für Ordner: {folder_name}")
-
-    # Entferne nur die Paare aus dem angegebenen Ordner
-    keys_to_delete = [k for k in pair_cache if k.startswith(f"{folder_name}/") or f"/{folder_name}/" in k]
-    for k in keys_to_delete:
-        del pair_cache[k]
-
-    for name in os.listdir(folder_path):
-        subpath = os.path.join(folder_path, name)
-        if os.path.isfile(subpath):
-            if any(subpath.lower().endswith(key) for key in [folder_name]):
-                readimages(folder_path, pair_cache)
-    try:
-        with open(pair_cache_path_local, 'w') as f:
-            json.dump(pair_cache, f)
-        logging.info(f"[fill_pair_cache] Pair-Cache gespeichert: {len(pair_cache)} Paare")
-    except Exception as e:
-        logging.warning(f"[fill_pair_cache] Fehler beim Speichern von pair_cache.json: {e}")
-
-    logging.info(f"[fill_pair_cache] Cache für {folder_name} aktualisiert.")
-
-
-def delete_file(service, file_id):
-    service.files().delete(fileId=file_id).execute()
-
-
 async def perform_gdrive_sync(service, save_files, _files, existing_hashes, to_folder_id, from_folder_id):
     moved = 0
     deleted = 0
@@ -721,77 +729,57 @@ async def perform_local_sync(service, save_files, local_file_dir, existing_hashe
     total = len(save_files)
     downloaded = 0
 
-    for index, file in enumerate(save_files, start=1):
-        original_name = file['name']
-        sanitized_name = sanitize_filename(original_name)
-        file_id = file['id']
-        remote_md5 = file.get('md5Checksum')
-        local_path = local_file_dir / sanitized_name
+    # Erzeuge vollständigen Pfad mit Zeitstempel
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_path = Path(f"{Settings.SAVE_LOG_FILE}{timestamp}.csv")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
 
-        await update_progress(f"Lokal: {original_name}", int(index / total * 100))
+    with log_path.open("w", newline='', encoding="utf-8") as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["timestamp", "original_name", "action", "local_path"])
 
-        status = []
-        if remote_md5 in existing_hashes:
-            status.append("✅ bereits vorhanden (MD5 match)")
-        elif local_path.exists():
-            local_md5 = calculate_md5(local_path)
-            if remote_md5 == local_md5:
-                status.append("✅ lokal identisch")
+        for index, file in enumerate(save_files, start=1):
+            original_name = file['name']
+            sanitized_name = sanitize_filename(original_name)
+            file_id = file['id']
+            remote_md5 = file.get('md5Checksum')
+            local_path = local_file_dir / sanitized_name
+
+            await update_progress(f"Lokal: {original_name}", int(index / total * 100))
+            entry_time = datetime.now().isoformat(timespec='seconds')
+
+            status = []
+            action = None
+
+            if remote_md5 in existing_hashes:
+                status.append("✅ bereits vorhanden (MD5 match)")
+            elif local_path.exists():
+                local_md5 = calculate_md5(local_path)
+                if remote_md5 == local_md5:
+                    status.append("✅ lokal identisch")
+                else:
+                    download_file(service, file_id, local_path)
+                    downloaded += 1
+                    action = "Aktualisiert"
+                    status.append("🔁 lokal aktualisiert")
             else:
                 download_file(service, file_id, local_path)
                 downloaded += 1
-                status.append("🔁 lokal aktualisiert")
-        else:
-            download_file(service, file_id, local_path)
-            downloaded += 1
-            status.append("⬇️ heruntergeladen")
+                action = "Heruntergeladen"
+                status.append("⬇️ heruntergeladen")
 
-        logger.info(f"{original_name}: {', '.join(status)}")
-        await asyncio.sleep(0.05)  # für sichtbare Fortschrittsaktualisierung
+            if action:
+                logger.info(f"{action}: {original_name} → {local_path}")
+                writer.writerow([entry_time, original_name, action, str(local_path)])
+
+            logger.info(f"{original_name}: {', '.join(status)}")
+            await asyncio.sleep(0.05)
 
     await update_progress(f"{downloaded} Dateien geladen.", 100)
     logger.info(f"✅ Insgesamt {downloaded} Dateien geladen.")
     await asyncio.sleep(0.5)
 
     return downloaded
-
-
-async def list_files(folder_id, service, sign="!="):
-    files = []
-    page_token = None
-    count = 0
-    folder_name = folder_name_by_id(folder_id)
-    logger.info(f"📂 Starte Dateiliste für Folder-ID: {folder_name}")
-    await update_progress(f"Dateien werden aus Google Drive geladen ({folder_name})...", 0)
-    while True:
-        logger.info(f"📄 Lade Seite {count + 1} ...")
-        response = service.files().list(
-            q=f"'{folder_id}' in parents and mimeType {sign} 'text/plain' and trashed=false",
-            fields="nextPageToken, files(id, name, size, md5Checksum, parents)",
-            pageToken=page_token,
-            pageSize=50
-        ).execute()
-
-        files_batch = response.get('files', [])
-        logger.info(f"🔢 {len(files_batch)} Dateien auf dieser Seite gefunden")
-
-        files.extend(files_batch)
-        count += 1
-
-        progress_state["progress"] += 1
-        if progress_state["progress"] > 100:
-            progress_state["progress"] = 0
-        await asyncio.sleep(0.1)  # <<< Damit der Balken Zeit zur Anzeige bekommt
-
-        page_token = response.get('nextPageToken', None)
-        if not page_token:
-            break
-
-    await update_progress(f"{len(files)} Dateien geladen.", 100)
-    logger.info(f"✅ Insgesamt {len(files)} Dateien geladen aus {count} Seiten")
-    await asyncio.sleep(0.5)
-
-    return files
 
 
 def is_today(filepath: Path) -> bool:
@@ -850,7 +838,237 @@ async def _reload_quality(folder: str = Form(...), direction: str = Form(...)):
     return {"status": "ok"}
 
 
-def local():
+def _load_file_parents_cache_from_db(db_path: str, file_parents_cache: dict) -> bool:
+    rows = load_folder_status_from_db(db_path)
+    if not rows:
+        return False
+    logging.info("[fill_folder_cache] 📦 Lade file_parents_cache aus der Datenbank...")
+    for image_id, folder_key in rows:
+        if folder_key not in file_parents_cache:
+            Settings.folders_loaded += 1
+            file_parents_cache[folder_key] = []
+            logging.info(
+                f"[fill_folder_cache] ✅ Cache aus DB geladen: {Settings.folders_loaded}/{Settings.folders_total} {folder_key}")
+        file_parents_cache[folder_key].append(image_id)
+    if Settings.folders_loaded != Settings.folders_total:
+        Settings.folders_loaded = Settings.folders_total
+        logging.info(
+            f"[fill_folder_cache] ✅ Cache aus DB geladen: {Settings.folders_loaded}/{Settings.folders_total}")
+    return True
+
+
+async def _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path):
+    folder_name = label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
+    total = len(image_files)
+    for index, image_file in enumerate(image_files):
+        await update_progress(f"Kategorie: {folder_name} : {total} Dateien ({image_file})",
+                              int(index / total * 100), 0.02)
+        if not image_file.is_file() or image_file.suffix.lower() not in Settings.IMAGE_EXTENSIONS:
+            continue
+        image_name = image_file.name.lower()
+        pair = Settings.CACHE["pair_cache"].get(image_name)
+        if not pair:
+            logging.warning(f"[_process_image_files_progress] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
+            continue
+        logging.info(f"[_process_image_files_progress] ✅️ Eintrag im pair_cache für: {folder_key} / {image_name}")
+        image_id = pair["image_id"]
+        file_parents_cache[folder_key].append(image_id)
+        save_folder_status_to_db(db_path, image_id, folder_key)
+
+
+def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
+    pair_cache = Settings.CACHE["pair_cache"]
+    pair_cache.clear()
+
+    logging.info(f"[fillcache_local] 📂 Lesen: {pair_cache_path_local}")
+
+    if os.path.exists(pair_cache_path_local):
+        try:
+            with open(pair_cache_path_local, 'r') as f:
+                pair_cache.update(json.load(f))
+                logging.info(f"[fillcache_local] Pair-Cache geladen: {len(pair_cache)} Paare")
+                return
+        except Exception as e:
+            logging.warning(f"[fillcache_local] Fehler beim Laden von pair_cache.json: {e}")
+
+    fill_pair_cache(image_file_cache_dir, pair_cache, pair_cache_path_local)
+
+
+def fill_file_parents_cache(db_path: str):
+    file_parents_cache = Settings.CACHE["file_parents_cache"]
+    file_parents_cache.clear()
+
+    if _load_file_parents_cache_from_db(db_path, file_parents_cache):
+        return
+
+    logging.info("[fill_folder_cache] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
+    clear_folder_status_db(db_path)
+
+    for kat in Settings.kategorien:
+        folder_name = kat["key"]
+        file_parents_cache[folder_name] = []
+        folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name
+        if not _prepare_folder(folder_path):
+            continue
+        logging.info(f"[fill_folder_cache] 📂 Lese Bilder aus: {folder_name}")
+        image_files = list(folder_path.iterdir())
+        _process_image_files(image_files, folder_name, file_parents_cache, db_path)
+        Settings.folders_loaded += 1
+        logging.info(
+            f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_name}")
+
+
+def load_rendered_html_file(file_dir: Path, file_name: str) -> str | None:
+    file_path = file_dir / (file_name + ".j2")
+    if file_path.is_file():
+        try:
+            logging.info(f"[load_rendered_html_file] ✅ {file_path}")
+            return file_path.read_text(encoding='utf-8')
+        except Exception as e:
+            logging.error(f"Fehler beim Laden der Datei {file_path}: {e}")
+            return None
+    else:
+        logging.info(f"[load_rendered_html_file] ⚠️ {file_path}")
+        return None
+
+
+def save_rendered_html_file(file_dir: Path, file_name: str, content: str) -> bool:
+    file_path = file_dir / (file_name + ".j2")
+    try:
+        file_dir.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding="utf-8")
+        return True
+    except Exception as e:
+        logging.error(f"Fehler beim Speichern der Datei {file_path}: {e}")
+        return False
+
+
+def delete_rendered_html_file(file_dir: Path, file_name: str) -> bool:
+    file_path = file_dir / (file_name + ".j2")
+    if file_path.is_file():
+        try:
+            file_path.unlink()
+            return True
+        except Exception as e:
+            logging.error(f"Fehler beim Löschen der Datei {file_path}: {e}")
+            return False
+    return False
+
+
+async def reloadcache_progress(folder_key: str):
+    logger.info(f"🔄 Starte reloadcache_progress für Ordner: {folder_key}")
+    await init_progress_state()
+    progress_state["running"] = True
+
+    Settings.folders_loaded = 0
+
+    if folder_key in Settings.CHECKBOX_CATEGORIES:
+        logger.info(f"📂 Modus: Kategorie erkannt ({folder_key})")
+
+        pair_cache = Settings.CACHE.get("pair_cache")
+        pair_cache_path_local = Settings.PAIR_CACHE_PATH
+        folder_name = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
+
+        await update_progress(f"{folder_name}: fillcache_local ...", 33)
+        to_delete = [key for key, value in pair_cache.items()
+                     if value.get("folder", "") == folder_key]
+
+        logger.info(f"🧹 Entferne {len(to_delete)} bestehende Einträge aus pair_cache für {folder_key}")
+        for key in to_delete:
+            del pair_cache[key]
+
+        image_dir = f"{Settings.IMAGE_FILE_CACHE_DIR}/{folder_key}"
+        logger.info(f"📸 Lese Bilder aus {image_dir}")
+        readimages(image_dir, pair_cache)
+
+        save_pair_cache(pair_cache, pair_cache_path_local)
+        logger.info(f"💾 pair_cache gespeichert: {pair_cache_path_local}")
+
+        await update_progress(f"{folder_name}: fillcache_local fertig", 100)
+        await asyncio.sleep(1.0)
+
+        logger.info("🔄 Aktualisiere Elternpfade in DB")
+        await fill_file_parents_cache_progress(Settings.DB_PATH, folder_key)
+
+        logger.info("🧮 Schreibe lokale Hashes (Bilder)")
+        await write_local_hashes_progress(Settings.IMAGE_EXTENSIONS, image_dir, False)
+
+    else:
+        logger.info("🗃️ Kein spezieller Ordnerkey – fallback auf Textverzeichnis")
+        logger.info("🧮 Schreibe lokale Hashes (Texte)")
+        await write_local_hashes_progress(Settings.TEXT_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR, False)
+
+    await stop_progress()
+    logger.info("✅ reloadcache_progress abgeschlossen")
+
+
+async def fill_file_parents_cache_progress(db_path: str, folder_key: str | None):
+    if folder_key:
+
+        file_parents_cache = Settings.CACHE["file_parents_cache"]
+        if folder_key in file_parents_cache:
+            del file_parents_cache[folder_key]
+
+        folder_name = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
+
+        clear_folder_status_db_by_name(db_path, folder_key)
+
+        logging.info("[fill_folder_cache] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
+
+        file_parents_cache[folder_key] = []
+        folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
+        if not _prepare_folder(folder_path):
+            return
+        image_files = list(folder_path.iterdir())
+        await update_progress(f"{folder_name}: Kategorie: {folder_key} : {len(image_files)} Dateien", 0)
+        await _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path)
+        Settings.folders_loaded += 1
+        logging.info(
+            f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
+    else:
+        file_parents_cache = Settings.CACHE["file_parents_cache"]
+        file_parents_cache.clear()
+
+        if _load_file_parents_cache_from_db(db_path, file_parents_cache):
+            return
+
+        logging.info("[fill_folder_cache] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
+        clear_folder_status_db(db_path)
+
+        for kat in Settings.kategorien:
+            if folder_key and kat != folder_key:
+                continue
+            folder_key = kat["key"]
+            file_parents_cache[folder_key] = []
+            folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
+            if not _prepare_folder(folder_path):
+                continue
+            logging.info(f"[fill_folder_cache] 📂 Lese Bilder aus: {folder_key}")
+            image_files = list(folder_path.iterdir())
+            await update_progress(f"Kategorie: {folder_key} : {len(image_files)} Dateien", 0)
+            await _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path)
+            Settings.folders_loaded += 1
+            logging.info(
+                f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
+
+
+def localp1():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+
+
+def p1():
+    localp1()
+
+    fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
+
+    asyncio.run(reloadcache_progress("recheck"))
+
+
+def localp2():
     Settings.DB_PATH = '../../gallery_local.db'
     Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
     Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
@@ -860,8 +1078,8 @@ def local():
     return load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
 
-if __name__ == "__main__":
-    local()
+def p2():
+    localp2()
 
     gdrive_stats1 = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
     gdrive_stats2 = compare_hashfile_counts_dash(Settings.TEXT_FILE_CACHE_DIR, subfolders=False)
@@ -871,3 +1089,6 @@ if __name__ == "__main__":
     for entry in gdrive_stats:
         print(f"{entry['label']:<15}{entry['gdrive_count']:>15}{entry['local_count']:>15}{entry['db_count']:>15}")
 
+
+if __name__ == "__main__":
+    p1()

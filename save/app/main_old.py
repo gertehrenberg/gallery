@@ -17,6 +17,7 @@ from urllib.parse import unquote
 
 from PIL import Image, ImageOps
 from PIL.ExifTags import TAGS, GPSTAGS
+from app.login import router as login_router
 from fastapi import Depends, Request
 from fastapi import FastAPI
 from fastapi import HTTPException
@@ -32,8 +33,6 @@ from googleapiclient.discovery import build
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.routes.auth import router as auth_router
-from app.login import router as login_router
-
 from app.services.image_processing import load_faces
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -1476,6 +1475,7 @@ def batch_generate_thumbnails(cats):
             result = download_and_save_image(folder_name, image)
             if not result:
                 print("Fehler bei batch_generate_thumbnails:", image)
+
 
 def batch_generate_quality(cats):
     from tqdm import tqdm

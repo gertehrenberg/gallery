@@ -26,6 +26,8 @@ class Settings:
 
     GALLERY_HASH_FILE = "gallery202505_hashes.json"
 
+    SAVE_LOG_FILE = "/data/from_save_"
+
     REDIRECT_URI = "http://localhost/gallery/auth/callback"  # Sollte konfigurierbar sein
 
     # Kategorien für die Bildergalerie
