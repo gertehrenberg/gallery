@@ -3,7 +3,18 @@ from pathlib import Path
 
 import cv2
 
+from app.config import Settings
 from app.database import load_face_from_db, save_quality_scores
+from app.routes.what import remove_items
+from app.services.image_processing import load_faces
+from app.tools import readimages
+from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
 
 # Absolute Pfade zu den Haar Cascade Klassifikatoren.  Diese sollten relativ zum Projektverzeichnis sein.
 HAAR_FRONTALFACE_ALT2 = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
@@ -64,7 +75,60 @@ def generate_faces(db_path, folder_key, image_name, image_id, min_size=(50, 50))
         return False
 
 
+def load_faces(db_path, folder_key: str, image_name: str, image_id: str) -> list[dict]:
+    logging.info(f"🔍 Starte get_faces() für {image_id}")
+
+    generate_faces(db_path, folder_key, image_name, image_id)
+
+    base_url = "/static/facefiles"
+    face_dir = Path(Settings.GESICHTER_FILE_CACHE_DIR)
+    thumbs = sorted(face_dir.glob(f"{image_id}_*.jpg"))
+    if thumbs:
+        logging.info(f"[get_faces] ✅ {len(thumbs)} gefunden")
+    return [
+        {
+            "src": f"/gallery{base_url}/{thumb.name}",
+            "link": f"/gallery{base_url}/{thumb.name}",
+            "image_name": f"{thumb.name}"
+        }
+        for thumb in thumbs
+    ]
+
+
 def save(db_path, image_id, scores: dict[str, int] | None = None):
     if scores:
         logging.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
         save_quality_scores(db_path, image_id, scores, mapping)
+
+
+async def reload_faces():
+    await init_progress_state()
+    progress_state["running"] = True
+
+    logger.info("➡️  Gesichter werden gelöscht...")
+    await remove_items(Path(Settings.GESICHTER_FILE_CACHE_DIR), "faces")
+    logger.info("✅️  Gesichter gelöscht.")
+
+    for eintrag in Settings.kategorien:
+        folder_key = eintrag["key"]
+
+        local_files = {}
+
+        readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
+
+        all_files = []
+
+        for image_name, entry in local_files.items():
+            entry["image_name"] = image_name
+            all_files.append(entry)
+
+        count = 0
+        label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
+        await update_progress(f"Bilder in \"{label}\"", 0)
+        for i, file_info in enumerate(all_files, 1):
+            percent = int(i / len(all_files) * 100)
+            await update_progress(f"Bilder in \"{label}\": {i}/{len(all_files)} (erzeugt: {count})", percent)
+            erg = load_faces(Settings.DB_PATH, folder_key, file_info["image_name"], file_info["image_id"])
+            count += len(erg)
+
+    await stop_progress()

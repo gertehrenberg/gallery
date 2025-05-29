@@ -11,7 +11,7 @@ from starlette.responses import JSONResponse
 
 from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import delete_checkbox_status, delete_scores
-from app.scores.faces import generate_faces
+from app.scores.faces import load_faces
 from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality
 from app.services.thumbnail import get_thumbnail_path, generate_thumbnail, thumbnail
@@ -150,26 +150,6 @@ def download_and_save_image(folder_name: str, image_name: str, image_id: str) ->
             return None
 
     return thumbnail_path
-
-
-def load_faces(db_path, folder_key: str, image_name: str, image_id: str) -> list[dict]:
-    logging.info(f"🔍 Starte get_faces() für {image_id}")
-
-    generate_faces(db_path, folder_key, image_name, image_id)
-
-    base_url = "/static/facefiles"
-    face_dir = Path(Settings.GESICHTER_FILE_CACHE_DIR)
-    thumbs = sorted(face_dir.glob(f"{image_id}_*.jpg"))
-    if thumbs:
-        logging.info(f"[get_faces] ✅ {len(thumbs)} gefunden")
-    return [
-        {
-            "src": f"/gallery{base_url}/{thumb.name}",
-            "link": f"/gallery{base_url}/{thumb.name}",
-            "image_name": f"{thumb.name}"
-        }
-        for thumb in thumbs
-    ]
 
 
 def prepare_image_data(count: int, folder_name: str, image_name: str):

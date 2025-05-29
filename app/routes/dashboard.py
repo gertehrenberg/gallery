@@ -22,9 +22,7 @@ from app.config_gdrive import folder_id_by_name, folder_name_by_id, sanitize_fil
 from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
-from app.routes.what import remove_items
 from app.services.cache_management import fillcache_local
-from app.services.image_processing import load_faces
 from app.tools import readimages
 from app.utils.progress import progress_state, init_progress_state, stop_progress, update_progress
 from app.utils.reloadcache_progress import reloadcache_progress
@@ -837,43 +835,10 @@ def delete_files_with_prefix(html_path: Path, image_id: str):
 
 
 @router.post("/dashboard/multi/reload_faces")
-async def manage_save(folder: str = Form(...), direction: str = Form(...)):
+async def reload_faces(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
         asyncio.create_task(reload_faces())
     return {"status": "ok"}
-
-
-async def reload_faces():
-    await init_progress_state()
-    progress_state["running"] = True
-
-    logger.info("➡️  Gesichter werden gelöscht...")
-    await remove_items(Path(Settings.GESICHTER_FILE_CACHE_DIR), "faces")
-    logger.info("✅️  Gesichter gelöscht.")
-
-    for eintrag in Settings.kategorien:
-        folder_key = eintrag["key"]
-
-        local_files = {}
-
-        readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
-
-        all_files = []
-
-        for image_name, entry in local_files.items():
-            entry["image_name"] = image_name
-            all_files.append(entry)
-
-        count = 0
-        label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
-        await update_progress(f"Bilder in \"{label}\"", 0)
-        for i, file_info in enumerate(all_files, 1):
-            percent = int(i / len(all_files) * 100)
-            await update_progress(f"Bilder in \"{label}\": {i}/{len(all_files)} (erzeugt: {count})", percent)
-            erg = load_faces(Settings.DB_PATH, folder_key, file_info["image_name"], file_info["image_id"])
-            count += len(erg)
-
-    await stop_progress()
 
 
 def local():
