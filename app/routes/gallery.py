@@ -1,13 +1,12 @@
-import json
 import logging
 import math
 import os
-from fastapi import APIRouter, Depends, Request, Query
+from pathlib import Path
+from urllib.parse import unquote
+
+from fastapi import APIRouter, Depends, Request, Query, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from pathlib import Path
-from starlette.responses import JSONResponse
-from urllib.parse import unquote
 
 from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import set_status, load_status, save_status, \
@@ -287,3 +286,120 @@ def verarbeite_check_checkbox(checkbox: str, user: str = Depends(require_login))
 def get_marked_images_count(checkbox: str, user: str = Depends(require_login)):
     logger.info(f"📊 Abfrage markierter Bilder für: {checkbox}")
     return get_checkbox_count(checkbox)
+
+
+@router.post("/dashboard/multi/gen_pages")
+async def _gen_pages(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        asyncio.create_task(gen_pages())
+    return {"status": "ok"}
+
+
+END_PAGE = 1
+TEXT_FLAGS = range(1, 5)  # 1 bis 4
+
+
+def get_total_images_from_cache(folder_key: str) -> int:
+    logger.debug(f"🔍 get_total_images_from_cache(folder_key={folder_key})")
+    pair_cache: Dict = Settings.CACHE.get("pair_cache", {})
+    count = sum(1 for img_data in pair_cache.values() if img_data.get("folder") == folder_key)
+    logger.debug(f"📊 get_total_images_from_cache → {count} Bilder für Folder '{folder_key}'")
+    return count
+
+
+def calculate_start_page(total_images: int, images_per_page: int = 24) -> int:
+    logger.debug(f"🧮 calculate_start_page(total_images={total_images}, images_per_page={images_per_page})")
+    result = math.ceil(total_images / images_per_page)
+    logger.debug(f"📝 calculate_start_page → {result}")
+    return result
+
+
+import asyncio
+import json
+import time
+from typing import Dict
+
+from starlette.responses import JSONResponse
+
+from app.config import Settings
+
+from app.utils.progress import update_progress, stop_progress, progress_state
+
+
+async def gen_pages():
+    logger.info("🚀 gen_pages()")
+
+    if hasattr(gen_pages, 'is_running') and gen_pages.is_running:
+        logger.warning("⚠️ gen_pages läuft bereits!")
+        return
+
+    gen_pages.is_running = True
+
+    try:
+        for kategorie in Settings.kategorien:
+            if kategorie["key"] == "real":
+                continue
+            total_images = get_total_images_from_cache(kategorie["key"])
+            start_page = calculate_start_page(total_images)
+
+            logger.info(f"📁 Verarbeite Kategorie: {kategorie} (Seiten: {start_page}-{END_PAGE}, Flags: 1-4)")
+            await process_pages(kategorie["key"], start_page)
+    finally:
+        gen_pages.is_running = False
+        await stop_progress()
+
+
+async def process_pages(folder_key: str, start_page: int):
+    """Verarbeitet Seiten direkt ohne HTTP"""
+    logger.debug(f"📥 process_pages(folder_key={folder_key}, start_page={start_page})")
+
+    total_start = time.time()
+    total_pages = start_page - END_PAGE + 1
+    total_operations = total_pages * len(TEXT_FLAGS)
+    operation_count = 0
+
+    for textflag in TEXT_FLAGS:
+        for page in range(start_page, END_PAGE - 1, -1):
+            page_start = time.time()
+
+            try:
+                mock_request = Request(scope={
+                    'type': 'http',
+                    'method': 'GET',
+                    'path': '/',
+                    'query_string': f'page={page}&folder={folder_key}&textflag={textflag}'.encode(),
+                })
+
+                # Direkte Funktion aufrufen mit korrekten Parametern
+                show_images_gallery(
+                    request=mock_request,
+                    user="test_user"  # oder der entsprechende User-Wert
+                )
+                success = True
+            except Exception as e:
+                logger.error(f"❌ Fehler: {str(e)}")
+                success = False
+
+            total_page_time = time.time() - page_start
+            operation_count += 1
+
+            await update_progress(
+                f"[{folder_key}] Flag {textflag}/4 - Seite {page} von {start_page}-{END_PAGE}",
+                int(operation_count / total_operations * 100),
+                0.02
+            )
+
+            if success:
+                logger.info(
+                    f"✅ [{folder_key}|Flag {textflag}] Seite {page} vollständig – "
+                    f"Gesamt: {total_page_time:.2f}s"
+                )
+            else:
+                logger.warning(
+                    f"⚠️ [{folder_key}|Flag {textflag}] Seite {page} fehlgeschlagen – "
+                    f"Gesamt: {total_page_time:.2f}s"
+                )
+                await asyncio.sleep(5)
+
+    total_duration = time.time() - total_start
+    logger.info(f"🏁 [{folder_key}] Gesamtzeit: {total_duration:.1f} Sekunden")

@@ -7,15 +7,16 @@ import os
 import shutil
 import time
 from datetime import datetime, date
+from pathlib import Path
+from typing import Dict, Optional
+
 from fastapi import APIRouter, Request
 from fastapi import Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from google.cloud import bigquery
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
-from pathlib import Path
 from starlette.responses import JSONResponse
-from typing import Dict
 
 from app.config import Settings
 from app.config_gdrive import sanitize_filename, calculate_md5, folder_id_by_name, SettingsGdrive
@@ -25,11 +26,12 @@ from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
 from app.routes.dachboard_help import _prepare_folder, _process_image_files
+
+from app.scores.comfyUI import reload_comfyui
 from app.scores.faces import reload_faces
 from app.scores.nsfw import reload_nsfw
 from app.scores.quality import reload_quality
 from app.tools import readimages, save_pair_cache, fill_pair_cache
-from app.scores.comfyUI import reload_comfyui
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
     write_local_hashes_progress
 from app.utils.progress import list_files
@@ -101,7 +103,9 @@ async def dashboard(request: Request):
         {"label": "Reload ComfyUI nur in \"KI\" (kann lange dauern)",
          "url": "/gallery/dashboard/test?direction=reload_comfyui",
          "icon": "🔁"},
-        {"label": "Generate Pages", "url": "/tools/generate", "icon": "📄"}
+        {"label": "Gen Pages (kann lange dauern)",
+         "url": "/gallery/dashboard/test?direction=gen_pages",
+         "icon": "📄"}
     ]
 
     gdrive_stats1 = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
@@ -216,6 +220,11 @@ def get_daily_costs(dataset: str, table: str, year: int, month: int):
 
 
 calls = {
+    "gen_pages": {
+        "label": "Erzeuge die internen Seiten ...",
+        "start_url": "/gallery/dashboard/multi/gen_pages",
+        "progress_url": "/gallery/dashboard/progress"
+    },
     "reload_comfyui": {
         "label": "Kopiere Bilder mit Workflow in ComfyUI ...",
         "start_url": "/gallery/dashboard/multi/reload_comfyui",
@@ -636,7 +645,7 @@ def delete_file(service, file_id):
     service.files().delete(fileId=file_id).execute()
 
 
-async def manage_save_progress(service : None):
+async def manage_save_progress(service: None):
     await init_progress_state()
     progress_state["running"] = True
 
@@ -971,51 +980,104 @@ def delete_rendered_html_file(file_dir: Path, file_name: str) -> bool:
     return False
 
 
-async def reloadcache_progress(folder_key: str):
+async def reloadcache_progress(folder_key: Optional[str] = None):
+    """
+    Reloads the cache for folders based on the folder_key parameter.
+
+    Args:
+        folder_key: Optional folder key.
+                   If None, processes all categories.
+                   If in CHECKBOX_CATEGORIES, processes only that folder.
+                   If "textfiles", processes text files.
+    """
     logger.info(f"🔄 Starte reloadcache_progress für Ordner: {folder_key}")
-    await init_progress_state()
-    progress_state["running"] = True
 
-    Settings.folders_loaded = 0
+    try:
+        await init_progress_state()
+        progress_state["running"] = True
+        Settings.folders_loaded = 0
 
-    if folder_key in Settings.CHECKBOX_CATEGORIES:
-        logger.info(f"📂 Modus: Kategorie erkannt ({folder_key})")
+        if folder_key == "textfiles":
+            logger.info("🗃️ Modus: Textverarbeitung")
+            await process_text_files()
 
-        pair_cache = Settings.CACHE.get("pair_cache")
-        pair_cache_path_local = Settings.PAIR_CACHE_PATH
-        folder_name = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
+        elif folder_key in Settings.CHECKBOX_CATEGORIES:
+            logger.info(f"📂 Modus: Einzelne Kategorie ({folder_key})")
+            folder_name = next(
+                (k["label"] for k in Settings.kategorien if k["key"] == folder_key),
+                folder_key
+            )
+            await process_category(folder_key, folder_name)
+            Settings.folders_loaded += 1
 
-        await update_progress(f"{folder_name}: fillcache_local ...", 33)
-        to_delete = [key for key, value in pair_cache.items()
-                     if value.get("folder", "") == folder_key]
+        else:
+            logger.info("📂 Modus: Alle Kategorien")
+            for kategorie in Settings.kategorien:
+                await process_category(kategorie["key"], kategorie["label"])
+                Settings.folders_loaded += 1
 
-        logger.info(f"🧹 Entferne {len(to_delete)} bestehende Einträge aus pair_cache für {folder_key}")
-        for key in to_delete:
-            del pair_cache[key]
+    except Exception as e:
+        logger.error(f"❌ Fehler beim Reload-Cache: {e}")
+        raise
+    finally:
+        await stop_progress()
+        logger.info("✅ reloadcache_progress abgeschlossen")
 
-        image_dir = f"{Settings.IMAGE_FILE_CACHE_DIR}/{folder_key}"
-        logger.info(f"📸 Lese Bilder aus {image_dir}")
-        readimages(image_dir, pair_cache)
 
-        save_pair_cache(pair_cache, pair_cache_path_local)
-        logger.info(f"💾 pair_cache gespeichert: {pair_cache_path_local}")
+async def process_category(folder_key: str, folder_name: str):
+    """
+    Processes a single category folder.
 
-        await update_progress(f"{folder_name}: fillcache_local fertig", 100)
-        await asyncio.sleep(1.0)
+    Args:
+        folder_key: The key of the folder to process
+        folder_name: The display name of the folder
+    """
+    logger.info(f"📂 Verarbeite Kategorie: {folder_name} ({folder_key})")
 
-        logger.info("🔄 Aktualisiere Elternpfade in DB")
-        await fill_file_parents_cache_progress(Settings.DB_PATH, folder_key)
+    pair_cache = Settings.CACHE.get("pair_cache")
 
-        logger.info("🧮 Schreibe lokale Hashes (Bilder)")
-        await write_local_hashes_progress(Settings.IMAGE_EXTENSIONS, image_dir, False)
+    # Update progress
+    await update_progress(f"{folder_name}: fillcache_local ...", 33)
 
-    else:
-        logger.info("🗃️ Kein spezieller Ordnerkey – fallback auf Textverzeichnis")
-        logger.info("🧮 Schreibe lokale Hashes (Texte)")
-        await write_local_hashes_progress(Settings.TEXT_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR, False)
+    # Clear existing entries
+    to_delete = [
+        key for key, value in pair_cache.items()
+        if value.get("folder", "") == folder_key
+    ]
 
-    await stop_progress()
-    logger.info("✅ reloadcache_progress abgeschlossen")
+    logger.info(f"🧹 Entferne {len(to_delete)} bestehende Einträge aus pair_cache für {folder_key}")
+    for key in to_delete:
+        del pair_cache[key]
+
+    # Process images
+    image_dir = f"{Settings.IMAGE_FILE_CACHE_DIR}/{folder_key}"
+    logger.info(f"📸 Lese Bilder aus {image_dir}")
+    readimages(image_dir, pair_cache)
+
+    # Save cache
+    save_pair_cache(pair_cache, Settings.PAIR_CACHE_PATH)
+    logger.info(f"💾 pair_cache gespeichert: {Settings.PAIR_CACHE_PATH}")
+
+    await update_progress(f"{folder_name}: fillcache_local fertig", 100)
+    await asyncio.sleep(1.0)
+
+    # Update database
+    logger.info("🔄 Aktualisiere Elternpfade in DB")
+    await fill_file_parents_cache_progress(Settings.DB_PATH, folder_key)
+
+    # Write hashes
+    logger.info("🧮 Schreibe lokale Hashes (Bilder)")
+    await write_local_hashes_progress(Settings.IMAGE_EXTENSIONS, image_dir, False)
+
+
+async def process_text_files():
+    """Processes text files in the text directory."""
+    logger.info("🧮 Schreibe lokale Hashes (Texte)")
+    await write_local_hashes_progress(
+        Settings.TEXT_EXTENSIONS,
+        Settings.TEXT_FILE_CACHE_DIR,
+        False
+    )
 
 
 async def fill_file_parents_cache_progress(db_path: str, folder_key: str | None):
