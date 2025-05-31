@@ -1,7 +1,6 @@
 import logging
 import os
 import threading
-
 # Importiere die Cache-Funktionen aus app/services/cache_management.py
 from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates

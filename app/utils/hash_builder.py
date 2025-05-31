@@ -2,9 +2,8 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List
-
 from tqdm import tqdm
+from typing import Dict, List
 
 from app.config import Settings
 from app.config_gdrive import folder_id_by_name, get_all_subfolders, sanitize_filename, delete_all_hashfiles, \

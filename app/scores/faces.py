@@ -1,7 +1,6 @@
+import cv2
 import logging
 from pathlib import Path
-
-import cv2
 
 from app.config import Settings
 from app.database import load_face_from_db, save_quality_scores

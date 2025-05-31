@@ -1,7 +1,6 @@
-from urllib.parse import urlencode
-
 from fastapi import APIRouter, Request, Form, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from urllib.parse import urlencode
 
 router = APIRouter()
 

@@ -2,13 +2,12 @@ import json
 import logging
 import math
 import os
-from pathlib import Path
-from urllib.parse import unquote
-
 from fastapi import APIRouter, Depends, Request, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from pathlib import Path
 from starlette.responses import JSONResponse
+from urllib.parse import unquote
 
 from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import set_status, load_status, save_status, \

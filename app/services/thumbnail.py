@@ -1,8 +1,7 @@
 import logging
 import os
-from pathlib import Path
-
 from PIL import Image, ImageOps
+from pathlib import Path
 
 from app.config import Settings  # Importiere die Settings-Klasse
 

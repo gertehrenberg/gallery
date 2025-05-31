@@ -1,8 +1,7 @@
-import logging
-from pathlib import Path
-
 import cv2
+import logging
 import numpy as np
+from pathlib import Path
 from skimage import feature
 
 from app.config import Settings

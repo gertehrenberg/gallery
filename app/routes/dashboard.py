@@ -7,16 +7,15 @@ import os
 import shutil
 import time
 from datetime import datetime, date
-from pathlib import Path
-from typing import Dict
-
 from fastapi import APIRouter, Request
 from fastapi import Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from google.cloud import bigquery
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from pathlib import Path
 from starlette.responses import JSONResponse
+from typing import Dict
 
 from app.config import Settings
 from app.config_gdrive import sanitize_filename, calculate_md5, folder_id_by_name, SettingsGdrive
@@ -30,7 +29,7 @@ from app.scores.faces import reload_faces
 from app.scores.nsfw import reload_nsfw
 from app.scores.quality import reload_quality
 from app.tools import readimages, save_pair_cache, fill_pair_cache
-from app.utils.comfyUI import reload_comfyui
+from app.scores.comfyUI import reload_comfyui
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
     write_local_hashes_progress
 from app.utils.progress import list_files

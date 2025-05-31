@@ -30,6 +30,8 @@ class Settings:
 
     REDIRECT_URI = "http://localhost/gallery/auth/callback"  # Sollte konfigurierbar sein
 
+    WORKFLOW_DIR = '/data/workflows'
+
     # Kategorien für die Bildergalerie
     kategorien: List[dict] = [
         {"key": "real", "label": "Alle Bilder", "icon": "💾", "folderid": "1fyE_ZYoVoGZ7ehjuWrS9Kd6WW4w2UZWy"},
