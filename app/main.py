@@ -15,7 +15,7 @@ from app.database import init_db
 # Importiere die Routen
 from app.routes import auth, gallery, static, admin, login, dashboard
 from app.routes.auth import SCOPES, TOKEN_FILE
-from app.routes.dachboard_help import fillcache_local
+from app.routes.dashboard_help import fillcache_local
 from app.routes.dashboard import fill_file_parents_cache
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist

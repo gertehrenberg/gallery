@@ -25,7 +25,7 @@ from app.database import clear_folder_status_db, load_folder_status_from_db, sav
 from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
-from app.routes.dachboard_help import _prepare_folder, _process_image_files
+from app.routes.dashboard_help import _prepare_folder, _process_image_files
 from app.scores.comfyUI import reload_comfyui
 from app.scores.faces import reload_faces
 from app.scores.nsfw import reload_nsfw
@@ -110,7 +110,10 @@ async def dashboard(request: Request, year: int = None, month: int = None):
 
     all_tags = sorted(set(gcp_map) | set(openai_map))
     labels = [datetime.strptime(tag, "%Y-%m-%d").strftime("%d.%m.") for tag in all_tags]
-    values_gcp = [gcp_map.get(tag, 0.0) for tag in all_tags]
+    values_gcp = [
+        gcp_map.get(tag, 0.0) if tag >= "2025-05-06" else 0.0
+        for tag in all_tags
+    ]
     values_openai = [openai_map.get(tag, 0.0) for tag in all_tags]
 
     if all_tags:
@@ -642,7 +645,7 @@ async def _reloadcache(folder: str = Form(...), direction: str = Form(...)):
 @router.post("/dashboard/multi/manage_save")
 async def _manage_save(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
-        asyncio.create_task(manage_save_progress())
+        asyncio.create_task(manage_save_progress(None))
     return {"status": "ok"}
 
 
@@ -795,7 +798,7 @@ async def perform_local_sync(service, save_files, local_file_dir, existing_hashe
             sanitized_name = sanitize_filename(original_name)
             file_id = file['id']
             remote_md5 = file.get('md5Checksum')
-            local_path = local_file_dir + "/" + sanitized_name
+            local_path = local_file_dir / sanitized_name
 
             await update_progress(f"Lokal: {original_name}", int(index / total * 100))
             entry_time = datetime.now().isoformat(timespec='seconds')
