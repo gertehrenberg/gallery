@@ -463,6 +463,7 @@
     const PAGE = parseInt("{{ page }}");
     const COUNT = parseInt("{{ count }}");
     const FOLDER = "{{ folder_name }}";
+    const SCORES = {{ scores | tojson | safe }};
 
     const kategorien = {{ kategorien | tojson }};
 
@@ -480,6 +481,9 @@
             url.searchParams.set("count", COUNT);
             url.searchParams.set("folder", FOLDER);
             url.searchParams.set("textflag", newFlag);
+            if (SCORES) {
+                url.searchParams.set("scores", SCORES);
+            }
             window.location.href = url.toString();
         }
     });
@@ -614,6 +618,9 @@
                 }
                 url.searchParams.set("folder", folder);
                 url.searchParams.set("textflag", TEXTFLAG);
+                if (SCORES) {
+                    url.searchParams.set("scores", SCORES);
+                }
                 window.location.href = url.toString();
             })
             .catch((err) => {
@@ -683,6 +690,9 @@
         url.searchParams.set("count", count); // kannst du ggf. anpassen
         url.searchParams.set("folder", cat); // der neue Folder
         url.searchParams.set("textflag", TEXTFLAG);
+        if (SCORES) {
+            url.searchParams.set("scores", SCORES);
+        }
 
         window.location.href = url.toString(); // Seite neu laden
     }
@@ -711,14 +721,19 @@
                     const countValue = currentParams.get("count") || "6";
                     const orgfolder = currentParams.get("folder") || "real";
 
-                    fetch(`/gallery/moveToFolder/${cat}?count=${countValue}&folder=${orgfolder}&textflag=${TEXTFLAG}`, {
+                    let moveUrl = `/gallery/moveToFolder/${cat}?count=${countValue}&folder=${orgfolder}&textflag=${TEXTFLAG}`;
+                    if (SCORES) {
+                        moveUrl += `&scores=${encodeURIComponent(SCORES)}`;
+                    }
+
+                    fetch(moveUrl, {
                         method: "POST"
                     })
                         .then((res) => res.json())
                         .then((response) => {
                             localStorage.setItem("menuOpen", "false");
                             const moved = response.moved || 0;
-                            const targetUrl = `?page=1&count=${countValue}&folder=${cat}&textflag=${TEXTFLAG}&done=${cat}&moved=${moved}`;
+                            const targetUrl = `?page=1&count=${countValue}&folder=${cat}&textflag=${TEXTFLAG}&done=${cat}&moved=${moved}` + (SCORES ? `&scores=${encodeURIComponent(SCORES)}` : "");
                             window.location.href = targetUrl;
                         })
                         .catch((err) => {

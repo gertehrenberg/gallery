@@ -6,7 +6,7 @@ import logging
 import os
 import shutil
 import time
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -26,7 +26,6 @@ from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
 from app.routes.dachboard_help import _prepare_folder, _process_image_files
-
 from app.scores.comfyUI import reload_comfyui
 from app.scores.faces import reload_faces
 from app.scores.nsfw import reload_nsfw
@@ -57,67 +56,102 @@ async def get_multi_progress():
     })
 
 
+_BASE = "/gallery/dashboard"
+
+
 @router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request):
+async def dashboard(request: Request, year: int = None, month: int = None):
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
+
+    today = datetime.today()
+    year = year or today.year
+    month = month or today.month
+    current = datetime(year, month, 1)
+
+    prev_month = (current.replace(day=1) - timedelta(days=1)).replace(day=1)
+    next_month = (current.replace(day=28) + timedelta(days=4)).replace(day=1)
 
     dataset = "gcp_billing_export_n8n"
     table = "gcp_billing_export_resource_v1_01003C_0EEFF2_E60D9D"
+    gcp_daily = get_daily_costs(dataset, table, year, month)
+    gcp_map = {d["tag"]: float(d["kosten_chf"]) for d in gcp_daily}
 
-    today = datetime.today()
+    def load_openai_costs_from_dir(cost_dir: Path) -> list[dict]:
+        all_rows = []
+        files = list(sorted(cost_dir.glob("cost_*.csv")))
+        if not files:
+            logger.warning("⚠️ Keine OpenAI-Kosten-CSV-Dateien gefunden in: %s", cost_dir)
+        for csv_file in files:
+            logger.info(f"🔍 Verarbeite Datei: {csv_file.name}")
+            try:
+                with open(csv_file, newline="", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    count = 0
+                    for row in reader:
+                        if row.get("amount_value"):
+                            date = row["start_time_iso"][:10]
+                            if not date.startswith(f"{year}-{month:02d}"):
+                                continue
+                            chf = round(float(row["amount_value"]) * 0.9, 4)
+                            all_rows.append({"tag": date, "kosten_chf": chf})
+                            count += 1
+                    logger.info(f"✅ {count} Einträge mit Betrag in {csv_file.name}")
+            except Exception as e:
+                logger.error(f"❌ Fehler beim Lesen von {csv_file.name}: {e}")
 
-    daily_info = [d for d in get_daily_costs(dataset, table, today.year, today.month) if d["tag"] >= "2025-05-11"]
+        grouped = {}
+        for entry in all_rows:
+            grouped[entry["tag"]] = grouped.get(entry["tag"], 0.0) + entry["kosten_chf"]
 
-    if daily_info:
-        first_day = datetime.strptime(daily_info[0]["tag"], "%Y-%m-%d").strftime("%d.%m.%Y")
-        last_day = datetime.strptime(daily_info[-1]["tag"], "%Y-%m-%d").strftime("%d.%m.%Y")
-        total = round(sum(float(d["kosten_chf"]) for d in daily_info), 2)
+        return [{"tag": k, "kosten_chf": round(v, 4)} for k, v in sorted(grouped.items())]
+
+    openai_daily = load_openai_costs_from_dir(Path(Settings.COSTS_FILE_DIR))
+    openai_map = {d["tag"]: float(d["kosten_chf"]) for d in openai_daily}
+
+    all_tags = sorted(set(gcp_map) | set(openai_map))
+    labels = [datetime.strptime(tag, "%Y-%m-%d").strftime("%d.%m.") for tag in all_tags]
+    values_gcp = [gcp_map.get(tag, 0.0) for tag in all_tags]
+    values_openai = [openai_map.get(tag, 0.0) for tag in all_tags]
+
+    if all_tags:
+        first_day = datetime.strptime(all_tags[0], "%Y-%m-%d").strftime("%d.%m.%Y")
+        last_day = datetime.strptime(all_tags[-1], "%Y-%m-%d").strftime("%d.%m.%Y")
+        total_chf = round(sum(values_gcp) + sum(values_openai), 2)
         info = [
             {"from_to": f"{first_day}–{last_day}"},
-            {"kosten_chf": f"CHF {total}"}
+            {"kosten_chf": f"CHF {total_chf}"}
         ]
     else:
-        info = [
-            {"from_to": f"unbekannt"},
-            {"kosten_chf": f"CHF 0.0"}
-        ]
-
-    labels = [datetime.strptime(d["tag"], "%Y-%m-%d").strftime("%d.%m.") for d in daily_info]
-    values = [float(d["kosten_chf"]) for d in daily_info]
-
-    logger.info(info)
-
-    tool_links = [
-        {"label": "n8n", "url": "http://localhost", "icon": "🧩"},
-        {"label": "Sync mit \"Save\" (GDrive)", "url": "/gallery/dashboard/test?folder=save&direction=manage_save",
-         "icon": "☁️"},
-        {"label": "Reload Caches", "url": "/gallery/dashboard/test?direction=reloadcache", "icon": "🔁"},
-        {"label": "Lösche File Cache(s)", "url": "/gallery/dashboard/what?what=reloadfilecache", "icon": "♻️"},
-        {"label": "Reload Gesichter (kann lange dauern)", "url": "/gallery/dashboard/test?direction=reload_faces",
-         "icon": "🔁"},
-        {"label": "Reload Quality-Scores (kann lange dauern)",
-         "url": "/gallery/dashboard/test?direction=reload_quality",
-         "icon": "🔁"},
-        {"label": "Reload NSFW-Scores (kann lange dauern)", "url": "/gallery/dashboard/test?direction=reload_nsfw",
-         "icon": "🔁"},
-        {"label": "Reload ComfyUI nur in \"KI\" (kann lange dauern)",
-         "url": "/gallery/dashboard/test?direction=reload_comfyui",
-         "icon": "🔁"},
-        {"label": "Gen Pages (kann lange dauern)",
-         "url": "/gallery/dashboard/test?direction=gen_pages",
-         "icon": "📄"}
-    ]
+        info = [{"from_to": "unbekannt"}, {"kosten_chf": "CHF 0.0"}]
 
     gdrive_stats1 = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
     gdrive_stats2 = compare_hashfile_counts_dash(Settings.TEXT_FILE_CACHE_DIR, subfolders=False)
+
+    tool_links = [
+        {"label": "n8n", "url": "http://localhost", "icon": "🧩"},
+        {"label": 'Sync mit "Save" (GDrive)', "url": f"{_BASE}/test?folder=save&direction=manage_save", "icon": "🔄"},
+        {"label": "Reload Caches", "url": f"{_BASE}/test?direction=reloadcache", "icon": "🧹"},
+        {"label": "Lösche File Cache(s)", "url": f"{_BASE}/what?what=reloadfilecache", "icon": "🗑️"},
+        {"label": "Reload Gesichter", "url": f"{_BASE}/test?direction=reload_faces", "icon": "😶"},
+        {"label": "Reload Quality-Scores", "url": f"{_BASE}/test?direction=reload_quality", "icon": "⭐"},
+        {"label": "Reload NSFW-Scores", "url": f"{_BASE}/test?direction=reload_nsfw", "icon": "🚫"},
+        {"label": 'Reload ComfyUI nur in "KI"', "url": f"{_BASE}/test?direction=reload_comfyui", "icon": "🖼️"},
+        {"label": "Gen Pages", "url": f"{_BASE}/test?direction=gen_pages", "icon": "📘"}
+    ]
 
     return templates.TemplateResponse("dashboard.j2", {
         "request": request,
         "gdrive_stats": gdrive_stats1 + gdrive_stats2,
         "info": info,
         "labels": labels,
-        "values": values,
-        "tool_links": tool_links  # <<< hier übergeben
+        "values_gcp": values_gcp,
+        "values_openai": values_openai,
+        "tool_links": tool_links,
+        "nav": {
+            "current": current.strftime("%Y-%m"),
+            "prev": f"{_BASE}?year={prev_month.year}&month={prev_month.month}",
+            "next": f"{_BASE}?year={next_month.year}&month={next_month.month}"
+        }
     })
 
 

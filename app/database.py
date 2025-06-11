@@ -4,7 +4,7 @@ import sqlite3
 import time
 from pathlib import Path
 
-from app.config import Settings  # Importiere die Settings-Klasse
+from app.config import Settings, reverse_score_type_map, score_type_map  # Importiere die Settings-Klasse
 from app.tools import find_image_name_by_id
 
 logger = logging.getLogger(__name__)
@@ -501,3 +501,53 @@ def save_folder_status_to_db(db_path: str, image_id: str, folder_key: str):
             conn.commit()
     except Exception as e:
         logging.warning(f"[fill_folder_cache] Fehler beim Speichern von {image_id} → {folder_key}: {e}")
+
+def load_scores_from_db(db_path, image_name):
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("""
+            SELECT score_type, score
+            FROM image_quality_scores
+            WHERE LOWER(image_name) = LOWER(?)
+              AND score_type BETWEEN 10 AND 15
+        """, (image_name,)).fetchall()
+
+    # Ergebnis in dict umwandeln:
+    score_map = {}
+    for score_type, score in rows:
+        idx = score_type - 9  # 10 → score1, 11 → score2, ..., 15 → score6
+        score_map[f"score{idx}"] = score
+
+    return score_map
+
+def get_scores_filtered_by_expr(db_path, expr):
+    import sqlite3
+
+    def extract_used_score_types(expr):
+        types = set()
+        # Klartextnamen wie 'porn' oder 'nsfw_score'
+        for key in score_type_map:
+            if key in expr:
+                types.add(score_type_map[key])
+        return sorted(types)
+
+    used_score_types = extract_used_score_types(expr)
+    if not used_score_types:
+        return {}
+
+    placeholders = ",".join("?" for _ in used_score_types)
+    query = f"""
+        SELECT LOWER(image_name), score_type, score
+        FROM image_quality_scores
+        WHERE score_type IN ({placeholders})
+    """
+
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute(query, used_score_types).fetchall()
+
+    result = {}
+    for image_name, score_type, score in rows:
+        score_key = reverse_score_type_map.get(score_type)
+        if score_key:
+            result.setdefault(image_name, {})[score_key] = score
+
+    return result

@@ -1,7 +1,7 @@
 import logging
 from pathlib import Path
 
-from app.config import Settings  # Importiere die Settings-Klasse
+from app.config import Settings, reverse_score_type_map, score_type_map  # Importiere die Settings-Klasse
 from app.database import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores, delete_scores_by_type
 from app.tools import readimages
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
@@ -14,24 +14,13 @@ logging.basicConfig(
 
 NSFW_SERVICE_URL = "http://nsfw-service:8000/check-nsfw-path/"
 
-mapping = {
-    "drawings": 10,
-    "hentai": 11,
-    "neutral": 12,
-    "porn": 13,
-    "sexy": 14,
-    "nsfw_score": 15
-}
-reverse_mapping = {v: k for k, v in mapping.items()}
-
-
 def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, float] | None:
     try:
         rows = load_nsfw_from_db(db_path, image_name)
 
         scores = {score_type: score for score_type, score in rows}
         if set(range(10, 15)).issubset(scores):
-            return {reverse_mapping[k]: scores[k] for k in scores}
+            return {reverse_score_type_map[k]: scores[k] for k in scores}
 
         logging.info(f"[load_nsfw] nicht vollständig in DB für {folder_name}/{image_name}")
 
@@ -49,7 +38,7 @@ def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, fl
             diff = 3
             for k in scores:
                 scores[k] = min(100 - diff, max(diff, scores[k]))
-            save_nsfw_scores(db_path, image_name, scores, mapping)
+            save_nsfw_scores(db_path, image_name, scores, score_type_map)
             return scores
         return None
     except Exception as e:
@@ -60,7 +49,7 @@ def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, fl
 def save(db_path, image_id, scores: dict[str, int] | None = None):
     if scores:
         logging.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
-        save_nsfw_scores(db_path, image_id, scores, mapping)
+        save_nsfw_scores(db_path, image_id, scores, score_type_map)
 
 
 def load_all_scores(db_path: str) -> dict[str, dict[str, float]]:
@@ -74,7 +63,7 @@ def load_all_scores(db_path: str) -> dict[str, dict[str, float]]:
             result[image_name][score_type] = score
 
         filtered = {
-            name: {reverse_mapping[k]: v for k, v in scores.items()}
+            name: {reverse_score_type_map[k]: v for k, v in scores.items()}
             for name, scores in result.items()
             if set(range(10, 16)).issubset(scores)
         }
@@ -118,7 +107,7 @@ def log_missing_scores_from_cache(db_path: str) -> None:
 
 
 def delete_nsfw_by_type():
-    for score_type in mapping.values():
+    for score_type in score_type_map.values():
         delete_scores_by_type(score_type)
 
 

@@ -1,6 +1,7 @@
 import logging
 import math
 import os
+import sqlite3
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -10,7 +11,8 @@ from fastapi.templating import Jinja2Templates
 
 from app.config import Settings  # Importiere die Settings-Klasse
 from app.database import set_status, load_status, save_status, \
-    move_marked_images_by_checkbox, get_checkbox_count  # Importiere die benötigten Funktionen
+    move_marked_images_by_checkbox, get_checkbox_count, \
+    get_scores_filtered_by_expr  # Importiere die benötigten Funktionen
 from app.dependencies import require_login
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.services.image_processing import prepare_image_data, clean
@@ -49,24 +51,36 @@ def show_image_redirect(
 
     folder_name = request.query_params.get('folder', DEFAULT_FOLDER)
     textflag = request.query_params.get('textflag', '1')
+    scores = request.query_params.get('scores') or ""
     image_name = unquote(request.query_params.get('image_name', '')).strip().lower()
 
     pagecounter = 0
-    # TODO: Refactor this
-    for image_name_l in Settings.CACHE["pair_cache"]:  # Verwende Caches aus Settings
-        pair = Settings.CACHE["pair_cache"][image_name_l]  # Verwende Caches aus Settings
+    for image_name_l in Settings.CACHE["pair_cache"]:
+        pair = Settings.CACHE["pair_cache"][image_name_l]
         image_id = pair.get("image_id", "")
         if is_file_in_folder(image_id, folder_name):
             pagecounter += 1
             if image_name_l.strip().lower() == image_name:
-                clean(image_name)  # Entfernt, da die Funktion nicht definiert ist.
-                return RedirectResponse(
-                    url=f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}&lasttextflag={textflag}"
-                )
+                clean(image_name)
+                url = f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}&lasttextflag={textflag}"
+                if scores:
+                    url += f"&score_expr_raw={scores}"
+                return RedirectResponse(url=url)
 
-    return RedirectResponse(
-        url=f"/gallery/?page={page}&count={count}&folder={folder_name}&textflag={textflag}"
-    )
+    url = f"/gallery/?page={page}&count={count}&folder={folder_name}&textflag={textflag}"
+    if scores:
+        url += f"&score_expr_raw={scores}"
+    return RedirectResponse(url=url)
+
+def load_all_nsfw_images(db_path: str, score_type: int, score: int) -> set[str]:
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("""
+            SELECT DISTINCT LOWER(image_name)
+            FROM image_quality_scores
+            WHERE score_type = ? 
+            AND score > ?
+        """, (score_type, score)).fetchall()
+        return {row[0] for row in rows}
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -112,13 +126,58 @@ def show_images_gallery(
     image_keys = []
     total_images = 0
 
-    for image_name in Settings.CACHE["pair_cache"].keys():  # Verwende Caches aus Settings
-        pair = Settings.CACHE["pair_cache"][image_name]  # Verwende Caches aus Settings
+    from app.utils.score_parser import parse_score_expression
+
+    score_expr_raw = request.query_params.get('scores', "").strip()
+
+    # Prüfe, ob ein sinnvoller Ausdruck übergeben wurde
+    score_expr = None
+    if score_expr_raw and score_expr_raw.lower() != "none":
+        try:
+            # Versuch, Ausdruck zu parsen (wirft ValueError wenn ungültig)
+            from app.config import score_type_map
+            dummy_scores = {key: 0 for key in score_type_map.keys()}
+            parse_score_expression(score_expr_raw, dummy_scores)
+            score_expr = score_expr_raw
+        except Exception as e:
+            logger.warning(f"[score_filter] Ungültiger Score-Ausdruck ignoriert: {score_expr_raw} ({e})")
+
+    # 2. Ausdruck verarbeiten und ggf. Trefferliste cachen
+    filtered_names = None
+    if score_expr:
+        cache_key = score_expr_raw.strip().lower()
+        if cache_key in Settings.CACHE["score_filter_result"]:
+            filtered_names = Settings.CACHE["score_filter_result"][cache_key]
+            logger.info(f"[score_filter] ⚡ Treffer aus Cache: {len(filtered_names)} Bilder für '{score_expr}'")
+        else:
+            try:
+                all_scores = get_scores_filtered_by_expr(Settings.DB_PATH, score_expr)
+                filtered_names = [
+                    name for name, scores in all_scores.items()
+                    if parse_score_expression(score_expr, scores)
+                ]
+                Settings.CACHE["score_filter_result"][cache_key] = filtered_names
+                logger.info(f"[score_filter] 🧮 Neu berechnet: {len(filtered_names)} Bilder für '{score_expr}'")
+            except Exception as e:
+                logger.warning(f"[score_filter] ⚠️ Fehler beim Score-Filter '{score_expr}': {e}")
+                score_expr = None
+                filtered_names = None
+
+    # 3. Hauptschleife über alle Bilder
+    for image_name in Settings.CACHE["pair_cache"].keys():
+        pair = Settings.CACHE["pair_cache"][image_name]
         image_id = pair['image_id']
-        if is_file_in_folder(image_id, folder_name):
-            if start <= total_images < end:
-                image_keys.append(image_name.lower())
-            total_images += 1
+        if not is_file_in_folder(image_id, folder_name):
+            continue
+
+        # Nur Bilder mit positivem Score-Match weiterverarbeiten
+        if score_expr and filtered_names is not None:
+            if image_name.lower() not in filtered_names:
+                continue
+
+        if start <= total_images < end:
+            image_keys.append(image_name.lower())
+        total_images += 1
 
     images_html_parts = []
     recheck_category = next((k["key"] for k in Settings.kategorien if k["key"] == "recheck"),
@@ -207,10 +266,11 @@ def show_images_gallery(
     # Berechnung total_pages
     total_pages = max(1, math.ceil(total_images / count))
 
+    lastcall = ""
     if lastpage > 0 and lastcount > 0:
         lastcall = f"/gallery/?page={lastpage}&count={lastcount}&folder={folder_name}&textflag={lasttextflag}"
-    else:
-        lastcall = ""
+        if score_expr_raw:
+             lastcall += f"&scores={score_expr_raw}"
 
     return templates.TemplateResponse("image_gallery_local.j2", {
         "request": request,
@@ -222,7 +282,8 @@ def show_images_gallery(
         "textflag": textflag,
         "kategorien": Settings.kategorien,
         "images_html": ''.join(images_html_parts),
-        "lastcall": lastcall
+        "lastcall": lastcall,
+        "scores": score_expr_raw or ""
     })
 
 
@@ -337,8 +398,6 @@ async def gen_pages():
 
     try:
         for kategorie in Settings.kategorien:
-            if kategorie["key"] == "real":
-                continue
             total_images = get_total_images_from_cache(kategorie["key"])
             start_page = calculate_start_page(total_images)
 

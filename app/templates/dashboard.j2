@@ -144,6 +144,13 @@
         </div>
     </div>
 
+    <!-- Monatsnavigation -->
+    <div class="flex justify-between items-center my-4">
+        <a href="{{ nav.prev|safe }}" class="text-blue-600 hover:underline">← Vorheriger Monat</a>
+        <span class="font-semibold">Monat: {{ nav.current }}</span>
+        <a href="{{ nav.next|safe }}" class="text-blue-600 hover:underline">Nächster Monat →</a>
+    </div>
+
     <!-- Balkenanzeige -->
     <div class="mt-6 bg-white rounded-xl shadow p-4">
         <h2 class="text-lg font-semibold mb-4">Tagesgenaue Kosten im aktuellen Monat</h2>
@@ -154,14 +161,32 @@
                 type: 'bar',
                 data: {
                     labels: {{ labels | tojson }},
-                    datasets: [{
-                        label: 'Kosten in CHF',
-                        data: {{ values | tojson }},
-                        borderWidth: 1
-                    }]
+                    datasets: [
+                        {
+                            label: 'GCP-Kosten (CHF)',
+                            data: {{ values_gcp | tojson }},
+                            backgroundColor: 'rgba(54, 162, 235, 0.6)',  // Blau
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'OpenAI-Kosten (CHF)',
+                            data: {{ values_openai | tojson }},
+                            backgroundColor: 'rgba(255, 99, 132, 0.6)',  // Rot
+                            borderWidth: 1
+                        }
+                    ]
                 },
                 options: {
                     responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false
+                        }
+                    },
                     scales: {
                         y: {
                             beginAtZero: true,
@@ -169,6 +194,9 @@
                                 display: true,
                                 text: 'CHF'
                             }
+                        },
+                        x: {
+                            stacked: false
                         }
                     }
                 }

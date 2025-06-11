@@ -2,6 +2,17 @@ from pathlib import Path
 from typing import List
 
 
+score_type_map = {
+    "drawings": 10,
+    "hentai": 11,
+    "neutral": 12,
+    "porn": 13,
+    "sexy": 14,
+    "nsfw_score": 15
+}
+reverse_score_type_map = {v: k for k, v in score_type_map.items()}
+
+
 class Settings:
     """
     Konfigurationsklasse für die FastAPI-Anwendung.
@@ -31,6 +42,8 @@ class Settings:
     REDIRECT_URI = "http://localhost/gallery/auth/callback"  # Sollte konfigurierbar sein
 
     WORKFLOW_DIR = '/data/workflows'
+
+    COSTS_FILE_DIR = '/data/costs'
 
     # Kategorien für die Bildergalerie
     kategorien: List[dict] = [
@@ -65,7 +78,8 @@ class Settings:
         "text_cache": {},  # lowercase text filename -> content
         "pair_cache": {},  # lowercase image filename -> { image_id, text_id, web_link }
         "file_parents_cache": {},
-        "geo_cache": {}
+        "geo_cache": {},
+        "score_filter_result": {}
     }
 
     folders_total = len(kategorien)
