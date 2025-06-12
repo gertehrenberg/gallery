@@ -151,7 +151,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
             'color': 'rgba(75, 192, 192, 0.6)'  # Türkis
         },
         {
-            'label': 'JetBrain, Wingo',
+            'label': 'JetBrains, Wingo',
             'data': values_default,
             'color': 'rgba(153, 102, 255, 0.6)'  # Violett
         }
@@ -281,12 +281,12 @@ calls = {
         "progress_url": "/gallery/dashboard/progress"
     },
     "reload_quality": {
-        "label": "Erstell die NFFW-Scoresr neu ...",
+        "label": "Erstell die Quality-Scores neu ...",
         "start_url": "/gallery/dashboard/multi/reload_quality",
         "progress_url": "/gallery/dashboard/progress"
     },
     "reload_nsfw": {
-        "label": "Erstell die NFFW-Scoresr neu ...",
+        "label": "Erstell die NSFW-Scores neu ...",
         "start_url": "/gallery/dashboard/multi/reload_nsfw",
         "progress_url": "/gallery/dashboard/progress"
     },
@@ -364,14 +364,14 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
         return JSONResponse(content={"error": "Ungültiger Parameter"}, status_code=400)
 
     def runner():
-        init_progress_state()
+        asyncio.run(init_progress_state())
         try:
             if direction == "gdrive_from_lokal":
                 gdrive_from_lokal(load_drive_service(), folder)
             elif direction == "lokal_from_gdrive":
                 lokal_from_gdrive(load_drive_service(), folder)
         finally:
-            stop_progress()
+            asyncio.run(stop_progress())
 
     threading.Thread(target=runner).start()
     return {"started": True}
@@ -484,7 +484,7 @@ def gdrive_from_lokal(service, folder_name: str):
                 json.dump(gdrive_hashes, f, indent=2)
             print(f"[↑] hashes.json aktualisiert für Ordner {folder}")
 
-    stop_progress()
+    asyncio.run(stop_progress())
 
 
 def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict[str, str]]:
@@ -633,10 +633,10 @@ def lokal_from_gdrive(service, folder_name: str):
         with open(gallery_hash_path, "w", encoding="utf-8") as f:
             json.dump(gallery_hashes, f, indent=2)
 
-        stop_progress()
+        asyncio.run(stop_progress())
     except Exception as e:
         logger.error(f"Fehler bei map_gdrive_to_local (mit Fortschritt): {e}")
-        stop_progress()
+        asyncio.run(stop_progress())
 
 
 def download_file(service, file_id, local_path):
