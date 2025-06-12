@@ -1,10 +1,11 @@
 import logging
 import os
 import shutil
+from pathlib import Path
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from pathlib import Path
 from starlette.responses import JSONResponse
 
 from app.config import Settings

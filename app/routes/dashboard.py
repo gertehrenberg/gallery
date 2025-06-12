@@ -25,6 +25,8 @@ from app.database import clear_folder_status_db, load_folder_status_from_db, sav
 from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
+from app.routes.cost_openai_api import load_openai_costs_from_dir
+from app.routes.cost_runpod import load_runpod_costs_from_dir
 from app.routes.dashboard_help import _prepare_folder, _process_image_files
 from app.scores.comfyUI import reload_comfyui
 from app.scores.faces import reload_faces
@@ -59,6 +61,7 @@ async def get_multi_progress():
 _BASE = "/gallery/dashboard"
 
 
+
 @router.get("/dashboard", response_class=HTMLResponse)
 async def dashboard(request: Request, year: int = None, month: int = None):
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
@@ -76,50 +79,37 @@ async def dashboard(request: Request, year: int = None, month: int = None):
     gcp_daily = get_daily_costs(dataset, table, year, month)
     gcp_map = {d["tag"]: float(d["kosten_chf"]) for d in gcp_daily}
 
-    def load_openai_costs_from_dir(cost_dir: Path) -> list[dict]:
-        all_rows = []
-        files = list(sorted(cost_dir.glob("cost_*.csv")))
-        if not files:
-            logger.warning("⚠️ Keine OpenAI-Kosten-CSV-Dateien gefunden in: %s", cost_dir)
-        for csv_file in files:
-            logger.info(f"🔍 Verarbeite Datei: {csv_file.name}")
-            try:
-                with open(csv_file, newline="", encoding="utf-8") as f:
-                    reader = csv.DictReader(f)
-                    count = 0
-                    for row in reader:
-                        if row.get("amount_value"):
-                            date = row["start_time_iso"][:10]
-                            if not date.startswith(f"{year}-{month:02d}"):
-                                continue
-                            chf = round(float(row["amount_value"]) * 0.9, 4)
-                            all_rows.append({"tag": date, "kosten_chf": chf})
-                            count += 1
-                    logger.info(f"✅ {count} Einträge mit Betrag in {csv_file.name}")
-            except Exception as e:
-                logger.error(f"❌ Fehler beim Lesen von {csv_file.name}: {e}")
-
-        grouped = {}
-        for entry in all_rows:
-            grouped[entry["tag"]] = grouped.get(entry["tag"], 0.0) + entry["kosten_chf"]
-
-        return [{"tag": k, "kosten_chf": round(v, 4)} for k, v in sorted(grouped.items())]
-
-    openai_daily = load_openai_costs_from_dir(Path(Settings.COSTS_FILE_DIR))
+    openai_daily = load_openai_costs_from_dir(Path(Settings.COSTS_FILE_DIR), year, month)
     openai_map = {d["tag"]: float(d["kosten_chf"]) for d in openai_daily}
 
-    all_tags = sorted(set(gcp_map) | set(openai_map))
+    runpod_daily = load_runpod_costs_from_dir(year, month)
+    runpod_map = {d["tag"]: float(d["kosten_chf"]) for d in runpod_daily}
+
+    # Lade die Standard-Kosten
+    from app.routes.cost_default import load_default_costs
+    default_daily = load_default_costs(year, month)
+    default_map = {d["tag"]: float(d["kosten_chf"]) for d in default_daily}
+
+    # Kombiniere alle Tags von allen Diensten
+    all_tags = sorted(set(gcp_map) | set(openai_map) | set(runpod_map) | set(default_map))
     labels = [datetime.strptime(tag, "%Y-%m-%d").strftime("%d.%m.") for tag in all_tags]
+
     values_gcp = [
         gcp_map.get(tag, 0.0) if tag >= "2025-05-06" else 0.0
         for tag in all_tags
     ]
     values_openai = [openai_map.get(tag, 0.0) for tag in all_tags]
+    values_runpod = [runpod_map.get(tag, 0.0) for tag in all_tags]
+    values_default = [default_map.get(tag, 0.0) for tag in all_tags]
 
     if all_tags:
         first_day = datetime.strptime(all_tags[0], "%Y-%m-%d").strftime("%d.%m.%Y")
         last_day = datetime.strptime(all_tags[-1], "%Y-%m-%d").strftime("%d.%m.%Y")
-        total_chf = round(sum(values_gcp) + sum(values_openai), 2)
+        total_chf = round(
+            sum(values_gcp) + sum(values_openai) +
+            sum(values_runpod) + sum(values_default),
+            2
+        )
         info = [
             {"from_to": f"{first_day}–{last_day}"},
             {"kosten_chf": f"CHF {total_chf}"}
@@ -127,9 +117,11 @@ async def dashboard(request: Request, year: int = None, month: int = None):
     else:
         info = [{"from_to": "unbekannt"}, {"kosten_chf": "CHF 0.0"}]
 
+    # GDrive Statistiken
     gdrive_stats1 = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
     gdrive_stats2 = compare_hashfile_counts_dash(Settings.TEXT_FILE_CACHE_DIR, subfolders=False)
 
+    # Tool Links Definition
     tool_links = [
         {"label": "n8n", "url": "http://localhost", "icon": "🧩"},
         {"label": 'Sync mit "Save" (GDrive)', "url": f"{_BASE}/test?folder=save&direction=manage_save", "icon": "🔄"},
@@ -142,13 +134,35 @@ async def dashboard(request: Request, year: int = None, month: int = None):
         {"label": "Gen Pages", "url": f"{_BASE}/test?direction=gen_pages", "icon": "📘"}
     ]
 
+    cost_datasets = [
+        {
+            'label': 'Google',
+            'data': values_gcp,
+            'color': 'rgba(54, 162, 235, 0.6)'  # Blau
+        },
+        {
+            'label': 'OpenAI (+ChatGPT)',
+            'data': values_openai,
+            'color': 'rgba(255, 99, 132, 0.6)'  # Rot
+        },
+        {
+            'label': 'RunPod',
+            'data': values_runpod,
+            'color': 'rgba(75, 192, 192, 0.6)'  # Türkis
+        },
+        {
+            'label': 'JetBrain ...',
+            'data': values_default,
+            'color': 'rgba(153, 102, 255, 0.6)'  # Violett
+        }
+    ]
+
     return templates.TemplateResponse("dashboard.j2", {
         "request": request,
         "gdrive_stats": gdrive_stats1 + gdrive_stats2,
         "info": info,
         "labels": labels,
-        "values_gcp": values_gcp,
-        "values_openai": values_openai,
+        "cost_datasets": cost_datasets,
         "tool_links": tool_links,
         "nav": {
             "current": current.strftime("%Y-%m"),
@@ -156,7 +170,6 @@ async def dashboard(request: Request, year: int = None, month: int = None):
             "next": f"{_BASE}?year={next_month.year}&month={next_month.month}"
         }
     })
-
 
 def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
     icon_map = {k["key"]: (k["icon"], k["label"]) for k in Settings.kategorien}
@@ -1128,7 +1141,7 @@ async def fill_file_parents_cache_progress(db_path: str, folder_key: str | None)
 
         clear_folder_status_db_by_name(db_path, folder_key)
 
-        logging.info("[fill_folder_cache] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
+        logging.info("[fill_folder_cacFhe] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
 
         file_parents_cache[folder_key] = []
         folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key

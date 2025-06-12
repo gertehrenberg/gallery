@@ -152,6 +152,7 @@
     </div>
 
     <!-- Balkenanzeige -->
+    <!-- Balkenanzeige -->
     <div class="mt-6 bg-white rounded-xl shadow p-4">
         <h2 class="text-lg font-semibold mb-4">Tagesgenaue Kosten im aktuellen Monat</h2>
         <canvas id="dailyCostsChart" height="100"></canvas>
@@ -161,20 +162,7 @@
                 type: 'bar',
                 data: {
                     labels: {{ labels | tojson }},
-                    datasets: [
-                        {
-                            label: 'GCP-Kosten (CHF)',
-                            data: {{ values_gcp | tojson }},
-                            backgroundColor: 'rgba(54, 162, 235, 0.6)',  // Blau
-                            borderWidth: 1
-                        },
-                        {
-                            label: 'OpenAI-Kosten (CHF)',
-                            data: {{ values_openai | tojson }},
-                            backgroundColor: 'rgba(255, 99, 132, 0.6)',  // Rot
-                            borderWidth: 1
-                        }
-                    ]
+                    datasets: {{ cost_datasets | tojson | safe }}
                 },
                 options: {
                     responsive: true,
@@ -184,7 +172,13 @@
                         },
                         tooltip: {
                             mode: 'index',
-                            intersect: false
+                            intersect: false,
+                            callbacks: {
+                                label: function (context) {
+                                    return context.dataset.label + ': CHF ' +
+                                        context.parsed.y.toFixed(2);
+                                }
+                            }
                         }
                     },
                     scales: {
