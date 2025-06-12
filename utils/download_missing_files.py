@@ -7,8 +7,9 @@ from typing import Dict, List
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 from tqdm import tqdm
 
-from app.config_gdrive import TEXT_EXTENSIONS, TEXT_FILE_CACHE_DIR, TEXT_FOLDER_ID
-from app.config_gdrive import calculate_md5, compare_hashfile_counts, load_drive_service, get_all_subfolders
+from app.config import Settings
+from app.config_gdrive import get_all_subfolders, calculate_md5
+from app.routes.auth import load_drive_service
 
 
 def upload_to_drive(service, file_path: Path, parent_id: str):
@@ -44,7 +45,7 @@ def download_missing_files(service, extensions, file_folder_dir, folder_ids: Lis
             local_dir.mkdir(parents=True, exist_ok=True)
 
             # GDrive Hashes lesen
-            gdrive_hash_path = local_dir / "hashes.json"
+            gdrive_hash_path = local_dir / Settings.GDRIVE_HASH_FILE
             if not gdrive_hash_path.exists():
                 tqdm.write(f"[Übersprungen] Keine Hash-Datei vorhanden: {gdrive_hash_path}")
                 continue
@@ -159,5 +160,5 @@ if __name__ == "__main__":
     # download_missing_files(service, IMAGE_EXTENSIONS, IMAGE_FILE_CACHE_DIR, [IMAGE_FOLDER_ID])
     # compare_hashfile_counts(IMAGE_FILE_CACHE_DIR)
 
-    download_missing_files(service, TEXT_EXTENSIONS, TEXT_FILE_CACHE_DIR, [TEXT_FOLDER_ID], False)
-    compare_hashfile_counts(TEXT_FILE_CACHE_DIR)
+    download_missing_files(service, Settings.TEXT_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR, [Settings.TEXT_FOLDER_ID], False)
+    compare_hashfile_counts(Settings.TEXT_FILE_CACHE_DIR)

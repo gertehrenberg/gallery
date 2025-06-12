@@ -10,8 +10,8 @@ from app.config_gdrive import folder_id_by_name, get_all_subfolders, sanitize_fi
     SettingsGdrive, calculate_md5
 from app.database import clear_folder_status_db_by_name, load_folder_status_from_db_by_name
 from app.routes.auth import load_drive_service_token
-from app.routes.dachboard_help import fillcache_local, fill_file_parents_cache_by_name, save_simple_hashes
 from app.tools import readimages, save_pair_cache
+from app.utils.progress import save_simple_hashes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -45,6 +45,7 @@ def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_path: Pat
     with hashfile_path.open("w", encoding="utf-8") as f:
         json.dump(hashes, f, indent=2)
     os.chmod(hashfile_path, 0o644)
+    print(f"[✓] Gespeichert: {hashfile_path}/{Settings.GDRIVE_HASH_FILE}")
 
 
 def process_image_folders(service, extensions, file_folder_dir, folder_ids: List[str], subfolders: bool = True):
@@ -102,8 +103,7 @@ def process_image_folders(service, extensions, file_folder_dir, folder_ids: List
                 local_dir = Path(file_folder_dir) / folder_name
             else:
                 local_dir = Path(file_folder_dir)
-            save_structured_hashes(gdrive_hashes, local_dir / "hashes.json")
-            print(f"[✓] Gespeichert: {local_dir}/hashes.json")
+            save_structured_hashes(gdrive_hashes, local_dir / Settings.GDRIVE_HASH_FILE)
 
 
 def images(service):
@@ -148,21 +148,3 @@ def onefolder(folder_id):
     readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_id, pair_cache)
     save_pair_cache(pair_cache, pair_cache_path_local)
     fill_file_parents_cache_by_name(Settings.DB_PATH, folder_id)
-
-
-if __name__ == "__main__":
-    service = local()
-
-    fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
-
-    # clear_folder_status_db(Settings.DB_PATH)
-    # fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
-    # fill_file_parents_cache(Settings.DB_PATH)
-
-    # images(service)
-    # text(service)
-
-    # compare_hashfile_counts(Settings.IMAGE_FILE_CACHE_DIR)
-    # compare_hashfile_counts(Settings.TEXT_FILE_CACHE_DIR, False)
-
-    onefolder("ki")

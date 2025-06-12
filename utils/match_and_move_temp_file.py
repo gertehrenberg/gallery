@@ -4,6 +4,7 @@ from pathlib import Path
 
 from tqdm import tqdm
 
+from app.config import Settings
 from app.config_gdrive import IMAGE_EXTENSIONS, IMAGE_FILE_CACHE_DIR, TEMP_FILE_DIR
 from app.config_gdrive import calculate_md5, compare_hashfile_counts
 
@@ -21,7 +22,7 @@ def match_and_move_temp_files(temp_file_dir: Path, image_cache_dir: Path):
             temp_hash = calculate_md5(temp_file)
             found = False
 
-            for hashfile in image_cache_dir.rglob("hashes.json"):
+            for hashfile in image_cache_dir.rglob(Settings.GDRIVE_HASH_FILE):
                 try:
                     with hashfile.open("r", encoding="utf-8") as f:
                         hashes = json.load(f)

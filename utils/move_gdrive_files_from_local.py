@@ -41,7 +41,7 @@ def move_gdrive_files_from_local(service, cache_dir: Path):
         for gallery_hashfile in hashfiles:
             folder_path = gallery_hashfile.parent
             folder = folder_path.name
-            gdrive_hashfile = folder_path / "hashes.json"
+            gdrive_hashfile = folder_path / Settings.GDRIVE_HASH_FILE
 
             try:
                 with gallery_hashfile.open("r", encoding="utf-8") as f:
@@ -113,14 +113,14 @@ def move_gdrive_files_from_local(service, cache_dir: Path):
             if updated:
                 with gdrive_hashfile.open("w", encoding="utf-8") as f:
                     json.dump(gdrive_hashes, f, indent=2)
-                tqdm.write(f"[↑] hashes.json aktualisiert für Ordner {folder}")
+                tqdm.write(f"[↑] {Settings.GDRIVE_HASH_FILE} aktualisiert für Ordner {folder}")
 
             bar.update(1)
 
 
 def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict[str, str]]:
     global_hashes = {}
-    hashfiles = list(cache_dir.rglob("hashes.json"))
+    hashfiles = list(cache_dir.rglob(Settings.GDRIVE_HASH_FILE))
     with tqdm(total=len(hashfiles), desc="Lese alle GDrive-Hashes", unit="Datei") as bar:
         for hashfile in hashfiles:
             try:

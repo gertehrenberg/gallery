@@ -22,7 +22,7 @@ def rename_file(service, file_id: str, new_name: str):
 def find_duplicate_md5_filenames(cache_dir: Path):
     md5_to_names = defaultdict(set)
     md5_to_entries = defaultdict(list)
-    hashfiles = list(cache_dir.rglob("*hashes.json"))
+    hashfiles = list(cache_dir.rglob(Settings.GDRIVE_HASH_FILE))
     with tqdm(total=len(hashfiles), desc="Durchsuche Hash-Dateien", unit="Datei") as bar:
         for hashfile in hashfiles:
             try:

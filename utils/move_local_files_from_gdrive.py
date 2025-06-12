@@ -28,7 +28,7 @@ def map_gdrive_to_local():
 
     for folder_path in sorted(all_local_folders):
         folder_name = folder_path.name
-        hash_file_path = folder_path / "hashes.json"
+        hash_file_path = folder_path / Settings.GDRIVE_HASH_FILE
 
         if not hash_file_path.exists():
             print(f"[SKIP] Keine hashes.json in {folder_name}")
