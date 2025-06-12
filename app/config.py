@@ -35,6 +35,7 @@ class Settings:
     TEXT_EXTENSIONS = {".txt"}
     TEXT_FILE_CACHE_DIR = DATA_DIR / 'textfiles'
 
+    GDRIVE_HASH_FILE = "hashes.json"
     GALLERY_HASH_FILE = "gallery202505_hashes.json"
 
     SAVE_LOG_FILE = "/data/from_save_"
