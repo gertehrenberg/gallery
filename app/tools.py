@@ -5,7 +5,6 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, List, Tuple, Any
 from PIL import Image
-from PIL.ExifTags import TAGS
 
 from app.config import Settings
 
@@ -53,12 +52,12 @@ def find_image_name_by_id(image_id: str) -> Optional[str]:
     Returns:
         Optional[str]: Bildname wenn gefunden, sonst None
     """
-    logger.info(f"🔍 Suche Bildname für ID: {image_id}")
+    # logger.info(f"🔍 Suche Bildname für ID: {image_id}")
     pair_cache = Settings.CACHE.get("pair_cache", {})
 
     for image_name, pair in pair_cache.items():
         if pair.get("image_id") == image_id:
-            logger.info(f"✅ Gefunden: {image_name}")
+            # logger.info(f"✅ Gefunden: {image_name}")
             return image_name
 
     logger.warning(f"❌ Kein Bildname gefunden für ID: {image_id}")
