@@ -72,17 +72,6 @@ def show_image_redirect(
         url += f"&score_expr_raw={scores}"
     return RedirectResponse(url=url)
 
-def load_all_nsfw_images(db_path: str, score_type: int, score: int) -> set[str]:
-    with sqlite3.connect(db_path) as conn:
-        rows = conn.execute("""
-            SELECT DISTINCT LOWER(image_name)
-            FROM image_quality_scores
-            WHERE score_type = ? 
-            AND score > ?
-        """, (score_type, score)).fetchall()
-        return {row[0] for row in rows}
-
-
 @router.get("/", response_class=HTMLResponse)
 def show_images_gallery(
         request: Request,
@@ -98,7 +87,6 @@ def show_images_gallery(
     count = int(request.query_params.get('count', DEFAULT_COUNT) or 1)
     folder_name = request.query_params.get('folder', DEFAULT_FOLDER)
     textflag = request.query_params.get('textflag', '1')
-    checkboxstr = request.query_params.get('checkbox', None)
 
     try:
         lastindex = int(request.query_params.get('lastindex', 0))
@@ -242,12 +230,9 @@ def show_images_gallery(
 
         # Status dynamisch nachschieben
         status = load_status(image_name)
-        if checkboxstr:
-            status[checkboxstr] = True
-        else:
-            value = Settings.CACHE["text_cache"].get(image_name, "")  # Verwende Caches aus Settings
-            if isinstance(value, str) and "Error 2" in value:
-                status["recheck"] = True
+        value = Settings.CACHE["text_cache"].get(image_name, "")  # Verwende Caches aus Settings
+        if isinstance(value, str) and "Error 2" in value:
+            status["recheck"] = True
 
         status_json = json.dumps({f"{image_id}_{key}": value for key, value in status.items()})
 

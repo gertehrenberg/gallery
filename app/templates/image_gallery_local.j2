@@ -307,7 +307,7 @@
 <body>
 <div
         id="hamburger"
-        style="position: fixed; top: 40px; left: 20px; z-index: 1000"
+        style="position: fixed; top: 50px; left: 20px; z-index: 1000"
 >
     <button
             onclick="toggleMenu()"
@@ -317,6 +317,14 @@
     </button>
     <div id="menu">
         <hr style="margin: 10px 0"/>
+        <!-- Kategorien-Icons -->
+        <div style="display: flex; align-items: center; gap: 8px; margin: 10px 0;">
+            {% for k in kategorien %}
+                <span title="{{ k.label }}" style="font-size: 1.2em; cursor: pointer;"
+                      onclick="selectCategory('{{ k.key }}')">{{ k.icon }}</span>
+            {% endfor %}
+            <span title="Alles abwählen" style="font-size: 1.2em; cursor: pointer;" onclick="deselectAll()">🗑️</span>
+        </div>
         <div style="display: flex; align-items: center; gap: 6px">
             <input
                     id="gotoPageInput"
@@ -800,6 +808,22 @@
         refresh_count()
 
     });
+
+    function selectCategory(cat) {
+        const menu = document.getElementById("menu");
+        menu.style.display = "none";
+        localStorage.setItem("menuOpen", false);
+        document.querySelectorAll('.checkbox-container input[type="checkbox"][name$="_' + cat + '"]').forEach(cb => cb.checked = true);
+        saveAndGoRefresh(PAGE, COUNT, FOLDER);
+    }
+
+    function deselectAll() {
+        const menu = document.getElementById("menu");
+        menu.style.display = "none";
+        localStorage.setItem("menuOpen", false);
+        document.querySelectorAll('.checkbox-container input[type="checkbox"]').forEach(cb => cb.checked = false);
+        saveAndGoRefresh(PAGE, COUNT, FOLDER);
+    }
 
 
 </script>

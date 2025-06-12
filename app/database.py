@@ -551,3 +551,13 @@ def get_scores_filtered_by_expr(db_path, expr):
             result.setdefault(image_name, {})[score_key] = score
 
     return result
+
+def load_all_nsfw_images(db_path: str, score_type: int, score: int) -> set[str]:
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("""
+            SELECT DISTINCT LOWER(image_name)
+            FROM image_quality_scores
+            WHERE score_type = ? 
+            AND score > ?
+        """, (score_type, score)).fetchall()
+        return {row[0] for row in rows}
