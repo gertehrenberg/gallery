@@ -1,18 +1,15 @@
 import hashlib
 import json
-import logging
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, Dict, List, Tuple, Any
+
 from PIL import Image
 
 from app.config import Settings
+from app.utils.logger_config import setup_logger
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logger = setup_logger(__name__)
 
 
 class ImageCacheError(Exception):
@@ -129,7 +126,6 @@ def save_pair_cache(pair_cache: Dict[str, Any], pair_cache_path_local: str) -> N
         raise ImageCacheError(f"Cache-Speicherung fehlgeschlagen: {e}")
 
 
-
 def get_image_date(file_path: Path) -> Tuple[datetime, str]:
     """
     Ermittelt das Aufnahmedatum eines Bildes aus EXIF-Daten oder Dateisystem.
@@ -166,6 +162,7 @@ def get_image_date(file_path: Path) -> Tuple[datetime, str]:
         aufnahmedatum = datetime.fromtimestamp(file_path.stat().st_mtime)
 
     return aufnahmedatum, aufnahmedatum.strftime('%d.%m.%Y %H:%M:%S')
+
 
 def update_date_in_txt_file(txt_file_path: Path, german_date: str) -> None:
     """

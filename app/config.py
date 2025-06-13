@@ -1,7 +1,6 @@
 from pathlib import Path
 from typing import List
 
-
 score_type_map = {
     "drawings": 10,
     "hentai": 11,
@@ -48,17 +47,18 @@ class Settings:
 
     # Kategorien für die Bildergalerie
     kategorien: List[dict] = [
-        {"key": "real", "label": "Alle Bilder", "icon": "💾", "folderid": "1fyE_ZYoVoGZ7ehjuWrS9Kd6WW4w2UZWy"},
-        {"key": "top", "label": "Fast Perfekt", "icon": "💎", "folderid": "1oKNY7jB8hEFMEn7amA6Osrbo8K9z5jAX"},
-        {"key": "delete", "label": "Löschen", "icon": "❌", "folderid": "1wjUj6NHZ_ZHwlahQuJUbCTf_HplqePVw"},
-        {"key": "recheck", "label": "Neu", "icon": "🔄", "folderid": "1EyrM6LLv_nEyB8s6zzGDGzf-hcPC76dg"},
-        {"key": "bad", "label": "Schlecht", "icon": "⛔", "folderid": "1EkX7TxoRJlYUyeNA10T3Gzdt5Nd7yRRf"},
-        {"key": "sex", "label": "Anzüglich", "icon": "🔞", "folderid": "1XCOjgEi0m0YGu11oPo3IZJizUf3p3tZg"},
-        {"key": "ki", "label": "KI", "icon": "🤖", "folderid": "1LWF_V26zvX-W9vRNwscmeQ6U7YeJxOuL"},
-        {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️", "folderid": "1UjmQV-dO3y8uhqmWjSIzU1t7w6-rQEqG"},
-        {"key": "document", "label": "Dokumente", "icon": "📄", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAW"},
-        {"key": "double", "label": "Doppelt?", "icon": "👯", "folderid": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAX"},
+        {"key": "real", "label": "Alle Bilder", "icon": "💾"},
+        {"key": "top", "label": "Fast Perfekt", "icon": "💎"},
+        {"key": "delete", "label": "Löschen", "icon": "❌"},
+        {"key": "recheck", "label": "Neu", "icon": "🔄"},
+        {"key": "bad", "label": "Schlecht", "icon": "⛔"},
+        {"key": "sex", "label": "Anzüglich", "icon": "🔞"},
+        {"key": "ki", "label": "KI", "icon": "🤖"},
+        {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️"},
+        {"key": "document", "label": "Dokumente", "icon": "📄"},
+        {"key": "double", "label": "Doppelt?", "icon": "👯"},
     ]
+
     CHECKBOX_CATEGORIES = [k["key"] for k in kategorien]
 
     # Standardordnername

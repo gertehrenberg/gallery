@@ -1,4 +1,3 @@
-import logging
 import shutil
 import sqlite3
 import time
@@ -6,12 +5,13 @@ from pathlib import Path
 
 from app.config import Settings, reverse_score_type_map, score_type_map  # Importiere die Settings-Klasse
 from app.tools import find_image_name_by_id
+from app.utils.logger_config import setup_logger
 
-logger = logging.getLogger(__name__)
+logger = setup_logger(__name__)
 
 
 def init_db(db_path):
-    logging.info(f"[init_db] 🛠️ Initialisiere Datenbank: {db_path}")
+    logger.info(f"[init_db] 🛠️ Initialisiere Datenbank: {db_path}")
     try:
         with sqlite3.connect(db_path) as conn:
             conn.execute("""
@@ -62,13 +62,13 @@ def init_db(db_path):
                          """)
 
             image_quality_scores(conn)
-        logging.info(f"[init_db] ✅ Datenbank initialisiert")
+        logger.info(f"[init_db] ✅ Datenbank initialisiert")
     except sqlite3.Error as e:
-        logging.error(f"[init_db] ❌ Fehler beim Initialisieren: {e}")
+        logger.error(f"[init_db] ❌ Fehler beim Initialisieren: {e}")
 
 
 def image_quality(conn):
-    logging.info(f"[image_quality] 🧮 Erstelle Tabelle image_quality")
+    logger.info(f"[image_quality] 🧮 Erstelle Tabelle image_quality")
     try:
         conn.execute("""
                      CREATE TABLE IF NOT EXISTS image_quality
@@ -83,13 +83,13 @@ def image_quality(conn):
                          INTEGER
                      )
                      """)
-        logging.info(f"[image_quality] ✅ Tabelle erstellt")
+        logger.info(f"[image_quality] ✅ Tabelle erstellt")
     except sqlite3.Error as e:
-        logging.error(f"[image_quality] ❌ Fehler beim Erstellen der Tabelle: {e}")
+        logger.error(f"[image_quality] ❌ Fehler beim Erstellen der Tabelle: {e}")
 
 
 def image_quality_scores(conn):
-    logging.info(f"[image_quality_scores] 📊 Erstelle Tabelle image_quality_scores")
+    logger.info(f"[image_quality_scores] 📊 Erstelle Tabelle image_quality_scores")
     try:
         conn.execute("""
                      CREATE TABLE IF NOT EXISTS image_quality_scores
@@ -108,13 +108,13 @@ def image_quality_scores(conn):
                      )
                          )
                      """)
-        logging.info(f"[image_quality_scores] ✅ Tabelle erstellt")
+        logger.info(f"[image_quality_scores] ✅ Tabelle erstellt")
     except sqlite3.Error as e:
-        logging.error(f"[image_quality_scores] ❌ Fehler beim Erstellen der Tabelle: {e}")
+        logger.error(f"[image_quality_scores] ❌ Fehler beim Erstellen der Tabelle: {e}")
 
 
 def migrate_score():
-    logging.info(f"[migrate_score] 🔄 Starte Migration der Scores")
+    logger.info(f"[migrate_score] 🔄 Starte Migration der Scores")
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
             image_quality_scores(conn)
@@ -130,19 +130,19 @@ def migrate_score():
                     VALUES (?, ?, ?)
                 """, (image_name, 2, scoreq2))
             conn.commit()
-        logging.info(f"[migrate_score] ✅ {len(rows)} Einträge migriert.")
+        logger.info(f"[migrate_score] ✅ {len(rows)} Einträge migriert.")
 
         with sqlite3.connect(Settings.DB_PATH) as conn:
             conn.execute("DROP TABLE IF EXISTS image_quality")
             conn.commit()
-        logging.info("[migrate_score] 🗑️ Alte Tabelle image_quality gelöscht.")
+        logger.info("[migrate_score] 🗑️ Alte Tabelle image_quality gelöscht.")
     except sqlite3.Error as e:
-        logging.error(f"[migrate_score] ❌ Fehler bei der Migration der Scores: {e}")
+        logger.error(f"[migrate_score] ❌ Fehler bei der Migration der Scores: {e}")
         raise
 
 
 def set_status(image_name: str, key: str, checked: int = 1):
-    logging.info(f"[set_status] 📝 Setze Status für {image_name}, Checkbox: {key}, Wert: {checked}")
+    logger.info(f"[set_status] 📝 Setze Status für {image_name}, Checkbox: {key}, Wert: {checked}")
     if key is None:
         return
     try:
@@ -157,16 +157,16 @@ def set_status(image_name: str, key: str, checked: int = 1):
                 (image_name, key, checked)
             )
             conn.commit()
-        logging.info(f"[set_status] ✅ Status gesetzt für {image_name} ({key}={checked})")
+        logger.info(f"[set_status] ✅ Status gesetzt für {image_name} ({key}={checked})")
     except sqlite3.Error as e:
-        logging.error(f"[set_status] ❌ Fehler beim Setzen des Status für {image_name}: {e}")
+        logger.error(f"[set_status] ❌ Fehler beim Setzen des Status für {image_name}: {e}")
         raise
 
 
 def save_status(image_id: str, data: dict):
-    logging.info(f"[save_status] 💾 Speichere Status für ID: {image_id}, Daten: {data}")
+    logger.info(f"[save_status] 💾 Speichere Status für ID: {image_id}, Daten: {data}")
     image_name = find_image_name_by_id(image_id)
-    logging.info(f"[save_status] Speichern des Status für {image_name}. Eingabedaten: {data}")
+    logger.info(f"[save_status] Speichern des Status für {image_name}. Eingabedaten: {data}")
 
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
@@ -177,21 +177,21 @@ def save_status(image_id: str, data: dict):
                         INSERT OR REPLACE INTO checkbox_status (image_name, checkbox, checked)
                         VALUES (?, ?, ?)
                     """, (image_name, key, checked))
-                    logging.info(f"[save_status] ✅ Checkbox '{key}' für {image_name} gespeichert. Wert: {checked}")
+                    logger.info(f"[save_status] ✅ Checkbox '{key}' für {image_name} gespeichert. Wert: {checked}")
                 else:
                     conn.execute("""
                         INSERT OR REPLACE INTO text_status (image_name, field, value)
                         VALUES (?, ?, ?)
                     """, (image_name, key, value))
-                    logging.info(f"[save_status] ✅ Textfeld '{key}' für {image_name} gespeichert. Wert: {value}")
+                    logger.info(f"[save_status] ✅ Textfeld '{key}' für {image_name} gespeichert. Wert: {value}")
             conn.commit()
     except sqlite3.Error as e:
-        logging.error(f"[save_status] ❌ Fehler beim Speichern des Status für {image_name}: {e}")
+        logger.error(f"[save_status] ❌ Fehler beim Speichern des Status für {image_name}: {e}")
         raise
 
 
 def load_status(image_name: str):
-    logging.info(f"[load_status] 📥 Lade Status für: {image_name}")
+    logger.info(f"[load_status] 📥 Lade Status für: {image_name}")
     status = {}
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
@@ -210,21 +210,21 @@ def load_status(image_name: str):
                                 """, (image_name,))
             for row in rows:
                 status[row[0]] = row[1]
-        logging.info(f"[load_status] ✅ Status geladen: {status}")
+        logger.info(f"[load_status] ✅ Status geladen: {status}")
     except sqlite3.Error as e:
-        logging.error(f"[load_status] ❌ Fehler beim Laden des Status für {image_name}: {e}")
+        logger.error(f"[load_status] ❌ Fehler beim Laden des Status für {image_name}: {e}")
         raise
     return status
 
 
 def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, new_folder_id: str,
                  retries: int = 5) -> bool:
-    logging.info(f"[move_file_db] 🔁 move_file_db({image_name}, {old_folder_id} → {new_folder_id})")
+    logger.info(f"[move_file_db] 🔁 move_file_db({image_name}, {old_folder_id} → {new_folder_id})")
     image_name = image_name.lower()
     pair_cache = Settings.CACHE.get("pair_cache")
     pair = pair_cache.get(image_name)
     if not pair:
-        logging.warning(f"[move_file_db] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
+        logger.warning(f"[move_file_db] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
         return False
     image_id = pair["image_id"]
     file_parents_cache = Settings.CACHE.get("file_parents_cache")
@@ -242,7 +242,7 @@ def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, 
                 try:
                     file_parents_cache[old_folder_id].remove(image_id)
                 except ValueError:
-                    logging.warning(
+                    logger.warning(
                         f"[move_file_db] Datei {image_name} war nicht im Cache von {old_folder_id} vorhanden.")
 
             if new_folder_id not in file_parents_cache:
@@ -252,21 +252,21 @@ def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, 
                 file_parents_cache[new_folder_id].append(image_id)
 
             conn.commit()
-            logging.info(f"[move_file_db] ✅ Erfolgreich verschoben (nur DB): {image_id}")
+            logger.info(f"[move_file_db] ✅ Erfolgreich verschoben (nur DB): {image_id}")
             return True
 
         except sqlite3.OperationalError as e:
             if "locked" in str(e).lower():
-                logging.warning(f"[move_file_db] Datenbank gesperrt, Versuch {attempt + 1}/{retries}")
+                logger.warning(f"[move_file_db] Datenbank gesperrt, Versuch {attempt + 1}/{retries}")
                 time.sleep(0.3 * (attempt + 1))
             else:
-                logging.error(f"[move_file_db] ❌ Unerwarteter Fehler bei {image_id}: {e}")
+                logger.error(f"[move_file_db] ❌ Unerwarteter Fehler bei {image_id}: {e}")
                 return False
         except Exception as e:
-            logging.error(f"[move_file_db] ❌ Fehler beim Verschieben von {image_name}: {e}")
+            logger.error(f"[move_file_db] ❌ Fehler beim Verschieben von {image_name}: {e}")
             return False
 
-    logging.error(f"[move_file_db] ❌ Max. Versuche erreicht für {image_id}: Datenbank bleibt gesperrt")
+    logger.error(f"[move_file_db] ❌ Max. Versuche erreicht für {image_id}: Datenbank bleibt gesperrt")
     return False
 
 
@@ -500,7 +500,8 @@ def save_folder_status_to_db(db_path: str, image_id: str, folder_key: str):
             """, (image_id, folder_key))
             conn.commit()
     except Exception as e:
-        logging.warning(f"[fill_folder_cache] Fehler beim Speichern von {image_id} → {folder_key}: {e}")
+        logger.warning(f"[fill_folder_cache] Fehler beim Speichern von {image_id} → {folder_key}: {e}")
+
 
 def load_scores_from_db(db_path, image_name):
     with sqlite3.connect(db_path) as conn:
@@ -518,6 +519,7 @@ def load_scores_from_db(db_path, image_name):
         score_map[f"score{idx}"] = score
 
     return score_map
+
 
 def get_scores_filtered_by_expr(db_path, expr):
     import sqlite3
@@ -551,6 +553,7 @@ def get_scores_filtered_by_expr(db_path, expr):
             result.setdefault(image_name, {})[score_key] = score
 
     return result
+
 
 def load_all_nsfw_images(db_path: str, score_type: int, score: int) -> set[str]:
     with sqlite3.connect(db_path) as conn:

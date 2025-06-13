@@ -6,6 +6,9 @@ from pathlib import Path
 from typing import List
 
 from app.config import Settings
+from app.utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 
 class SettingsGdrive:
@@ -37,11 +40,11 @@ def delete_all_hashfiles(file_folder_dir, subfolders: bool = True):
         for file in subdir.glob("*hashes.json"):
             try:
                 file.unlink()
-                print(f"[\U0001f5d1️] Gelöscht: {file}")
+                logger.info(f"[\U0001f5d1️] Gelöscht: {file}")
                 deleted += 1
             except Exception as e:
-                print(f"[Fehler] Konnte {file} nicht löschen: {e}")
-    print(f"[✓] Insgesamt gelöscht: {deleted} Hash-Dateien")
+                logger.error(f"Konnte {file} nicht löschen: {e}")
+    logger.info(f"[✓] Insgesamt gelöscht: {deleted} Hash-Dateien")
 
 
 def get_all_subfolders(service, parent_id: str) -> List[str]:
@@ -98,18 +101,18 @@ def collect_all_folders(service, parent_id, name_to_id, id_to_name):
 def folder_name_by_id(folder_id):
     global _cached_folder_dict
     if _cached_folder_dict is None:
-        print("[INFO] Lade Folder-Cache aus Datei...")
+        logger.info("Lade Folder-Cache aus Datei...")
         _cached_folder_dict = load_dict(SettingsGdrive.GDRIVE_FOLDERS_PKL)
     name = _cached_folder_dict.get("id_to_name", {}).get(folder_id)
-    print(f"[LOOKUP] folder_name_by_id('{folder_id}') → '{name}'")
+    # logger.debug(f"[LOOKUP] folder_name_by_id('{folder_id}') → '{name}'")
     return name
 
 
 def folder_id_by_name(folder_name):
     global _cached_folder_dict
     if _cached_folder_dict is None:
-        print("[INFO] Lade Folder-Cache aus Datei...")
+        logger.info("Lade Folder-Cache aus Datei...")
         _cached_folder_dict = load_dict(SettingsGdrive.GDRIVE_FOLDERS_PKL)
     folder_id = _cached_folder_dict.get("name_to_id", {}).get(folder_name)
-    print(f"[LOOKUP] folder_id_by_name('{folder_name}') → '{folder_id}'")
+    # logger.debug(f"[LOOKUP] folder_id_by_name('{folder_name}') → '{folder_id}'")
     return folder_id

@@ -1,9 +1,7 @@
 import asyncio
 import json
-import logging
 import os
 import shutil
-from itertools import count
 from pathlib import Path
 from typing import Dict, List
 
@@ -12,17 +10,14 @@ from tqdm import tqdm
 
 from app.config import Settings
 from app.config_gdrive import sanitize_filename, folder_id_by_name, get_all_subfolders, SettingsGdrive, calculate_md5
-from app.database import load_folder_status_from_db_by_name, load_folder_status_from_db
+from app.database import load_folder_status_from_db
 from app.routes.auth import load_drive_service_token
 from app.routes.dashboard_help import fillcache_local
 from app.tools import find_image_name_by_id
+from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, save_simple_hashes
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logger = setup_logger(__name__)
 
 
 def move_file_to_folder(service, file_id: str, target_folder_id: str):
@@ -150,27 +145,48 @@ async def gdrive_from_lokal(service, folder_name: str):
                 save_gdrive_hashes(gdrive_hashes, gdrive_hashfile, folder)
 
     if await lokal_from_gdrive_move(service, folder_name):
-        process_image_folders(service, Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR,
-                              [folder_id_by_name(folder_name)], False)
+        process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR,
+                                     [folder_name])
 
     asyncio.run(stop_progress())
 
 
 def save_gdrive_hashes(gdrive_hashes: Dict, hashfile_path: Path, folder: str) -> None:
     """
-    Speichert die Google Drive Hashes in einer JSON-Datei.
-
-    Args:
-        gdrive_hashes: Dictionary mit den zu speichernden Hashes
-        hashfile_path: Path-Objekt zum Speicherort der Datei
-        folder: Name des Ordners (für Logging)
+    Speichert die Google Drive Hashes sicher in einer JSON-Datei.
     """
+    import fcntl  # Für File-Locking
+
+    # Temporäre Datei im gleichen Verzeichnis
+    temp_path = hashfile_path.with_suffix('.json.tmp')
+
     try:
-        with hashfile_path.open("w", encoding="utf-8") as f:
-            json.dump(gdrive_hashes, f, indent=2)
-        logger.info(f"[↑] {Settings.GDRIVE_HASH_FILE} aktualisiert für Ordner {folder}")
+        # Schreibe erst in temporäre Datei
+        with temp_path.open("w", encoding="utf-8") as f:
+            # File-Lock setzen
+            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            try:
+                # Validiere und schreibe Daten
+                for key in gdrive_hashes:
+                    if isinstance(gdrive_hashes[key], dict):
+                        # Stelle sicher, dass md5 und id vorhanden sind
+                        gdrive_hashes[key]["md5"] = gdrive_hashes[key].get("md5", "")
+                        gdrive_hashes[key]["id"] = gdrive_hashes[key].get("id", "")
+
+                json.dump(gdrive_hashes, f, indent=2)
+                f.flush()  # Stelle sicher, dass alles geschrieben wurde
+                os.fsync(f.fileno())  # Synchronisiere mit Festplatte
+            finally:
+                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+
+        # Atomar umbenennen
+        temp_path.replace(hashfile_path)
+        logger.info(f"[✓] {Settings.GDRIVE_HASH_FILE} aktualisiert für Ordner {folder}")
+
     except Exception as e:
         logger.error(f"[Fehler] Konnte Hashes nicht in {hashfile_path} speichern: {e}")
+        if temp_path.exists():
+            temp_path.unlink()  # Lösche temporäre Datei bei Fehler
 
 
 def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_path: Path):
@@ -191,10 +207,11 @@ def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_path: Pat
         logger.error(f"[Fehler] Konnte Hashes nicht in {hashfile_path} speichern: {e}")
 
 
-def process_image_folders(service, extensions, file_folder_dir, folder_ids: List[str], subfolders: bool = True):
-    folder_names: Dict[str, str] = {}
+def process_image_folders_gdrive(service, extensions, file_folder_dir, folder_names: List[str]):
+    subfolders = False
 
-    for root_id in folder_ids:
+    for folder_name in folder_names:
+        root_id = folder_id_by_name(folder_name)
         all_ids = get_all_subfolders(service, root_id) if subfolders else [root_id]
         for folder_id in all_ids:
             files = []
@@ -222,31 +239,34 @@ def process_image_folders(service, extensions, file_folder_dir, folder_ids: List
                     if not page_token:
                         break
 
-            if not files:
-                continue
-
-            folder = service.files().get(fileId=folder_id, fields="name").execute()
-            folder_name = folder.get("name", "real")
-            folder_names[folder_id] = folder_name
-
             gdrive_hashes: Dict[str, Dict[str, str]] = {}
-            for file in files:
-                try:
-                    name = sanitize_filename(file['name'])
-                    md5_drive = file.get("md5Checksum")
-                    if md5_drive:
-                        gdrive_hashes[name] = {
-                            "md5": md5_drive,
-                            "id": file['id']
-                        }
-                except Exception as e:
-                    logger.error(f"[Fehler] {file['name']}: {e}")
+            if files:
+                folder = service.files().get(fileId=folder_id, fields="name").execute()
 
-            if subfolders:
-                local_dir = Path(file_folder_dir) / folder_name
-            else:
-                local_dir = Path(file_folder_dir)
-            save_structured_hashes(gdrive_hashes, local_dir / Settings.GDRIVE_HASH_FILE)
+                for file in files:
+                    try:
+                        name = sanitize_filename(file['name'])
+                        md5_drive = file.get("md5Checksum")
+                        if md5_drive:
+                            gdrive_hashes[name] = {
+                                "md5": md5_drive,
+                                "id": file['id']
+                            }
+                    except Exception as e:
+                        logger.error(f"[Fehler] {file['name']}: {e}")
+
+            # Convert file_folder_dir to Path if it isn't already
+            base_dir = Path(file_folder_dir)
+            local_dir = base_dir / folder_name
+
+            # Ensure directory exists
+            local_dir.mkdir(parents=True, exist_ok=True)
+
+            # Create the final path for the hash file
+            hash_file_path = local_dir / Settings.GDRIVE_HASH_FILE
+
+            # Save the hashes
+            save_structured_hashes(gdrive_hashes, hash_file_path)
 
 
 def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict[str, str]]:
@@ -466,6 +486,7 @@ async def lokal_from_gdrive_move(service, folder_name: str) -> bool:
 
     return missing_count > 0 or moved_count > 0
 
+
 def write_local_hashes(extensions, file_folder_dir, subfolders: bool = True):
     root = Path(file_folder_dir)
     all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
@@ -486,6 +507,7 @@ def write_local_hashes(extensions, file_folder_dir, subfolders: bool = True):
             tqdm.write(f"[✓] Lokale Hashes gespeichert: {subdir / hashfile_name}")
             pbar.update(1)
 
+
 def find_image_file(image_name: str) -> Path | None:
     """
     Sucht rekursiv nach einer Bilddatei im IMAGE_FILE_CACHE_DIR.
@@ -503,7 +525,7 @@ def find_image_file(image_name: str) -> Path | None:
     return None
 
 
-if __name__ == "__main__":
+def p1():
     # Basis-Pfade
     Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
 
@@ -524,7 +546,6 @@ if __name__ == "__main__":
 
     hash_cache = {}
 
-
     def find_local(md5: str, hash_cache: dict) -> str | None:
         """
         Sucht nach einer Datei mit gegebenem MD5-Hash in allen Galleries.
@@ -536,7 +557,6 @@ if __name__ == "__main__":
                 logger.debug(f"[FOUND] MD5 {md5} in {folder_name}")
                 return folder_name
         return None
-
 
     for eintrag in Settings.kategorien:
         folder_key = eintrag["key"]
@@ -553,18 +573,18 @@ if __name__ == "__main__":
             hash_cache[folder_key] = {}
 
     rows = load_folder_status_from_db(Settings.DB_PATH)
-    logging.info(f"Anzahl DB: {len(rows)}")
+    logger.info(f"Anzahl DB: {len(rows)}")
 
+    count = 0
     if rows:
-        count = 0
         for image_id, folder_key in tqdm(rows, desc="Processing images", unit="image"):
             image_name = find_image_name_by_id(image_id)
             if not image_name:
-                logging.info(f"not image_name: {image_name}")
+                logger.info(f"not image_name: {image_name}")
                 continue
             file_path = find_image_file(image_name)
             if not file_path:
-                logging.info(f"not image_name: {image_name}")
+                logger.info(f"not image_name: {image_name}")
                 continue
             else:
                 # Prüfen, ob das aktuelle Verzeichnis vom gewünschten abweicht
@@ -577,16 +597,16 @@ if __name__ == "__main__":
                     try:
                         # Datei verschieben
                         shutil.move(str(file_path), str(new_file_path))
-                        logging.info(f"Verschoben: {file_path} → {new_file_path}")
+                        logger.info(f"Verschoben: {file_path} → {new_file_path}")
                     except Exception as e:
-                        logging.error(f"Fehler beim Verschieben von {file_path} nach {new_file_path}: {e}")
+                        logger.error(f"Fehler beim Verschieben von {file_path} nach {new_file_path}: {e}")
                         continue
                 count = count + 1
             # continue
             # curr_folder = find_local(image_id, hash_cache)
             # if not curr_folder:
             #     logging.info(f"not image_id: {image_id}")
-        logging.info(f"count: {count}")
+        logger.info(f"count: {count}")
 
     if count > 0:
         write_local_hashes(Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR)
@@ -595,3 +615,72 @@ if __name__ == "__main__":
     #     load_drive_service_token(token_path),
     #     "recheck"
     # ))
+
+
+
+def p2():
+    # Basis-Pfade
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+
+    # Token-Pfad für Google Drive
+    token_path = os.path.abspath(os.path.join("../../secrets", "token.json"))
+
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.SAVE_LOG_FILE = "../../cache/from_save_"
+
+    service = load_drive_service_token(token_path)
+
+    fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
+
+    hash_cache = {}
+
+    for eintrag in Settings.kategorien:
+        folder_key = eintrag["key"]
+
+        local_path = Path(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key) / Settings.GDRIVE_HASH_FILE
+
+        try:
+            # Read and parse the hash file
+            with local_path.open("r", encoding="utf-8") as f:
+                dir_cache = json.load(f)
+                dir_cache = dir_cache if isinstance(dir_cache, dict) else {}
+                hash_cache[folder_key] = dir_cache
+
+        except Exception as e:
+            logger.error(f"Error reading {local_path}: {e}")
+            # Generate new hash file for this folder
+            try:
+                logger.info(f"Attempting to regenerate hash file for folder: {folder_key}")
+                process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR,
+                                          [folder_id_by_name(folder_key)])
+
+                # Try to read the newly generated file
+                if local_path.exists():
+                    with local_path.open("r", encoding="utf-8") as f:
+                        dir_cache = json.load(f)
+                        dir_cache = dir_cache if isinstance(dir_cache, dict) else {}
+                        hash_cache[folder_key] = dir_cache
+                        logger.info(f"Successfully regenerated and loaded hash file for {folder_key}")
+                else:
+                    logger.error(f"Failed to generate hash file for {folder_key}")
+                    hash_cache[folder_key] = {}
+            except Exception as regen_error:
+                logger.error(f"Error regenerating hash file for {folder_key}: {regen_error}")
+                hash_cache[folder_key] = {}
+
+    # Log the number of entries for each folder
+    for folder_key, cache_data in hash_cache.items():
+        logger.info(f"Anzahl Einträge in {folder_key}: {len(cache_data)}")
+
+    logger.info(f"Anzahl Ordner gesamt: {len(hash_cache)}")
+
+    process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR,
+                             ["textfiles"])
+
+if __name__ == "__main__":
+    p2()
