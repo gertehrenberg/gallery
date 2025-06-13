@@ -20,7 +20,7 @@ from starlette.responses import JSONResponse
 from app.config import Settings
 from app.config_gdrive import sanitize_filename, calculate_md5, folder_id_by_name, SettingsGdrive
 from app.database import clear_folder_status_db, load_folder_status_from_db, save_folder_status_to_db, \
-    clear_folder_status_db_by_name
+    clear_folder_status_db_by_name, load_folder_status_from_db_by_name, check_folder_status_in_db
 from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
@@ -34,7 +34,7 @@ from app.scores.quality import reload_quality
 from app.tools import readimages, save_pair_cache, fill_pair_cache
 from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
-    write_local_hashes_progress
+    write_local_hashes_progress, update_progress_text
 from app.utils.progress import list_files
 
 router = APIRouter()
@@ -121,12 +121,13 @@ async def dashboard(request: Request, year: int = None, month: int = None):
     tool_links = [
         {"label": "n8n", "url": "http://localhost", "icon": "🧩"},
         {"label": 'Sync mit "Save" (GDrive)', "url": f"{_BASE}/test?folder=save&direction=manage_save", "icon": "🔄"},
-        {"label": "Reload Caches", "url": f"{_BASE}/test?direction=reloadcache", "icon": "🧹"},
+        {"label": "Reload (pair & gallery*_hashes)", "url": f"{_BASE}/test?direction=reloadcache", "icon": "🧹"},
         {"label": "Lösche File Cache(s)", "url": f"{_BASE}/what?what=reloadfilecache", "icon": "🗑️"},
         {"label": "Reload Gesichter", "url": f"{_BASE}/test?direction=reload_faces", "icon": "😶"},
         {"label": "Reload Quality-Scores", "url": f"{_BASE}/test?direction=reload_quality", "icon": "⭐"},
         {"label": "Reload NSFW-Scores", "url": f"{_BASE}/test?direction=reload_nsfw", "icon": "🚫"},
         {"label": 'Reload ComfyUI nur in "KI"', "url": f"{_BASE}/test?direction=reload_comfyui", "icon": "🖼️"},
+        {"label": "Lösche Doppelte Bilder", "url": f"{_BASE}/test?direction=del_double_images", "icon": "👯"},
         {"label": "Gen Pages", "url": f"{_BASE}/test?direction=gen_pages", "icon": "📘"}
     ]
 
@@ -273,6 +274,11 @@ def get_daily_costs(dataset: str, table: str, year: int, month: int):
 
 
 calls = {
+    "del_double_images": {
+        "label": "Finde und Lösche doppelte Bilder ...",
+        "start_url": "/gallery/dashboard/multi/del_double_images",
+        "progress_url": "/gallery/dashboard/progress"
+    },
     "gen_pages": {
         "label": "Erzeuge die internen Seiten ...",
         "start_url": "/gallery/dashboard/multi/gen_pages",
@@ -305,7 +311,7 @@ calls = {
     },
     "reloadcache": {
         "label": lambda folder_key: (
-            f'Aktualisiere für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" internen Caches ...'
+            f'Aktualisiere für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" pair & gallery*_hashes ...'
             if folder_key else "Aktualisiere alle internen Caches"
         ),
         "start_url": "/gallery/dashboard/multi/reloadcache",
@@ -951,8 +957,8 @@ async def _process_image_files_progress(image_files, folder_key, file_parents_ca
         logger.info(f"[_process_image_files_progress] ✅️ Eintrag im pair_cache für: {folder_key} / {image_name}")
         image_id = pair["image_id"]
         file_parents_cache[folder_key].append(image_id)
-        save_folder_status_to_db(db_path, image_id, folder_key)
 
+        save_folder_status_to_db(db_path, image_id, folder_key)
 
 def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
     pair_cache = Settings.CACHE["pair_cache"]
@@ -1043,19 +1049,18 @@ async def reloadcache_progress(folder_key: Optional[str] = None):
                    If in CHECKBOX_CATEGORIES, processes only that folder.
                    If "textfiles", processes text files.
     """
-    logger.info(f"🔄 Starte reloadcache_progress für Ordner: {folder_key}")
-
     try:
         await init_progress_state()
         progress_state["running"] = True
+        await update_progress_text(f"🔄 Starte reloadcache_progress für Ordner: {folder_key}")
         Settings.folders_loaded = 0
 
         if folder_key == "textfiles":
-            logger.info("🗃️ Modus: Textverarbeitung")
+            await update_progress_text("🗃️ Modus: Textverarbeitung")
             await process_text_files()
 
         elif folder_key in Settings.CHECKBOX_CATEGORIES:
-            logger.info(f"📂 Modus: Einzelne Kategorie ({folder_key})")
+            await update_progress_text(f"📂 Modus: Einzelne Kategorie ({folder_key})")
             folder_name = next(
                 (k["label"] for k in Settings.kategorien if k["key"] == folder_key),
                 folder_key
@@ -1064,17 +1069,23 @@ async def reloadcache_progress(folder_key: Optional[str] = None):
             Settings.folders_loaded += 1
 
         else:
-            logger.info("📂 Modus: Alle Kategorien")
+            await update_progress_text("📂 Modus: Alle Kategorien")
+            pair_cache = Settings.CACHE.get("pair_cache")
+            pair_cache.clear()
+
             for kategorie in Settings.kategorien:
                 await process_category(kategorie["key"], kategorie["label"])
                 Settings.folders_loaded += 1
+
+            await update_progress_text("🗃️ Modus: Textverarbeitung")
+            await process_text_files()
 
     except Exception as e:
         logger.error(f"❌ Fehler beim Reload-Cache: {e}")
         raise
     finally:
+        await update_progress_text("✅ reloadcache_progress abgeschlossen")
         await stop_progress()
-        logger.info("✅ reloadcache_progress abgeschlossen")
 
 
 async def process_category(folder_key: str, folder_name: str):
@@ -1085,7 +1096,7 @@ async def process_category(folder_key: str, folder_name: str):
         folder_key: The key of the folder to process
         folder_name: The display name of the folder
     """
-    logger.info(f"📂 Verarbeite Kategorie: {folder_name} ({folder_key})")
+    await update_progress_text(f"📂 Verarbeite Kategorie: {folder_key} ({folder_name})")
 
     pair_cache = Settings.CACHE.get("pair_cache")
 
@@ -1098,34 +1109,34 @@ async def process_category(folder_key: str, folder_name: str):
         if value.get("folder", "") == folder_key
     ]
 
-    logger.info(f"🧹 Entferne {len(to_delete)} bestehende Einträge aus pair_cache für {folder_key}")
+    await update_progress_text(f"🧹 Entferne {len(to_delete)} bestehende Einträge aus pair_cache für {folder_key}")
     for key in to_delete:
         del pair_cache[key]
 
     # Process images
     image_dir = f"{Settings.IMAGE_FILE_CACHE_DIR}/{folder_key}"
-    logger.info(f"📸 Lese Bilder aus {image_dir}")
+    await update_progress_text(f"📸 Lese Bilder aus {image_dir}")
     readimages(image_dir, pair_cache)
 
     # Save cache
     save_pair_cache(pair_cache, Settings.PAIR_CACHE_PATH)
-    logger.info(f"💾 pair_cache gespeichert: {Settings.PAIR_CACHE_PATH}")
+    await update_progress_text(f"💾 pair_cache gespeichert: {Settings.PAIR_CACHE_PATH}")
 
     await update_progress(f"{folder_name}: fillcache_local fertig", 100)
     await asyncio.sleep(1.0)
 
     # Update database
-    logger.info("🔄 Aktualisiere Elternpfade in DB")
+    await update_progress_text("🔄 Aktualisiere Elternpfade in DB")
     await fill_file_parents_cache_progress(Settings.DB_PATH, folder_key)
 
     # Write hashes
-    logger.info("🧮 Schreibe lokale Hashes (Bilder)")
+    await update_progress_text("🧮 Schreibe lokale Hashes (Bilder)")
     await write_local_hashes_progress(Settings.IMAGE_EXTENSIONS, image_dir, False)
 
 
 async def process_text_files():
     """Processes text files in the text directory."""
-    logger.info("🧮 Schreibe lokale Hashes (Texte)")
+    await update_progress_text("🧮 Schreibe lokale Hashes (Texte)")
     await write_local_hashes_progress(
         Settings.TEXT_EXTENSIONS,
         Settings.TEXT_FILE_CACHE_DIR,
@@ -1144,7 +1155,7 @@ async def fill_file_parents_cache_progress(db_path: str, folder_key: str | None)
 
         clear_folder_status_db_by_name(db_path, folder_key)
 
-        logger.info("[fill_folder_cacFhe] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
+        logger.info("[fill_file_parents_cache_progress] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
 
         file_parents_cache[folder_key] = []
         folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
@@ -1155,7 +1166,7 @@ async def fill_file_parents_cache_progress(db_path: str, folder_key: str | None)
         await _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path)
         Settings.folders_loaded += 1
         logger.info(
-            f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
+            f"[fill_file_parents_cache_progress] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
     else:
         file_parents_cache = Settings.CACHE["file_parents_cache"]
         file_parents_cache.clear()
@@ -1163,7 +1174,7 @@ async def fill_file_parents_cache_progress(db_path: str, folder_key: str | None)
         if _load_file_parents_cache_from_db(db_path, file_parents_cache):
             return
 
-        logger.info("[fill_folder_cache] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
+        logger.info("[fillfill_file_parents_cache_progress] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
         clear_folder_status_db(db_path)
 
         for kat in Settings.kategorien:
@@ -1174,14 +1185,182 @@ async def fill_file_parents_cache_progress(db_path: str, folder_key: str | None)
             folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
             if not _prepare_folder(folder_path):
                 continue
-            logger.info(f"[fill_folder_cache] 📂 Lese Bilder aus: {folder_key}")
+            logger.info(f"[fill_file_parents_cache_progress] 📂 Lese Bilder aus: {folder_key}")
             image_files = list(folder_path.iterdir())
             await update_progress(f"Kategorie: {folder_key} : {len(image_files)} Dateien", 0)
             await _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path)
             Settings.folders_loaded += 1
             logger.info(
-                f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
+                f"[fill_file_parents_cache_progress] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
 
+
+@router.post("/dashboard/multi/del_double_images")
+async def _del_double_images(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        asyncio.create_task(move_md5_duplicates())
+    return {"status": "ok"}
+
+
+async def move_md5_duplicates():
+    logger.info("🚀 move_md5_duplicates()")
+
+    try:
+        await init_progress_state()
+        progress_state["running"] = True
+        await update_progress_text("🔄 Starting MD5 duplicate detection")
+
+        # Create temp directory if it doesn't exist
+        temp_dir = Settings.TEMP_DIR_PATH
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Dictionary to store MD5 hashes and their corresponding files
+        md5_map = {}
+        all_files = []
+
+        # Collect all files and their MD5 hashes from selected categories
+        index = 1
+        total = len(Settings.kategorien)
+        for kat in Settings.kategorien:
+            folder_name = kat["key"]
+
+            local_files = {}
+            await update_progress(f"Kategorie: {folder_name} : {index}/{total}",
+                                int(index / total * 100), 0.02)
+            index += 1
+
+            readimages(str(Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name), local_files)
+
+            for image_name, entry in local_files.items():
+                await update_progress_text(f"Kategorie: {folder_name} : {index}/{total} Bild {image_name}",
+                                        0.01, False)
+                if "image_id" in entry:
+                    md5 = entry["image_id"]
+                    full_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+
+                    if md5 not in md5_map:
+                        md5_map[md5] = []
+                    md5_map[md5].append({
+                        "path": full_path,
+                        "image_name": image_name,
+                        "category": folder_name
+                    })
+
+                    all_files.append(entry)
+
+        # Process MD5 duplicates
+        moved_count = 0
+        total_duplicates = sum(1 for files in md5_map.values() if len(files) > 1)
+
+        await update_progress_text(f"Found {total_duplicates} groups of MD5 duplicate images")
+
+        for md5, files in md5_map.items():
+            if len(files) > 1:  # If we have duplicates
+                # Keep the first file, move others to TEMP_DIR
+                for duplicate in files[1:]:
+                    source_path = duplicate["path"]
+                    dest_path = temp_dir / f"{duplicate['category']}_{duplicate['image_name']}"
+
+                    try:
+                        source_path.rename(dest_path)
+                        moved_count += 1
+                        await update_progress_text(
+                            f"Moving MD5 duplicate: {duplicate['image_name']} ({moved_count}/{total_duplicates})"
+                        )
+                    except Exception as e:
+                        logger.error(f"Error moving file {source_path}: {e}")
+
+        await update_progress_text(f"✅ Completed! Moved {moved_count} MD5 duplicate files to {temp_dir}")
+
+    except Exception as e:
+        logger.error(f"Error in move_md5_duplicates: {e}")
+        await update_progress_text(f"❌ Error: {str(e)}")
+
+    finally:
+        await rename_filename_duplicates()
+
+async def rename_filename_duplicates():
+    logger.info("🚀 rename_filename_duplicates()")
+
+    try:
+        await init_progress_state()
+        progress_state["running"] = True
+        await update_progress_text("🔄 Starting filename duplicate detection")
+
+        # Dictionary to store filenames and their locations
+        filename_map = {}
+        all_files = []
+
+        # Collect all files from selected categories
+        index = 1
+        total = len(Settings.kategorien)
+        for kat in Settings.kategorien:
+            folder_name = kat["key"]
+
+            local_files = {}
+            await update_progress(f"Kategorie: {folder_name} : {index}/{total}",
+                                int(index / total * 100), 0.02)
+            index += 1
+
+            readimages(str(Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name), local_files)
+
+            for image_name, entry in local_files.items():
+                await update_progress_text(f"Kategorie: {folder_name} : {index}/{total} Bild {image_name}",
+                                        0.01, False)
+
+                if image_name not in filename_map:
+                    filename_map[image_name] = []
+                filename_map[image_name].append({
+                    "path": Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name,
+                    "image_name": image_name,
+                    "category": folder_name,
+                    "image_id": entry.get("image_id", None)
+                })
+
+                all_files.append(entry)
+
+        # Process filename duplicates
+        renamed_count = 0
+        total_duplicates = sum(1 for files in filename_map.values() if len(files) > 1)
+
+        await update_progress_text(f"Found {total_duplicates} groups of filename duplicates")
+
+        for filename, files in filename_map.items():
+            if len(files) > 1:  # If we have files with the same name
+                # Sort files by path to ensure consistent handling
+                files.sort(key=lambda x: str(x["path"]))
+
+                # Keep the first file as is
+                original = files[0]
+                await update_progress_text(f"Keeping original: {original['path']}")
+
+                # Rename other files with same name using their MD5
+                for duplicate in files[1:]:
+                    source_path = duplicate["path"]
+                    prefix = duplicate["image_id"]
+                    new_name = f"{prefix}_{duplicate['image_name']}"
+                    new_path = source_path.parent / new_name
+
+                    try:
+                        source_path.rename(new_path)
+                        renamed_count += 1
+                        await update_progress_text(
+                            f"Renamed file: {duplicate['image_name']} -> {new_name} ({renamed_count}/{total_duplicates})"
+                        )
+                        logger.info(f"Renamed {source_path} to {new_path}")
+                    except Exception as e:
+                        error_msg = f"Error renaming file {source_path}: {e}"
+                        logger.error(error_msg)
+                        await update_progress_text(f"❌ {error_msg}")
+
+        await update_progress_text(f"✅ Completed! Renamed {renamed_count} duplicate filenames")
+
+    except Exception as e:
+        error_msg = f"Error in rename_filename_duplicates: {e}"
+        logger.error(error_msg)
+        await update_progress_text(f"❌ {error_msg}")
+
+    finally:
+        await stop_progress()
 
 def localp1():
     Settings.DB_PATH = '../../gallery_local.db'
@@ -1237,5 +1416,27 @@ def p3():
     asyncio.run(manage_save_progress(localp3()))
 
 
+def p4():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+
+    asyncio.run(rename_filename_duplicates())
+
+    # fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
+
+    folder_key_log = "bad"
+    rows_log = load_folder_status_from_db_by_name(Settings.DB_PATH, folder_key_log)
+    logger.info(f"Anzahl DB: {folder_key_log} {len(rows_log)}")
+
+    folder_key_log = "document"
+    rows_log = load_folder_status_from_db_by_name(Settings.DB_PATH, folder_key_log)
+    logger.info(f"Anzahl DB: {folder_key_log} {len(rows_log)}")
+
+    asyncio.run(process_category("document", "Schlecht"))
+
+
 if __name__ == "__main__":
-    p3()
+    p4()

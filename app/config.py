@@ -45,6 +45,8 @@ class Settings:
 
     COSTS_FILE_DIR = '/data/costs'
 
+    TEMP_DIR_PATH = Path('/data/temp')
+
     # Kategorien für die Bildergalerie
     kategorien: List[dict] = [
         {"key": "real", "label": "Alle Bilder", "icon": "💾"},

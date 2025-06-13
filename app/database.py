@@ -490,6 +490,21 @@ def clear_folder_status_db_by_name(db_path: str, folder_key: str) -> None:
         conn.commit()
 
 
+def check_folder_status_in_db(db_path, image_id, folder_key):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("""
+            SELECT 1 FROM image_folder_status 
+            WHERE image_id = ? AND folder_id = ?
+            LIMIT 1
+        """, (image_id, folder_key))
+        exists = cursor.fetchone() is not None
+        return exists
+    finally:
+        conn.close()
+
+
 def save_folder_status_to_db(db_path: str, image_id: str, folder_key: str):
     logger.info(f"[save_folder_status_to_db] Start – db_path={db_path}, image_id={image_id}, folder_key={folder_key}")
     try:

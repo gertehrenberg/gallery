@@ -5,15 +5,7 @@
 
 set -euo pipefail
 
-# Ensure exactly one argument is provided
-if [ "$#" -ne 1 ]; then
-  echo
-  echo "Usage: $0 <container_name_or_id>"
-  echo
-  exit 1
-fi
-
-CONTAINER="$1"
+CONTAINER="gallery"
 
 # Header
 cat << EOF
