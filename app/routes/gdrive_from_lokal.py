@@ -524,6 +524,7 @@ if __name__ == "__main__":
 
     hash_cache = {}
 
+
     def find_local(md5: str, hash_cache: dict) -> str | None:
         """
         Sucht nach einer Datei mit gegebenem MD5-Hash in allen Galleries.
@@ -535,6 +536,7 @@ if __name__ == "__main__":
                 logger.debug(f"[FOUND] MD5 {md5} in {folder_name}")
                 return folder_name
         return None
+
 
     for eintrag in Settings.kategorien:
         folder_key = eintrag["key"]
@@ -565,7 +567,6 @@ if __name__ == "__main__":
                 logging.info(f"not image_name: {image_name}")
                 continue
             else:
-                count = count + 1
                 # Prüfen, ob das aktuelle Verzeichnis vom gewünschten abweicht
                 if folder_key != file_path.parent.name:
                     # Neues Zielverzeichnis erstellen (falls nicht vorhanden)
@@ -580,11 +581,15 @@ if __name__ == "__main__":
                     except Exception as e:
                         logging.error(f"Fehler beim Verschieben von {file_path} nach {new_file_path}: {e}")
                         continue
+                count = count + 1
             # continue
             # curr_folder = find_local(image_id, hash_cache)
             # if not curr_folder:
             #     logging.info(f"not image_id: {image_id}")
         logging.info(f"count: {count}")
+
+    if count > 0:
+        write_local_hashes(Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR)
 
     # asyncio.run(gdrive_from_lokal(
     #     load_drive_service_token(token_path),

@@ -197,6 +197,8 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
             local_data = {}
 
         db_count = count_folder_entries(Settings.DB_PATH, subdir.name)
+        local_count = len(local_data)
+        gdrive_count = len(gdrive_data)
 
         entry = icon_map.get(subdir.name)
         if entry:
@@ -205,21 +207,24 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
                 "icon": icon,
                 "label": label,
                 "key": subdir.name,
-                "gdrive_count": len(gdrive_data),
-                "local_count": len(local_data),
-                "db_count": db_count
+                "gdrive_count": gdrive_count,
+                "local_count": local_count,
+                "db_count": db_count,
+                "has_count_mismatch": local_count != db_count,  # DB vs local mismatch
+                "has_gdrive_mismatch": gdrive_count != local_count  # GDrive vs local mismatch
             })
         elif not subfolders:
             result.append({
                 "icon": "📄",
                 "label": "Textfiles",
                 "key": subdir.name,
-                "gdrive_count": len(gdrive_data),
-                "local_count": len(local_data),
-                "db_count": db_count
+                "gdrive_count": gdrive_count,
+                "local_count": local_count,
+                "db_count": db_count,
+                "has_count_mismatch": local_count != db_count,  # DB vs local mismatch
+                "has_gdrive_mismatch": gdrive_count != local_count  # GDrive vs local mismatch
             })
     return sorted(result, key=lambda x: x["local_count"], reverse=True)
-
 
 def get_monthly_costs(dataset: str, table: str, start: str, end: str):
     client = bigquery.Client()

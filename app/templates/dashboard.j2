@@ -88,7 +88,7 @@
                 </thead>
                 <tbody>
                 {% for stat in gdrive_stats %}
-                    <tr class="border-t">
+                    <tr class="border-t {% if stat.has_gdrive_mismatch or stat.has_count_mismatch %}bg-red-50{% endif %}">
                         <td>
                             <div class="icon-link-sm">
                                 <span class="icon-sm">{{ stat.icon }}</span>
@@ -98,7 +98,7 @@
                                 </a>
                             </div>
                         </td>
-                        <td class="text-right">{{ stat.gdrive_count }}</td>
+                        <td class="text-right {% if stat.has_gdrive_mismatch %}text-red-600{% endif %}">{{ stat.gdrive_count }}</td>
                         <td class="text-center">
                             <div class="flex justify-center gap-4">
                                 <form action="/gallery/dashboard/test">
@@ -113,7 +113,13 @@
                                 </form>
                             </div>
                         </td>
-                        <td class="text-left pl-2">{{ stat.local_count }}</td>
+                        <td class="text-left pl-2">
+                            {% if stat.has_count_mismatch %}
+                                <span class="text-red-600">{{ stat.local_count }}</span>
+                            {% else %}
+                                {{ stat.local_count }}
+                            {% endif %}
+                        </td>
                         <td class="text-left pl-2">
                             <form action="/gallery/dashboard/test">
                                 <input type="hidden" name="folder" value="{{ stat.key }}">
