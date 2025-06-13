@@ -1,0 +1,54 @@
+Hier ist die gleiche Analyse ohne den Markdown-Block, einfacher zum Kopieren:
+# Pfad-Problematik im Gallery-Projekt
+## Aktuelles Problem
+- Der Code verwendet verschiedene relative Pfade je nach Ausführungskontext
+- Die Konfiguration in `SettingsGdrive.GDRIVE_FOLDERS_PKL` wird unterschiedlich gesetzt
+- Fehler tritt auf wenn Skripte aus verschiedenen Verzeichnissen aufgerufen werden
+
+## Betroffene Schlüsselstellen
+1. SettingsGdrive.GDRIVE_FOLDERS_PKL
+2. Settings.IMAGE_FILE_CACHE_DIR
+3. Settings.DB_PATH
+4. Token und Secret Pfade
+
+## Empfohlene Lösung
+### 1. Basis-Verzeichnis definieren
+In config.py eine zentrale Projektwurzel definieren:
+``` python
+PROJECT_ROOT = Path(__file__).parent.parent.absolute()
+```
+### 2. Alle Pfade relativ zur Projektwurzel
+In config.py:
+``` python
+class Settings:
+    DATA_DIR = PROJECT_ROOT / "data"
+    CACHE_DIR = PROJECT_ROOT / "cache"
+    SECRETS_DIR = PROJECT_ROOT / "secrets"
+```
+### 3. Abgeleitete Pfade
+``` python
+class SettingsGdrive:
+    GDRIVE_FOLDERS_PKL = Settings.CACHE_DIR / "gdrive_folders.pkl"
+
+class Settings:
+    IMAGE_FILE_CACHE_DIR = CACHE_DIR / "imagefiles"
+    DB_PATH = DATA_DIR / "gallery_local.db"
+```
+### 4. Umgebungsvariablen für Container
+Wenn im Container ausgeführt:
+``` python
+Settings.DATA_DIR = Path(os.getenv("GALLERY_DATA_DIR", "/data"))
+```
+## Vorteile
+- Einheitliche Pfadbehandlung
+- Unabhängig vom Ausführungsort
+- Klare Trennung zwischen Entwicklung und Container
+- Leichtere Wartung durch zentrale Konfiguration
+
+## Nächste Schritte
+1. config.py anpassen
+2. Pfade in allen Skripten aktualisieren
+3. Sicherstellen dass Verzeichnisse existieren
+4. Tests mit verschiedenen Ausführungskontexten
+
+Bitte diese Nachricht für morgen aufheben und mit der Implementierung beginnen.
