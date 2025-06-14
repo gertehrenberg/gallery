@@ -89,6 +89,47 @@ async def list_files(folder_id, service, sign="!="):
 
     return files
 
+async def list_all_files(folder_id, service):
+    logger.info(f"Starting list_files with folder_id: {folder_id}")
+    files = []
+    page_token = None
+    count = 0
+    folder_name = folder_name_by_id(folder_id)
+    logger.info(f"📂 Starte Dateiliste für Folder-ID: {folder_name}")
+    await update_progress(f"Dateien werden aus Google Drive geladen ({folder_name})...", 0)
+
+    while True:
+        logger.info(f"📄 Lade Seite {count + 1} ...")
+        logger.info(f"Making API request with pageToken: {page_token}")
+        response = service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false",
+            fields="nextPageToken, files(id, name, size, md5Checksum, parents)",
+            pageToken=page_token,
+            pageSize=50
+        ).execute()
+
+        files_batch = response.get('files', [])
+        logger.info(f"🔢 {len(files_batch)} Dateien auf dieser Seite gefunden")
+
+        files.extend(files_batch)
+        count += 1
+
+        progress_state["progress"] += 1
+        if progress_state["progress"] > 100:
+            logger.info("Progress reset to 0 as it exceeded 100")
+            progress_state["progress"] = 0
+        await asyncio.sleep(0.1)
+
+        page_token = response.get('nextPageToken', None)
+        if not page_token:
+            logger.info("No more pages to process")
+            break
+
+    await update_progress(f"{len(files)} Dateien geladen.", 100)
+    logger.info(f"✅ Insgesamt {len(files)} Dateien geladen aus {count} Seiten")
+    await asyncio.sleep(0.5)
+
+    return files
 
 async def write_local_hashes_progress(extensions, file_folder_dir, subfolders: bool = True):
     logger.info(f"Starting write_local_hashes_progress with dir: {file_folder_dir}, subfolders: {subfolders}")

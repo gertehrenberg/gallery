@@ -61,6 +61,7 @@ class Settings:
         {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️"},
         {"key": "document", "label": "Dokumente", "icon": "📄"},
         {"key": "double", "label": "Doppelt?", "icon": "👯"},
+        {"key": "gemini", "label": "n8n Scan", "icon": "🤖"}
     ]
 
     CHECKBOX_CATEGORIES = [k["key"] for k in kategorien]

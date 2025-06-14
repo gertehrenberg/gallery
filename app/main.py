@@ -1,4 +1,4 @@
-import logging
+import asyncio
 import os
 import threading
 # Importiere die Cache-Funktionen aus app/services/cache_management.py
@@ -14,17 +14,15 @@ from app.config import Settings
 from app.database import init_db
 # Importiere die Routen
 from app.routes import auth, gallery, static, admin, login, dashboard
-from app.routes.auth import SCOPES, TOKEN_FILE
+from app.routes.auth import SCOPES, TOKEN_FILE, load_drive_service
 from app.routes.dashboard_help import fillcache_local
 from app.routes.dashboard import fill_file_parents_cache
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
+from app.services.manage_n8n import manage_gemini_process
+from app.utils.logger_config import setup_logger
 
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)  # Verwende einen benannten Logger
-
-logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+logger = setup_logger(__name__)
 
 # FastAPI application setup
 app = FastAPI()
@@ -44,7 +42,7 @@ def init_service():
     if os.path.exists(TOKEN_FILE):
         creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
     else:
-        logging.warning("Kein Token gefunden. Bitte besuche 'http://localhost/gallery/auth'.")
+        logger.warning("Kein Token gefunden. Bitte besuche 'http://localhost/gallery/auth'.")
         return
 
     try:
@@ -80,6 +78,10 @@ app.include_router(gallery.router)
 app.include_router(static.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(manage_gemini_process(None))
 
 
 def local():

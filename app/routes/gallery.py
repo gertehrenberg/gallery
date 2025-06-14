@@ -19,6 +19,7 @@ from app.database import set_status, load_status, save_status, \
 from app.dependencies import require_login
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.services.image_processing import prepare_image_data, clean
+from app.services.manage_n8n import manage_gemini_process
 from app.utils.logger_config import setup_logger
 from app.utils.progress import update_progress, stop_progress, progress_state
 from app.utils.score_parser import parse_score_expression
@@ -32,7 +33,6 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), ".
 logger = setup_logger(__name__)
 
 Settings.app_ready = False
-
 
 def is_file_in_folder(image_id: str, folder_name: str) -> bool:
     """Prüft nur lokal im Cache, ob eine Datei in einem Ordner ist."""
