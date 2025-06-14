@@ -9,6 +9,24 @@ from app.utils.score_parser import check_image_scores
 class TestScoreParser(unittest.TestCase):
 
     @patch('app.utils.score_parser.load_scores_from_db')
+    def test_simple1(self, mock_load):
+        mock_load.return_value = {
+            'nsfw_score': 40
+        }
+        expr = "nsfw_score >  3"
+        result = check_image_scores("dummy.db", "test.jpg", expr)
+        self.assertTrue(result)
+
+    @patch('app.utils.score_parser.load_scores_from_db')
+    def test_simple1(self, mock_load):
+        mock_load.return_value = {
+            'nsfw_score': 1
+        }
+        expr = "nsfw_score >  3"
+        result = check_image_scores("dummy.db", "test.jpg", expr)
+        self.assertFalse(result)
+
+    @patch('app.utils.score_parser.load_scores_from_db')
     def test_named_keys_expression_true(self, mock_load):
         mock_load.return_value = {
             'porn': 80,

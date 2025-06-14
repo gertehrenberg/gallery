@@ -6,7 +6,7 @@ def parse_score_expression(expr, values):
     """
     Prüft einen Ausdruck wie 'porn > 50 AND nsfw_score <= 70' gegen ein values-Dict.
     """
-    allowed_keys = set(score_type_map.keys()) | {f"score{i}" for i in range(1, 7)}
+    allowed_keys = set(score_type_map.keys()) | set(score_type_map.keys())
     condition_pattern = r"([a-zA-Z_0-9]+)\s*(==|!=|<=|>=|<|>)\s*(\d{1,3})"
     tokens = re.split(r"\s*(?:&|;|AND)\s*", expr, flags=re.IGNORECASE)
 

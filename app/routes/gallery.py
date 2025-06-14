@@ -1,28 +1,35 @@
-import logging
+import asyncio
+import json
 import math
 import os
-import sqlite3
+import time
 from pathlib import Path
+from typing import Dict
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Request, Query, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from starlette.responses import JSONResponse
 
-from app.config import Settings  # Importiere die Settings-Klasse
+from app.config import Settings, score_type_map  # Importiere die Settings-Klasse
 from app.database import set_status, load_status, save_status, \
     move_marked_images_by_checkbox, get_checkbox_count, \
     get_scores_filtered_by_expr  # Importiere die benötigten Funktionen
 from app.dependencies import require_login
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.services.image_processing import prepare_image_data, clean
+from app.utils.logger_config import setup_logger
+from app.utils.progress import update_progress, stop_progress, progress_state
+from app.utils.score_parser import parse_score_expression
 
 DEFAULT_COUNT: str = "6"
 DEFAULT_FOLDER: str = "real"
 
 router = APIRouter()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
-logger = logging.getLogger(__name__)
+
+logger = setup_logger(__name__)
 
 Settings.app_ready = False
 
@@ -51,7 +58,6 @@ def show_image_redirect(
 
     folder_name = request.query_params.get('folder', DEFAULT_FOLDER)
     textflag = request.query_params.get('textflag', '1')
-    scores = request.query_params.get('scores') or ""
     image_name = unquote(request.query_params.get('image_name', '')).strip().lower()
 
     pagecounter = 0
@@ -63,14 +69,11 @@ def show_image_redirect(
             if image_name_l.strip().lower() == image_name:
                 clean(image_name)
                 url = f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}&lasttextflag={textflag}"
-                if scores:
-                    url += f"&score_expr_raw={scores}"
                 return RedirectResponse(url=url)
 
     url = f"/gallery/?page={page}&count={count}&folder={folder_name}&textflag={textflag}"
-    if scores:
-        url += f"&score_expr_raw={scores}"
     return RedirectResponse(url=url)
+
 
 @router.get("/", response_class=HTMLResponse)
 def show_images_gallery(
@@ -114,16 +117,16 @@ def show_images_gallery(
     image_keys = []
     total_images = 0
 
-    from app.utils.score_parser import parse_score_expression
-
-    score_expr_raw = request.query_params.get('scores', "").strip()
+    if SettingsFilter.TEXT_FILTER:
+        score_expr_raw = SettingsFilter.TEXT_FILTER
+    else:
+        score_expr_raw = None
 
     # Prüfe, ob ein sinnvoller Ausdruck übergeben wurde
     score_expr = None
     if score_expr_raw and score_expr_raw.lower() != "none":
         try:
             # Versuch, Ausdruck zu parsen (wirft ValueError wenn ungültig)
-            from app.config import score_type_map
             dummy_scores = {key: 0 for key in score_type_map.keys()}
             parse_score_expression(score_expr_raw, dummy_scores)
             score_expr = score_expr_raw
@@ -254,8 +257,6 @@ def show_images_gallery(
     lastcall = ""
     if lastpage > 0 and lastcount > 0:
         lastcall = f"/gallery/?page={lastpage}&count={lastcount}&folder={folder_name}&textflag={lasttextflag}"
-        if score_expr_raw:
-             lastcall += f"&scores={score_expr_raw}"
 
     return templates.TemplateResponse("image_gallery_local.j2", {
         "request": request,
@@ -268,7 +269,8 @@ def show_images_gallery(
         "kategorien": Settings.kategorien,
         "images_html": ''.join(images_html_parts),
         "lastcall": lastcall,
-        "scores": score_expr_raw or ""
+        "last_texts": SettingsFilter.TEXT_HISTORY,
+        "filter_text": SettingsFilter.TEXT_FILTER
     })
 
 
@@ -341,6 +343,66 @@ async def _gen_pages(folder: str = Form(...), direction: str = Form(...)):
     return {"status": "ok"}
 
 
+# In config.py der Settings-Klasse hinzufügen:
+class SettingsFilter:
+    # ... existierende Attribute ...
+
+    # Filter-Status
+    TEXT_FILTER = None  # Aktiver Filter-Text oder None wenn deaktiviert
+    TEXT_HISTORY = []  # Liste der letzten 10 Texteinträge
+
+
+@router.post("/filter/update_history")
+async def update_text_history(text: str = Form(...)):
+    """Aktualisiert die Text-Historie"""
+    text = text.strip().replace(":", " > ")  # Ersetze ":" durch ">"
+    logger.info(f'[update_history] Score-Filter-Ausdruck: "{text}"')
+
+    if text:
+        dummy_scores = {key: 0 for key in score_type_map.keys()}
+        try:
+            parse_score_expression(text, dummy_scores)
+        except ValueError as e:
+            # Fange die spezifische ValueError ab
+            error_msg = str(e)
+            if "Unbekannter Score-Schlüssel" in error_msg:
+                # Extrahiere die erlaubten Schlüssel für das Log
+                allowed_keys = error_msg.split("erlaubt: ")[1].strip(")")
+                msg = f"Ungültiger Schlüssel verwendet.\nErlaubte Schlüssel sind:\n{allowed_keys}"
+                logger.warning(f'[update_history] {msg}')
+                return {
+                    "status": f"❌ {msg}"
+                }
+            msg = f'Validierungsfehler: {error_msg}'
+            logger.warning(f'[update_history] {msg}')
+            return {
+                "status": f"❌ {msg}"
+            }
+        except Exception as e:
+            msg = f'Unerwarteter Fehler: {str(e)}'
+            logger.error(f'[update_history] {msg}')
+            return {
+                "status": f"❌ {msg}"
+            }
+        if text in SettingsFilter.TEXT_HISTORY:
+            SettingsFilter.TEXT_HISTORY.remove(text)
+            logger.debug(f'[update_history] Eintrag aus Historie entfernt: "{text}"')
+
+        SettingsFilter.TEXT_HISTORY.insert(0, text)
+        SettingsFilter.TEXT_HISTORY = SettingsFilter.TEXT_HISTORY[:10]  # Auf 10 Einträge begrenzen
+        SettingsFilter.TEXT_FILTER = text
+        logger.info(f'[update_history] Filter aktualisiert, neue Historie: {SettingsFilter.TEXT_HISTORY}')
+    else:
+        logger.info('[update_history] Filter zurückgesetzt (leer)')
+        SettingsFilter.TEXT_FILTER = None
+
+    return {
+        "status": "ok",
+        "last_texts": SettingsFilter.TEXT_HISTORY,
+        "filter_text": SettingsFilter.TEXT_FILTER
+    }
+
+
 END_PAGE = 1
 TEXT_FLAGS = range(1, 5)  # 1 bis 4
 
@@ -358,18 +420,6 @@ def calculate_start_page(total_images: int, images_per_page: int = 24) -> int:
     result = math.ceil(total_images / images_per_page)
     logger.debug(f"📝 calculate_start_page → {result}")
     return result
-
-
-import asyncio
-import json
-import time
-from typing import Dict
-
-from starlette.responses import JSONResponse
-
-from app.config import Settings
-
-from app.utils.progress import update_progress, stop_progress, progress_state
 
 
 async def gen_pages():
@@ -447,3 +497,24 @@ async def process_pages(folder_key: str, start_page: int):
 
     total_duration = time.time() - total_start
     logger.info(f"🏁 [{folder_key}] Gesamtzeit: {total_duration:.1f} Sekunden")
+
+
+if __name__ == "__main__":
+    text = "sexy >= 3"
+
+    dummy_scores = {key: 0 for key in score_type_map.keys()}
+    try:
+        parse_score_expression(text, dummy_scores)
+    except ValueError as e:
+        # Fange die spezifische ValueError ab
+        error_msg = str(e)
+        if "Unbekannter Score-Schlüssel" in error_msg:
+            # Extrahiere die erlaubten Schlüssel für das Log
+            allowed_keys = error_msg.split("erlaubt: ")[1].strip(")")
+            msg = f"Ungültiger Schlüssel verwendet.\nErlaubte Schlüssel sind:\n{allowed_keys}"
+            logger.warning(f'[update_history] {msg}')
+        msg = f'Validierungsfehler: {error_msg}'
+        logger.warning(f'[update_history] {msg}')
+    except Exception as e:
+        msg = f'Unerwarteter Fehler: {str(e)}'
+        logger.error(f'[update_history] {msg}')

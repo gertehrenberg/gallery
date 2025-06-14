@@ -2,6 +2,8 @@ from pathlib import Path
 from typing import List
 
 score_type_map = {
+    "q1": 1,
+    "q2": 2,
     "drawings": 10,
     "hentai": 11,
     "neutral": 12,

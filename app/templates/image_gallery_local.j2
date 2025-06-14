@@ -159,7 +159,6 @@
         }
 
         #menu {
-            display: none;
             margin-top: 10px;
             background: white;
             box-shadow: 0 0 5px #ccc;
@@ -317,6 +316,28 @@
     </button>
     <div id="menu">
         <hr style="margin: 10px 0"/>
+        <div class="input-group" style="display: flex; gap: 6px;">
+            <input
+                    type="text"
+                    id="newTextInput"
+                    list="textHistory"
+                    placeholder="Text eingeben oder auswählen..."
+                    style="padding: 6px 10px; border-radius: 5px; width: 360px;"
+                    value="{{ filter_text or '' }}"
+            />
+            <datalist id="textHistory">
+                {% for text in last_texts %}
+                    <option value="{{ text }}">
+                {% endfor %}
+            </datalist>
+            <button
+                    onclick="submitText()"
+                    style="padding: 6px 10px; border-radius: 5px;"
+            >
+                ✓
+            </button>
+        </div>
+        <hr style="margin: 10px 0"/>
         <!-- Kategorien-Icons -->
         <div style="display: flex; align-items: center; gap: 8px; margin: 10px 0;">
             {% for k in kategorien %}
@@ -417,7 +438,7 @@
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
                 onclick="saveAndGoRefresh({{ page }}, {{ count }}, '{{ folder_name }}')">
-            Seite {{ page }} von {{ total_pages }} ({{ total_images }})
+            {% if filter_text %}⚡ {% endif %}Seite {{ page }} von {{ total_pages }} ({{ total_images }})
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
@@ -471,7 +492,6 @@
     const PAGE = parseInt("{{ page }}");
     const COUNT = parseInt("{{ count }}");
     const FOLDER = "{{ folder_name }}";
-    const SCORES = {{ scores | tojson | safe }};
 
     const kategorien = {{ kategorien | tojson }};
 
@@ -489,9 +509,6 @@
             url.searchParams.set("count", COUNT);
             url.searchParams.set("folder", FOLDER);
             url.searchParams.set("textflag", newFlag);
-            if (SCORES) {
-                url.searchParams.set("scores", SCORES);
-            }
             window.location.href = url.toString();
         }
     });
@@ -626,9 +643,6 @@
                 }
                 url.searchParams.set("folder", folder);
                 url.searchParams.set("textflag", TEXTFLAG);
-                if (SCORES) {
-                    url.searchParams.set("scores", SCORES);
-                }
                 window.location.href = url.toString();
             })
             .catch((err) => {
@@ -698,9 +712,6 @@
         url.searchParams.set("count", count); // kannst du ggf. anpassen
         url.searchParams.set("folder", cat); // der neue Folder
         url.searchParams.set("textflag", TEXTFLAG);
-        if (SCORES) {
-            url.searchParams.set("scores", SCORES);
-        }
 
         window.location.href = url.toString(); // Seite neu laden
     }
@@ -730,9 +741,6 @@
                     const orgfolder = currentParams.get("folder") || "real";
 
                     let moveUrl = `/gallery/moveToFolder/${cat}?count=${countValue}&folder=${orgfolder}&textflag=${TEXTFLAG}`;
-                    if (SCORES) {
-                        moveUrl += `&scores=${encodeURIComponent(SCORES)}`;
-                    }
 
                     fetch(moveUrl, {
                         method: "POST"
@@ -741,7 +749,7 @@
                         .then((response) => {
                             localStorage.setItem("menuOpen", "false");
                             const moved = response.moved || 0;
-                            const targetUrl = `?page=1&count=${countValue}&folder=${cat}&textflag=${TEXTFLAG}&done=${cat}&moved=${moved}` + (SCORES ? `&scores=${encodeURIComponent(SCORES)}` : "");
+                            const targetUrl = `?page=1&count=${countValue}&folder=${cat}&textflag=${TEXTFLAG}&done=${cat}&moved=${moved}`;
                             window.location.href = targetUrl;
                         })
                         .catch((err) => {
@@ -777,26 +785,13 @@
             msg.innerText = moved
                 ? `✅ ${moved} Bild(er) wurden nach '${done}' verschoben.`
                 : `✅ Bilder wurden nach '${done}' verschoben.`;
-            msg.style.position = "fixed";
-            msg.style.top = "10px";
-            msg.style.right = "10px";
-            msg.style.padding = "10px 20px";
-            msg.style.background = "#4caf50";
-            msg.style.color = "white";
-            msg.style.borderRadius = "8px";
-            msg.style.zIndex = 1000;
-            document.body.appendChild(msg);
 
-            setTimeout(() => {
-                msg.remove();
-
-                // Entferne done und moved aus der URL, ohne Seite neu zu laden
-                const cleanParams = new URLSearchParams(window.location.search);
-                cleanParams.delete("done");
-                cleanParams.delete("moved");
-                const newUrl = `${window.location.pathname}?${cleanParams.toString()}`;
-                window.history.replaceState({}, document.title, newUrl);
-            }, 2500);
+            // Entferne done und moved aus der URL, ohne Seite neu zu laden
+            const cleanParams = new URLSearchParams(window.location.search);
+            cleanParams.delete("done");
+            cleanParams.delete("moved");
+            const newUrl = `${window.location.pathname}?${cleanParams.toString()}`;
+            window.history.replaceState({}, document.title, newUrl);
 
             localStorage.setItem("menuOpen", "false");
             menu.style.display = "none";
@@ -825,6 +820,104 @@
         saveAndGoRefresh(PAGE, COUNT, FOLDER);
     }
 
+    function updateTextFilter(updateHistory = false) {
+        const inputElement = document.getElementById('newTextInput');
+        const text = inputElement.value.trim();
+
+        if (updateHistory && text === undefined) return;
+
+        const formData = new FormData();
+        formData.append('text', text);
+
+        fetch('/gallery/filter/update_history', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    if (updateHistory) {
+                        const datalist = document.getElementById('textHistory');
+                        datalist.innerHTML = data.last_texts
+                            .map(t => `<option value="${t}">`)
+                            .join('');
+                    }
+
+                    const menu = document.getElementById("menu");
+                    menu.style.display = "none";
+                    localStorage.setItem("menuOpen", false);
+
+                    // Seite neu laden
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("page", PAGE);
+                    url.searchParams.set("count", COUNT);
+                    url.searchParams.set("folder", FOLDER);
+                    url.searchParams.set("textflag", TEXTFLAG);
+                    window.location.href = url.toString();
+                } else {
+                    // Fehlermeldung für 5 Sekunden anzeigen
+                    showMessage(data.status, true, 5000);
+                }
+            });
+    }
+
+    // Wrapper-Funktion für die Historie-Funktionalität
+    function submitText() {
+        updateTextFilter(true);
+    }
+
+    const input = document.getElementById('newTextInput');
+    input.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            submitText();
+            event.preventDefault();
+        }
+    });
+
+    function setFilterText(text) {
+        const inputElement = document.getElementById('newTextInput');
+        const menu = document.getElementById("menu");
+
+        // Nur wenn das Menü sichtbar ist
+        if (menu.style.display === "block" && inputElement) {
+            inputElement.value = text;
+            submitText(); // Direkt submitten
+        }
+    }
+
+    // Click-Handler für die Balken bei Seitenladung hinzufügen
+    document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.nsfw_quality-bar').forEach(bar => {
+            bar.style.cursor = 'pointer';
+            bar.addEventListener('click', function () {  // this bezieht sich jetzt auf das bar-Element
+                const text = this.getAttribute('data-tooltip');
+                if (text) {
+                    setFilterText(text);
+                }
+            });
+        });
+    });
+
+    function showMessage(message, isError = false, duration = 2500) {
+        const msg = document.createElement("div");
+        msg.innerText = message;
+        msg.style.position = "fixed";
+        msg.style.top = "10px";
+        msg.style.right = "10px";
+        msg.style.padding = "10px 20px";
+        msg.style.color = "white";
+        msg.style.borderRadius = "8px";
+        msg.style.zIndex = 1000;
+        msg.style.background = isError ? "#ff4444" : "#4caf50";  // Rot für Fehler, Grün für Erfolg
+
+        document.body.appendChild(msg);
+
+        setTimeout(() => {
+            msg.remove();
+        }, duration);
+
+        return msg; // Falls wir die Referenz später noch brauchen
+    }
 
 </script>
 </body>
