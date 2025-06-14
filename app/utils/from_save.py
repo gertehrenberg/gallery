@@ -1,11 +1,10 @@
-import hashlib
 from googleapiclient.http import MediaIoBaseDownload
 from io import BytesIO
 from pathlib import Path
 from tqdm import tqdm
 
 from app.config import Settings
-from app.config_gdrive import folder_id_by_name, sanitize_filename
+from app.config_gdrive import folder_id_by_name, sanitize_filename, calculate_md5
 from app.routes.auth import load_drive_service
 
 
@@ -35,19 +34,11 @@ def download_file(service, file_id, destination_path):
     if not existing_bytes or len(new_content) > len(existing_bytes):
         with open(destination_path, 'wb') as f:
             f.write(new_content)
-        new_md5 = hashlib.md5(new_content).hexdigest()
-        written_md5 = md5_of_path(destination_path)
+        new_md5 = calculate_md5(destination_path)
+        written_md5 = calculate_md5(destination_path)
         if new_md5 != written_md5:
             print(f"❌ MD5 stimmt nach dem Schreiben nicht für: {destination_path.name}")
             raise RuntimeError("MD5-Integritätsprüfung fehlgeschlagen")
-
-
-def md5_of_path(path):
-    hash_md5 = hashlib.md5()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(8192), b""):
-            hash_md5.update(chunk)
-    return hash_md5.hexdigest()
 
 
 def list_image_files(service, folder_id):
@@ -145,7 +136,7 @@ def perform_local_sync(service, save_files, local_file_dir, existing_hashes):
         if remote_md5 in existing_hashes:
             status.append("✅ bereits vorhanden (MD5 match)")
         elif local_path.exists():
-            local_md5 = md5_of_path(local_path)
+            local_md5 = calculate_md5(local_path)
             if remote_md5 == local_md5:
                 status.append("✅ lokal identisch")
             else:

@@ -19,7 +19,6 @@ from app.database import set_status, load_status, save_status, \
 from app.dependencies import require_login
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.services.image_processing import prepare_image_data, clean
-from app.services.manage_n8n import manage_gemini_process
 from app.utils.logger_config import setup_logger
 from app.utils.progress import update_progress, stop_progress, progress_state
 from app.utils.score_parser import parse_score_expression
@@ -83,13 +82,18 @@ def show_images_gallery(
     """
     Zeigt eine Galerie von Bildern an, mit Paginierung, Filtern und Textanzeigeoptionen.
     """
+    logger.info(f"[Gallery] Anfrage für Benutzer {user}")
+
     if not Settings.app_ready:
+        logger.warning("[Gallery] Anwendung noch nicht bereit, zeige Ladebildschirm")
         return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
 
     page = int(request.query_params.get('page', '1') or 1)
     count = int(request.query_params.get('count', DEFAULT_COUNT) or 1)
     folder_name = request.query_params.get('folder', DEFAULT_FOLDER)
     textflag = request.query_params.get('textflag', '1')
+
+    logger.info(f"[Gallery] Anfrageparameter: Seite={page}, Anzahl={count}, Ordner={folder_name}, Textflag={textflag}")
 
     try:
         lastindex = int(request.query_params.get('lastindex', 0))
@@ -121,6 +125,8 @@ def show_images_gallery(
         score_expr_raw = SettingsFilter.TEXT_FILTER
     else:
         score_expr_raw = None
+
+    logger.info(f"[Gallery] Beginne Verarbeitung mit Score-Filter: {score_expr_raw}")
 
     # Prüfe, ob ein sinnvoller Ausdruck übergeben wurde
     score_expr = None
@@ -155,6 +161,7 @@ def show_images_gallery(
                 filtered_names = None
 
     # 3. Hauptschleife über alle Bilder
+    logger.info("[Gallery] Starte Hauptschleife über Bilder")
     for image_name in Settings.CACHE["pair_cache"].keys():
         pair = Settings.CACHE["pair_cache"][image_name]
         image_id = pair['image_id']
@@ -170,18 +177,23 @@ def show_images_gallery(
             image_keys.append(image_name.lower())
         total_images += 1
 
+    logger.info(f"[Gallery] Gefunden: {total_images} Bilder gesamt, {len(image_keys)} auf aktueller Seite")
+
     images_html_parts = []
     recheck_category = next((k["key"] for k in Settings.kategorien if k["key"] == "recheck"),
                             None)  # Verwende kategorien aus Settings
 
+    logger.info("[Gallery] Beginne HTML-Generierung")
     for image_name in image_keys:
         pair = Settings.CACHE["pair_cache"][image_name]  # Verwende Caches aus Settings
         image_id = pair['image_id']
 
         image_id_text = f"{image_id}_{textflag}"
         if rendered_html := load_rendered_html_file(Settings.RENDERED_HTML_DIR, image_id_text):
+            logger.debug(f"[Gallery] Cache-Hit für {image_id_text}")
             images_html_parts.append(rendered_html)
         else:
+            logger.debug(f"[Gallery] Cache-Miss für {image_id_text}, generiere neu")
             image_data = prepare_image_data(min(count, total_images), folder_name, image_name)
             text_content = ""  # Standardwert
             match textflag:
@@ -189,13 +201,15 @@ def show_images_gallery(
                     text_content = ""
                 case '2':
                     text_content = Settings.CACHE["text_cache"].get(image_name,
-                                                                    Settings.KEIN_TEXT_GEFUNDEN)  # Verwende Caches aus Settings
+                                                                    Settings.KEIN_TEXT_GEFUNDEN)
                     if Settings.KEIN_TEXT_GEFUNDEN == text_content:
+                        logger.warning(f"[Gallery] Kein Text gefunden für Bild {image_name}")
                         set_status(image_name, recheck_category)
                 case '3':
                     text_content = Settings.CACHE["text_cache"].get(image_name,
-                                                                    Settings.KEIN_TEXT_GEFUNDEN)  # Verwende Caches aus Settings
+                                                                    Settings.KEIN_TEXT_GEFUNDEN)
                     if Settings.KEIN_TEXT_GEFUNDEN == text_content:
+                        logger.warning(f"[Gallery] Kein Text gefunden für Bild {image_name}")
                         set_status(image_name, recheck_category)
 
                     if isinstance(text_content, str):
@@ -205,8 +219,9 @@ def show_images_gallery(
 
                 case '4':
                     text_content = Settings.CACHE["text_cache"].get(image_name,
-                                                                    Settings.KEIN_TEXT_GEFUNDEN)  # Verwende Caches aus Settings
+                                                                    Settings.KEIN_TEXT_GEFUNDEN)
                     if Settings.KEIN_TEXT_GEFUNDEN == text_content:
+                        logger.warning(f"[Gallery] Kein Text gefunden für Bild {image_name}")
                         set_status(image_name, recheck_category)
 
                     if isinstance(text_content, str):
@@ -258,6 +273,8 @@ def show_images_gallery(
     if lastpage > 0 and lastcount > 0:
         lastcall = f"/gallery/?page={lastpage}&count={lastcount}&folder={folder_name}&textflag={lasttextflag}"
 
+    logger.info(f"[Gallery] Seite erfolgreich generiert: {total_images} Bilder, {total_pages} Seiten")
+
     return templates.TemplateResponse("image_gallery_local.j2", {
         "request": request,
         "page": page,
@@ -272,7 +289,6 @@ def show_images_gallery(
         "last_texts": SettingsFilter.TEXT_HISTORY,
         "filter_text": SettingsFilter.TEXT_FILTER
     })
-
 
 @router.post("/save")
 async def save(

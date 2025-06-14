@@ -1,4 +1,3 @@
-import hashlib
 import json
 from datetime import datetime
 from pathlib import Path
@@ -7,6 +6,7 @@ from typing import Optional, Dict, List, Tuple, Any
 from PIL import Image
 
 from app.config import Settings
+from app.config_gdrive import calculate_md5
 from app.utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -213,7 +213,7 @@ def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
             continue
 
         image_name = file_path.name.lower()
-        md5_hash = hashlib.md5(image_name.encode()).hexdigest()
+        md5_hash = calculate_md5(file_path)
         endung = file_path.suffix.lower()[1:]
 
         # Datum ermitteln und txt-Datei aktualisieren

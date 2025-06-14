@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import os
 import sqlite3
 from pathlib import Path
@@ -7,7 +6,7 @@ from pathlib import Path
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
 
 from app.config import Settings
-from app.config_gdrive import folder_id_by_name, SettingsGdrive
+from app.config_gdrive import folder_id_by_name, SettingsGdrive, calculate_md5
 from app.routes.auth import load_drive_service, load_drive_service_token
 from app.utils.logger_config import setup_logger
 from app.utils.progress import list_all_files
@@ -17,7 +16,7 @@ TASK_TYPE = 'gemini'
 logger = setup_logger(__name__)
 
 
-def get_uploaded_tasks(task_type: str = TASK_TYPE) -> list[tuple[str, str]] | None:
+async def get_uploaded_tasks(task_type: str = TASK_TYPE) -> list[tuple[str, str]] | None:
     """Holt alle Tasks mit Status 'uploaded' aus der DB"""
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
@@ -33,7 +32,7 @@ def get_uploaded_tasks(task_type: str = TASK_TYPE) -> list[tuple[str, str]] | No
         return None
 
 
-def clear_gemini_tasks(task_type: str = TASK_TYPE):
+async def clear_gemini_tasks(task_type: str = TASK_TYPE):
     """Löscht alle Einträge aus der external_tasks Tabelle"""
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
@@ -46,7 +45,7 @@ def clear_gemini_tasks(task_type: str = TASK_TYPE):
         return False
 
 
-def get_task_status(file_md5: str, task_type: str = TASK_TYPE) -> str | None:
+async def get_task_status(file_md5: str, task_type: str = TASK_TYPE) -> str | None:
     """Prüft den Status einer Aufgabe in der DB"""
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
@@ -64,7 +63,7 @@ def get_task_status(file_md5: str, task_type: str = TASK_TYPE) -> str | None:
         return None
 
 
-def update_task_status(file_md5: str, status: str, task_type: str = TASK_TYPE, drive_file_id: str = None) -> bool:
+async def update_task_status(file_md5: str, status: str, task_type: str = TASK_TYPE, drive_file_id: str = None) -> bool:
     """Aktualisiert den Status einer Aufgabe"""
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
@@ -97,7 +96,7 @@ def update_task_status(file_md5: str, status: str, task_type: str = TASK_TYPE, d
         return False
 
 
-def insert_task(file_md5: str, task_type: str, file_name: str, status: str = 'pending') -> bool:
+async def insert_task(file_md5: str, task_type: str, file_name: str, status: str = 'pending') -> bool:
     """Fügt einen neuen Task in die Datenbank ein"""
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
@@ -162,14 +161,14 @@ async def delete_drive_file(service, file_id: str, file_name: str, task_type: st
     """Löscht eine Datei aus Google Drive"""
     try:
         service.files().delete(fileId=file_id).execute()
-        logger.info(f"[{task_type}] Datei gelöscht: {file_name}")
+        logger.info(f"[{task_type}] GDrive: Datei gelöscht: {file_name}")
         return True
     except Exception as e:
-        logger.error(f"[{task_type}] Fehler beim Löschen der Datei {file_name}: {e}")
+        logger.error(f"[{task_type}] GDrive:: Fehler beim Löschen der Datei {file_name}: {e}")
         return False
 
 
-def delete_rendered_html_files(file_md5: str, task_type: str) -> bool:
+async def delete_rendered_html_files(file_md5: str, task_type: str) -> bool:
     """Löscht alle MD5-bezogenen HTML-Dateien"""
     try:
         rendered_html_dir = Settings.RENDERED_HTML_DIR
@@ -208,7 +207,7 @@ async def process_completed_task(service, file_md5: str, file_name: str, save_fi
             return False
 
         # 4. Gerenderte HTML-Dateien löschen
-        if not delete_rendered_html_files(file_md5, task_type):
+        if not await delete_rendered_html_files(file_md5, task_type):
             return False
 
         logger.info(f"[{task_type}] Alle Aktionen erfolgreich für: {file_name}")
@@ -246,7 +245,6 @@ async def check_uploading_tasks(service, task_type: str = TASK_TYPE) -> None:
 
         for file_md5, file_name in uploading_tasks:
             try:
-                # Prüfe ob Bild- und Textdatei im Save-Ordner existieren
                 image_in_save = file_name in save_files_dict
                 text_in_save = f"{file_name}.txt" in save_files_dict
 
@@ -255,20 +253,19 @@ async def check_uploading_tasks(service, task_type: str = TASK_TYPE) -> None:
                 if local_gemini_path.exists():
                     for file in local_gemini_path.iterdir():
                         if file.is_file() and file.suffix.lower() in Settings.IMAGE_EXTENSIONS:
-                            with open(file, 'rb') as f:
-                                current_md5 = hashlib.md5(f.read()).hexdigest()
-                                if current_md5 == file_md5:
-                                    local_file = file
-                                    break
+                            current_md5 = calculate_md5(file)
+                            if current_md5 == file_md5:
+                                local_file = file
+                                break
 
                 if image_in_save and text_in_save:
                     # Beide Dateien existieren bereits
                     logger.info(f"[{task_type}] Dateien im Save: {file_name}")
 
                     if await process_completed_task(service, file_md5, file_name, save_files_dict, task_type):
-                        update_task_status(file_md5, 'completed', task_type)
+                        await update_task_status(file_md5, 'completed', task_type)
                     else:
-                        update_task_status(file_md5, 'error', task_type)
+                        await update_task_status(file_md5, 'error', task_type)
 
                 elif local_file is None:
                     # Lokale Datei nicht gefunden
@@ -277,7 +274,7 @@ async def check_uploading_tasks(service, task_type: str = TASK_TYPE) -> None:
 
             except Exception as e:
                 logger.error(f"[{task_type}] Fehler bei Task {file_name}: {e}")
-                update_task_status(file_md5, 'error', task_type)
+                await update_task_status(file_md5, 'error', task_type)
 
     except Exception as e:
         logger.error(f"[{task_type}] Fehler bei der Überprüfung der uploading Tasks: {e}")
@@ -292,7 +289,6 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
 
     # Konfiguration
     local_gemini_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / task_type
-    save_folder_id = folder_id_by_name("save")
     gemini_folder_id = folder_id_by_name(task_type)
 
     # Initialisiere DB-Tabelle
@@ -309,11 +305,11 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
             )
         """)
 
-    # Zuerst alle 'uploading' Tasks überprüfen
-    await check_uploading_tasks(service, task_type)
-
     while True:
         try:
+            # Überprüfe uploading Tasks in jedem Durchlauf
+            await check_uploading_tasks(service, task_type)
+
             # Hole nur erlaubte Bilddateien
             local_files = [f for f in local_gemini_path.iterdir()
                            if f.is_file() and f.suffix.lower() in Settings.IMAGE_EXTENSIONS]
@@ -325,12 +321,10 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
             # Verarbeite Dateien
             moved = 0
             for file in local_files:
+                # MD5 berechnen
+                file_md5 = calculate_md5(file)
                 try:
-                    # MD5 berechnen
-                    with open(file, 'rb') as f:
-                        file_md5 = hashlib.md5(f.read()).hexdigest()
 
-                    # Prüfe ob bereits in DB und Status
                     current_status = get_task_status(file_md5, task_type)
 
                     # Überspringe, wenn bereits erfolgreich hochgeladen
@@ -339,7 +333,7 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
                         continue
 
                     # Füge neuen Task hinzu oder aktualisiere Status auf 'uploading'
-                    insert_task(file_md5, task_type, file.name, 'uploading')
+                    await insert_task(file_md5, task_type, file.name, 'uploading')
 
                     # Upload zu Google Drive
                     file_metadata = {
@@ -354,13 +348,13 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
                     ).execute()
 
                     # Status aktualisieren
-                    update_task_status(file_md5, 'uploaded', task_type, result['id'])
+                    await update_task_status(file_md5, 'uploaded', task_type, result['id'])
                     moved += 1
                     logger.info(f"[{task_type}] Datei hochgeladen: {file.name} (MD5: {file_md5})")
 
                 except Exception as e:
                     logger.error(f"[{task_type}] Fehler beim Verarbeiten von {file.name}: {e}")
-                    update_task_status(file_md5, 'error', task_type)
+                    await update_task_status(file_md5, 'error', task_type)
 
             if moved > 0:
                 logger.info(f"[{task_type}] Verarbeitung abgeschlossen: {moved} neue Bilddateien hochgeladen")
@@ -374,7 +368,6 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
 
 def p4():
     """Konfiguration und Start des Gemini-Prozesses"""
-    # clear_gemini_tasks()
     Settings.DB_PATH = '../../gallery_local.db'
     Settings.TEMP_DIR_PATH = Path("../../cache/temp")
     Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
@@ -382,6 +375,8 @@ def p4():
     Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
     Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
+
+    # clear_gemini_tasks()
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
     asyncio.run(manage_gemini_process(service))

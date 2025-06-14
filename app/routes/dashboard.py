@@ -317,18 +317,18 @@ calls = {
         "start_url": "/gallery/dashboard/multi/reloadcache",
         "progress_url": "/gallery/dashboard/progress"
     },
-    "gdrive_from_lokal": {
+    "lokal_zu_gdrive": {
         "label": lambda folder_key: (
-            f'Passe für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" lokal so an wie GDrive ...'
-            if folder_key else "Passe lokal so an wie GDrive"
+            f'Passe für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" lokal -> GDrive ...'
+            if folder_key else ""
         ),
         "start_url": "/gallery/dashboard/start",
         "progress_url": "/gallery/dashboard/progress"
     },
-    "lokal_from_gdrive": {
+    "gdrive_zu_local": {
         "label": lambda folder_key: (
-            f'Passe für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" GDrive so an wie lokal ...'
-            if folder_key else "Passe GDrive so an wie lokal"
+            f'Passe für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" GDrive -> lokal ...'
+            if folder_key else "GDrive -> lokal"
         ),
         "start_url": "/gallery/dashboard/start",
         "progress_url": "/gallery/dashboard/progress"
@@ -369,37 +369,37 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
     kategorientabelle = {k["key"]: k for k in Settings.kategorien}
     kat = kategorientabelle.get(folder)
 
-    if not kat or direction not in ("gdrive_from_lokal", "lokal_from_gdrive"):
+    if not kat or direction not in ("lokal_zu_gdrive", "gdrive_zu_local"):
         return JSONResponse(content={"error": "Ungültiger Parameter"}, status_code=400)
 
     async def runner():
         await init_progress_state()
         try:
-            if direction == "gdrive_from_lokal":
-                await gdrive_from_lokal(load_drive_service(), folder)
-            elif direction == "lokal_from_gdrive":
-                await lokal_from_gdrive(load_drive_service(), folder)
+            if direction == "lokal_zu_gdrive":
+                await lokal_zu_gdrive(load_drive_service(), folder)
+            elif direction == "gdrive_zu_local":
+                await gdrive_zu_local(load_drive_service(), folder)
         finally:
             await stop_progress()
 
     asyncio.create_task(runner())
     return {"started": True}
 
+
 def is_valid_image(filename: str) -> bool:
     """Prüft ob der Dateiname eine gültige Bilddatei ist."""
     return filename.lower().endswith(Settings.IMAGE_EXTENSIONS)
 
 
-async def gdrive_from_lokal(service, folder_name: str):
-    logger.info(f"gdrive_from_lokal: {folder_name}")
+async def lokal_zu_gdrive(service, folder_name: str):
+    logger.info(f"lokal_zu_gdrive: {folder_name}")
     await init_progress_state()
     progress_state["running"] = True
 
     cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
 
     global_gdrive_hashes = load_all_gdrive_hashes(cache_dir)
-    folder_id_map = build_folder_id_map(service)
-    hashfiles = list(cache_dir.rglob("gallery202505_hashes.json"))
+    hashfiles = list(cache_dir.rglob(Settings.GALLERY_HASH_FILE))
 
     for gallery_hashfile in hashfiles:
         folder_path = gallery_hashfile.parent
@@ -438,11 +438,12 @@ async def gdrive_from_lokal(service, folder_name: str):
                     logger.info(f"[✓] {name} fehlt in {folder}, aber global vorhanden als: {file_info['name']}")
                     file_id = file_info.get("id")
                     if file_id:
-                        target_folder_id = folder_id_map.get(folder)
+                        target_folder_id = folder_id_by_name(folder)
                         if not target_folder_id:
                             logger.info(f"[!] Keine Ordner-ID für {folder} gefunden")
                             count += 1
-                            await update_progress(f"Verarbeite Datei {name} ({count}/{total})", int((count / total) * 100))
+                            await update_progress(f"Verarbeite Datei {name} ({count}/{total})",
+                                                  int((count / total) * 100))
                             continue
                         try:
                             move_file_to_folder(service, file_id, target_folder_id)
@@ -456,7 +457,7 @@ async def gdrive_from_lokal(service, folder_name: str):
                 else:
                     local_file = folder_path / name
                     if local_file.exists() and is_valid_image(name):
-                        target_folder_id = folder_id_map.get(folder)
+                        target_folder_id = folder_id_by_name(folder)
                         if target_folder_id:
                             try:
                                 file_metadata = {"name": name, "parents": [target_folder_id]}
@@ -493,8 +494,7 @@ async def gdrive_from_lokal(service, folder_name: str):
         folder_name=folder_name,
         gdrive_hashes=gdrive_hashes,
         local_hashes=local_hashes,
-        hashfiles=hashfiles,
-        folder_id_map=folder_id_map
+        hashfiles=hashfiles
     )
 
     # Aktualisiere die Hash-Dateien für alle betroffenen Ordner
@@ -556,8 +556,7 @@ async def process_image_folders_gdrive_progress(service, folder_name: str):
 
 
 async def sync2(service, folder_name: str, gdrive_hashes: Dict,
-                local_hashes: Dict, hashfiles: List[Path],
-                folder_id_map: Dict) -> Set[str]:
+                local_hashes: Dict, hashfiles: List[Path]) -> Set[str]:
     affected_folders = {folder_name}
 
     logger.info("Prüfe zusätzliche Dateien in Google Drive...")
@@ -603,7 +602,7 @@ async def sync2(service, folder_name: str, gdrive_hashes: Dict,
                 continue
 
         if found_in_folder:
-            target_folder_id = folder_id_map.get(found_in_folder)
+            target_folder_id = folder_id_by_name(found_in_folder)
             if target_folder_id:
                 try:
                     await update_progress_text(f"[→] Verschiebe {name} nach {found_in_folder} in Google Drive")
@@ -636,27 +635,6 @@ def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict[str, str]]:
     return global_hashes
 
 
-def build_folder_id_map(service) -> Dict[str, str]:
-    folder_map = {}
-    page_token = None
-    while True:
-        response = service.files().list(
-            q="mimeType='application/vnd.google-apps.folder' and trashed=false",
-            spaces="drive",
-            fields="nextPageToken, files(id, name)",
-            supportsAllDrives=True,
-            includeItemsFromAllDrives=True,
-            pageSize=1000,
-            pageToken=page_token
-        ).execute()
-        for file in response.get("files", []):
-            folder_map[file["name"]] = file["id"]
-        page_token = response.get("nextPageToken")
-        if not page_token:
-            break
-    return folder_map
-
-
 def move_file_to_folder(service, file_id: str, target_folder_id: str):
     file = service.files().get(fileId=file_id, fields="parents").execute()
     previous_parents = ",".join(file.get("parents", []))
@@ -677,8 +655,8 @@ def move_file_to_folder_new(service, file_id, old_parents, new_parent):
     ).execute()
 
 
-async def lokal_from_gdrive(service, folder_name: str):
-    logger.info(f"lokal_from_gdrive: {folder_name}")
+async def gdrive_zu_local(service, folder_name: str):
+    logger.info(f"gdrive_zu_local: {folder_name}")
     try:
         progress_state["progress"] = 0
         count = 0
@@ -691,7 +669,7 @@ async def lokal_from_gdrive(service, folder_name: str):
         all_entries = []
 
         for folder_path in sorted(all_local_folders):
-            hash_file_path = folder_path / "hashes.json"
+            hash_file_path = folder_path / Settings.GDRIVE_HASH_FILE
             if not hash_file_path.exists():
                 continue
             with open(hash_file_path, "r", encoding="utf-8") as f:
@@ -786,7 +764,7 @@ async def _reloadcache(folder: str = Form(...), direction: str = Form(...)):
 
 
 @router.post("/dashboard/multi/manage_save")
-async def _manage_save(folder: str = Form(...), direction: str = Form(...)):
+async def _manage_save(folder: str = Form(...), direction: str=Form(...)):
     if not progress_state["running"]:
         asyncio.create_task(manage_save_progress(None))
     return {"status": "ok"}
@@ -1488,6 +1466,7 @@ async def rename_filename_duplicates():
     finally:
         await stop_progress()
 
+
 def localp2():
     Settings.DB_PATH = '../../gallery_local.db'
     Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
@@ -1546,7 +1525,7 @@ def p4():
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
-    asyncio.run(gdrive_from_lokal(service, "recheck"))
+    asyncio.run(gdrive_zu_local(service, "recheck"))
 
 
 if __name__ == "__main__":
