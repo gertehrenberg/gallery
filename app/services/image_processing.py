@@ -1,11 +1,12 @@
-import logging
 import os
 import shutil
+from datetime import datetime
+from pathlib import Path
+from typing import List
+
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
-from datetime import datetime
 from geopy.geocoders import Nominatim
-from pathlib import Path
 from starlette.responses import JSONResponse
 
 from app.config import Settings  # Importiere die Settings-Klasse
@@ -15,15 +16,18 @@ from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality
 from app.services.thumbnail import get_thumbnail_path, generate_thumbnail, thumbnail
 from app.tools import find_image_id_by_name
+from app.utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 
 def get_exif_data(full_image_path: Path):
-    logging.info(f"📥 Starte get_exif_data() für: {full_image_path}")
+    logger.info(f"📥 Starte get_exif_data() für: {full_image_path}")
     try:
         image = Image.open(full_image_path)
         exif_data = image._getexif()
         if not exif_data:
-            logging.warning(f"[get_exif_data] Keine EXIF-Daten vorhanden: {full_image_path}")
+            logger.warning(f"[get_exif_data] Keine EXIF-Daten vorhanden: {full_image_path}")
             return None, None
 
         exif = {}
@@ -39,10 +43,10 @@ def get_exif_data(full_image_path: Path):
 
         date_taken = exif.get("DateTimeOriginal", None)
         gps_coords = get_coordinates(gps_info) if gps_info else None
-        logging.info(f"[get_exif_data] ✅ Erfolgreich gelesen: {date_taken}, {gps_coords}")
+        logger.info(f"[get_exif_data] ✅ Erfolgreich gelesen: {date_taken}, {gps_coords}")
         return date_taken, gps_coords
     except Exception as e:
-        logging.error(f"[get_exif_data] ❌ Fehler beim Lesen der EXIF-Daten: {e}")
+        logger.error(f"[get_exif_data] ❌ Fehler beim Lesen der EXIF-Daten: {e}")
         return None, None
 
 
@@ -52,7 +56,7 @@ def get_coordinates(gps_info: dict) -> tuple | None:
             d, m, s = value
             return float(d) + float(m) / 60 + float(s) / 3600
         except Exception as e:
-            logging.warning(f"[get_coordinates] ❌ Ungültige GPS-Daten: {value} -> {e}")
+            logger.warning(f"[get_coordinates] ❌ Ungültige GPS-Daten: {value} -> {e}")
             return None
 
     lat = convert_to_degrees(gps_info.get("GPSLatitude", ()))
@@ -67,10 +71,10 @@ def get_coordinates(gps_info: dict) -> tuple | None:
 
 
 def reverse_geocode(coords: tuple) -> str | None:
-    logging.info(f"📍 Starte reverse_geocode() für Koordinaten: {coords}")
+    logger.info(f"📍 Starte reverse_geocode() für Koordinaten: {coords}")
     key = f"{coords[0]:.6f},{coords[1]:.6f}"
     if key in Settings.CACHE["geo_cache"]:
-        logging.info(f"[reverse_geocode] 🔁 Aus Cache geladen: {key}")
+        logger.info(f"[reverse_geocode] 🔁 Aus Cache geladen: {key}")
         return Settings.CACHE["geo_cache"][key]
 
     geolocator = Nominatim(user_agent="photo_exif_locator")
@@ -78,15 +82,56 @@ def reverse_geocode(coords: tuple) -> str | None:
         location = geolocator.reverse(coords, exactly_one=True, language='de', timeout=10)
         address = location.address if location else None
         Settings.CACHE["geo_cache"][key] = address
-        logging.info(f"[reverse_geocode] ✅ Adresse gefunden: {address}")
+        logger.info(f"[reverse_geocode] ✅ Adresse gefunden: {address}")
         return address
     except Exception as e:
-        logging.error(f"[reverse_geocode] ❌ Geocoding-Fehler: {e}")
+        logger.error(f"[reverse_geocode] ❌ Geocoding-Fehler: {e}")
         return None
 
 
+def find_png_file(filename: str, use_cache: bool = True) -> List[Path]:
+    """
+    Search for a specific PNG file in all subdirectories of IMAGE_FILE_CACHE_DIR.
+    Results are cached for better performance.
+
+    Args:
+        filename: Name of the PNG file to find (e.g., "xxx.png")
+        use_cache: Whether to use cached results if available
+
+    Returns:
+        List of Path objects where the file was found
+    """
+    logger.info(f"🔍 Searching for file: {filename}")
+
+    # Initialize cache if it doesn't exist
+    if 'file_cache' not in Settings.CACHE:
+        Settings.CACHE['file_cache'] = {}
+
+    # Check cache first if enabled
+    if use_cache and filename in Settings.CACHE['file_cache']:
+        cached_paths = Settings.CACHE['file_cache'][filename]
+        # Verify cached paths still exist
+        valid_paths = [Path(p) for p in cached_paths if Path(p).exists()]
+        if valid_paths:
+            logger.info(f"✅ Found {len(valid_paths)} cached results for {filename}")
+            return valid_paths
+
+    # Search in all subdirectories
+    root_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
+    results = list(root_dir.rglob(filename))
+
+    # Update cache with new results
+    if results:
+        Settings.CACHE['file_cache'][filename] = [str(p) for p in results]
+        logger.info(f"✅ Found {len(results)} new results for {filename}")
+    else:
+        logger.warning(f"❌ No files found matching: {filename}")
+
+    return results
+
+
 def download_text_file(folder_name: str, image_name: str, cache_dir: str) -> str | None:
-    logging.info(f"📥 Starte download_text_file() für {folder_name}/{image_name}")
+    logger.info(f"📥 Starte download_text_file() für {folder_name}/{image_name}")
     german_date = None
     full_image_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
     date_str, gps = get_exif_data(full_image_path)
@@ -96,7 +141,7 @@ def download_text_file(folder_name: str, image_name: str, cache_dir: str) -> str
             dt = datetime.strptime(date_str, "%Y:%m:%d %H:%M:%S")
             german_date = dt.strftime("%d.%m.%Y %H:%M")
         except Exception as e:
-            logging.warning(f"[download_text_file] ❌ Ungültiges Datum in {image_name}: {e}")
+            logger.warning(f"[download_text_file] ❌ Ungültiges Datum in {image_name}: {e}")
 
     location_name = reverse_geocode(gps) if gps else None
     full_txt_path = Path(cache_dir, f"{image_name}.txt")
@@ -111,13 +156,13 @@ def download_text_file(folder_name: str, image_name: str, cache_dir: str) -> str
         if dt:
             os.utime(full_txt_path, (dt.timestamp(), dt.timestamp()))
             os.utime(full_image_path, (dt.timestamp(), dt.timestamp()))
-        logging.info(f"[download_text_file] ✅ Textdatei aktualisiert: {full_txt_path}")
+        logger.info(f"[download_text_file] ✅ Textdatei aktualisiert: {full_txt_path}")
         return full_txt_path.read_text(encoding='utf-8')
     except FileNotFoundError:
-        logging.warning(f"[download_text_file] ❌ Textdatei nicht gefunden: {full_txt_path}")
+        logger.warning(f"[download_text_file] ❌ Textdatei nicht gefunden: {full_txt_path}")
         return None
     except Exception as e:
-        logging.error(f"[download_text_file] ❌ Fehler beim Lesen/Schreiben: {e}")
+        logger.error(f"[download_text_file] ❌ Fehler beim Lesen/Schreiben: {e}")
         return None
 
 
@@ -126,7 +171,7 @@ def find_file_by_name(root_dir: Path, image_name: str):
 
 
 def download_and_save_image(folder_name: str, image_name: str, image_id: str) -> Path | None:
-    logging.info(f"📥 Starte download_and_save_image() für {folder_name}/{image_name}")
+    logger.info(f"📥 Starte download_and_save_image() für {folder_name}/{image_name}")
     image_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
 
     if not os.path.exists(image_path):
@@ -136,11 +181,11 @@ def download_and_save_image(folder_name: str, image_name: str, image_id: str) ->
                 shutil.move(path, image_path)
                 break
             except Exception as e:
-                logging.warning(f"[download_and_save_image] ❌ Fehler beim Verschieben von {path} -> {image_path}: {e}")
+                logger.warning(f"[download_and_save_image] ❌ Fehler beim Verschieben von {path} -> {image_path}: {e}")
                 return None
 
     if not os.path.exists(image_path):
-        logging.warning(f"[download_and_save_image] ❌ Originalbild nicht gefunden: {image_path}")
+        logger.warning(f"[download_and_save_image] ❌ Originalbild nicht gefunden: {image_path}")
         return None
 
     thumbnail_path = get_thumbnail_path(image_id)
@@ -152,7 +197,7 @@ def download_and_save_image(folder_name: str, image_name: str, image_id: str) ->
 
 
 def prepare_image_data(count: int, folder_name: str, image_name: str):
-    logging.info(f"📦 Starte prepare_image_data() für {image_name}")
+    logger.info(f"📦 Starte prepare_image_data() für {image_name}")
     image_name = image_name.lower()
     pair = Settings.CACHE["pair_cache"][image_name]
     image_id = pair['image_id']
@@ -162,7 +207,7 @@ def prepare_image_data(count: int, folder_name: str, image_name: str):
             content = download_text_file(folder_name, image_name, Settings.TEXT_FILE_CACHE_DIR)
             Settings.CACHE["text_cache"][image_name] = content
     except Exception as e:
-        logging.error(f"[prepare_image_data] ❌ Fehler beim Laden von Textdatei: {e}")
+        logger.error(f"[prepare_image_data] ❌ Fehler beim Laden von Textdatei: {e}")
         Settings.CACHE["text_cache"][image_name] = f"Fehler beim Laden: {e}"
 
     thumbnail_src = thumbnail(count, folder_name, image_id, image_name)
@@ -185,20 +230,20 @@ def delete_rendered_html_file(file_dir: Path, file_name: str) -> bool:
     if file_path.is_file():
         try:
             file_path.unlink()
-            logging.info(f"[delete_rendered_html_file] ✅ gelöscht: {file_path}")
+            logger.info(f"[delete_rendered_html_file] ✅ gelöscht: {file_path}")
             return True
         except Exception as e:
-            logging.error(f"[delete_rendered_html_file] ❌ Fehler: {e}")
+            logger.error(f"[delete_rendered_html_file] ❌ Fehler: {e}")
     return False
 
 
 def clean(image_name: str):
-    logging.info(f"🧹 Starte clean() für: {image_name}")
+    logger.info(f"🧹 Starte clean() für: {image_name}")
     text_cache = Settings.CACHE.get("text_cache")
 
     if image_name in text_cache:
         text_cache.pop(image_name, None)
-        logging.info(f"[clean] ✅ text_cache gelöscht: {image_name}")
+        logger.info(f"[clean] ✅ text_cache gelöscht: {image_name}")
 
     image_id = find_image_id_by_name(image_name)
 
@@ -209,19 +254,19 @@ def clean(image_name: str):
     for i in range(1, 5):
         key = f"{image_id}_{i}"
         if delete_rendered_html_file(Settings.RENDERED_HTML_DIR, key):
-            logging.info(f"[clean] ✅ gerendertes HTML gelöscht: {key}")
+            logger.info(f"[clean] ✅ gerendertes HTML gelöscht: {key}")
 
     thumbnail_path = get_thumbnail_path(image_id)
     if os.path.exists(thumbnail_path):
         os.remove(thumbnail_path)
-        logging.info(f"[clean] ✅ Thumbnail gelöscht: {thumbnail_path}")
+        logger.info(f"[clean] ✅ Thumbnail gelöscht: {thumbnail_path}")
 
     face_dir = Path(Settings.GESICHTER_FILE_CACHE_DIR)
     for file in face_dir.glob(f"{image_id}_*.jpg"):
         try:
             file.unlink()
-            logging.info(f"[clean] ✅ Gesicht gelöscht: {file}")
+            logger.info(f"[clean] ✅ Gesicht gelöscht: {file}")
         except Exception as e:
-            logging.error(f"[clean] ❌ Fehler beim Löschen von {file}: {e}")
+            logger.error(f"[clean] ❌ Fehler beim Löschen von {file}: {e}")
 
     return JSONResponse(content={"status": "ok", "image_name": image_name})

@@ -153,6 +153,7 @@ def show_images_gallery(
                     name for name, scores in all_scores.items()
                     if parse_score_expression(score_expr, scores)
                 ]
+                logger.info(f"[Gallery] filtered_names {filtered_names}")
                 Settings.CACHE["score_filter_result"][cache_key] = filtered_names
                 logger.info(f"[score_filter] 🧮 Neu berechnet: {len(filtered_names)} Bilder für '{score_expr}'")
             except Exception as e:
@@ -249,8 +250,9 @@ def show_images_gallery(
         # Status dynamisch nachschieben
         status = load_status(image_name)
         value = Settings.CACHE["text_cache"].get(image_name, "")  # Verwende Caches aus Settings
-        if isinstance(value, str) and "Error 2" in value:
-            status["recheck"] = True
+        if isinstance(value, str) :
+            if "Error 2" in value:
+                status["recheck"] = True
 
         status_json = json.dumps({f"{image_id}_{key}": value for key, value in status.items()})
 
@@ -289,6 +291,7 @@ def show_images_gallery(
         "last_texts": SettingsFilter.TEXT_HISTORY,
         "filter_text": SettingsFilter.TEXT_FILTER
     })
+
 
 @router.post("/save")
 async def save(
@@ -513,24 +516,3 @@ async def process_pages(folder_key: str, start_page: int):
 
     total_duration = time.time() - total_start
     logger.info(f"🏁 [{folder_key}] Gesamtzeit: {total_duration:.1f} Sekunden")
-
-
-if __name__ == "__main__":
-    text = "sexy >= 3"
-
-    dummy_scores = {key: 0 for key in score_type_map.keys()}
-    try:
-        parse_score_expression(text, dummy_scores)
-    except ValueError as e:
-        # Fange die spezifische ValueError ab
-        error_msg = str(e)
-        if "Unbekannter Score-Schlüssel" in error_msg:
-            # Extrahiere die erlaubten Schlüssel für das Log
-            allowed_keys = error_msg.split("erlaubt: ")[1].strip(")")
-            msg = f"Ungültiger Schlüssel verwendet.\nErlaubte Schlüssel sind:\n{allowed_keys}"
-            logger.warning(f'[update_history] {msg}')
-        msg = f'Validierungsfehler: {error_msg}'
-        logger.warning(f'[update_history] {msg}')
-    except Exception as e:
-        msg = f'Unerwarteter Fehler: {str(e)}'
-        logger.error(f'[update_history] {msg}')

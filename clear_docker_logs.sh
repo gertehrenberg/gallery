@@ -57,6 +57,13 @@ else
   echo "[OK] Log file truncated with sudo."
 fi
 
+
+#!/bin/bash
+for cid in $(docker ps -aq); do
+    LOGFILE=$(docker inspect --format='{{.LogPath}}' $cid)
+    [ -f "$LOGFILE" ] && sudo truncate -s 0 "$LOGFILE"
+done
+
 echo
 # Restart the container to ensure fresh logging
 echo "Restarting container '$CONTAINER'..."

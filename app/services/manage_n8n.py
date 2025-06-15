@@ -325,7 +325,7 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
                 file_md5 = calculate_md5(file)
                 try:
 
-                    current_status = get_task_status(file_md5, task_type)
+                    current_status = await get_task_status(file_md5, task_type)
 
                     # Überspringe, wenn bereits erfolgreich hochgeladen
                     if current_status:

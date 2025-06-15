@@ -2,12 +2,13 @@ import re
 from app.config import score_type_map, reverse_score_type_map
 from app.database import load_scores_from_db
 
+
 def parse_score_expression(expr, values):
     """
     Prüft einen Ausdruck wie 'porn > 50 AND nsfw_score <= 70' gegen ein values-Dict.
     """
-    allowed_keys = set(score_type_map.keys()) | set(score_type_map.keys())
-    condition_pattern = r"([a-zA-Z_0-9]+)\s*(==|!=|<=|>=|<|>)\s*(\d{1,3})"
+    allowed_keys = set(score_type_map.keys())
+    condition_pattern = r"([a-zA-Z_0-9]+)\s*(==|!=|<=|>=|<|>)\s*(\d+)"
     tokens = re.split(r"\s*(?:&|;|AND)\s*", expr, flags=re.IGNORECASE)
 
     ops = {
@@ -15,8 +16,8 @@ def parse_score_expression(expr, values):
         "!=": lambda a, b: a != b,
         "<=": lambda a, b: a <= b,
         ">=": lambda a, b: a >= b,
-        "<":  lambda a, b: a < b,
-        ">":  lambda a, b: a > b,
+        "<": lambda a, b: a < b,
+        ">": lambda a, b: a > b,
     }
 
     for token in tokens:

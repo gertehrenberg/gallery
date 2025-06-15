@@ -4,6 +4,7 @@ import csv
 import json
 import os
 import shutil
+import sqlite3
 import time
 from datetime import datetime, date, timedelta
 from pathlib import Path
@@ -17,7 +18,7 @@ from google.cloud import bigquery
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from starlette.responses import JSONResponse
 
-from app.config import Settings
+from app.config import Settings, score_type_map
 from app.config_gdrive import sanitize_filename, calculate_md5, folder_id_by_name, SettingsGdrive
 from app.database import clear_folder_status_db, load_folder_status_from_db, save_folder_status_to_db, \
     clear_folder_status_db_by_name, load_folder_status_from_db_by_name
@@ -194,7 +195,23 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
         except:
             local_data = {}
 
-        db_count = count_folder_entries(Settings.DB_PATH, subdir.name)
+        db_count = 0
+        if Settings.TEXT_FILE_CACHE_DIR == file_folder_dir:
+            try:
+                with sqlite3.connect(Settings.DB_PATH) as conn:
+                    cursor = conn.execute("""
+                        SELECT COUNT(*) FROM image_quality_scores 
+                        WHERE score_type = ?
+                        """, ((score_type_map['text'],)))  # Doppelte Klammern für ein einzelnes Tuple
+                    count_result = cursor.fetchone()
+                    if count_result:
+                        db_count = count_result[0]
+            except sqlite3.Error as e:
+                logger.error(f"Database error: {e}")
+                db_count = 0
+        else:
+            db_count = count_folder_entries(Settings.DB_PATH, subdir.name)
+
         local_count = len(local_data)
         gdrive_count = len(gdrive_data)
 
@@ -1527,6 +1544,15 @@ def p4():
 
     asyncio.run(gdrive_zu_local(service, "recheck"))
 
+def p5():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+
+    asyncio.run(process_text_files())
 
 if __name__ == "__main__":
-    p4()
+    p5()

@@ -1,10 +1,11 @@
 import asyncio
 import json
 import os
+import sqlite3
 from pathlib import Path
 from typing import Dict
 
-from app.config import Settings
+from app.config import Settings, score_type_map
 from app.config_gdrive import folder_name_by_id, calculate_md5
 from app.utils.logger_config import setup_logger
 
@@ -89,6 +90,7 @@ async def list_files(folder_id, service, sign="!="):
 
     return files
 
+
 async def list_all_files(folder_id, service):
     logger.info(f"Starting list_files with folder_id: {folder_id}")
     files = []
@@ -131,8 +133,27 @@ async def list_all_files(folder_id, service):
 
     return files
 
+
 async def write_local_hashes_progress(extensions, file_folder_dir, subfolders: bool = True):
     logger.info(f"Starting write_local_hashes_progress with dir: {file_folder_dir}, subfolders: {subfolders}")
+
+    text_cache = None
+
+    if Settings.TEXT_FILE_CACHE_DIR == file_folder_dir:
+        text_cache = Settings.CACHE["text_cache"]
+        text_cache.clear()
+
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        query = """
+        UPDATE image_quality_scores 
+        SET image_name = SUBSTR(image_name, 1, LENGTH(image_name) - 4)
+        WHERE score_type = 9 
+        AND LOWER(image_name) LIKE '%.txt'
+        """
+        conn.execute(query)
+        conn.commit()
+
+
     root = Path(file_folder_dir)
     all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
 
@@ -150,13 +171,55 @@ async def write_local_hashes_progress(extensions, file_folder_dir, subfolders: b
         file_counter = 0
 
         for file in image_files:
+            image_name = file.name.lower()
             try:
-                logger.info(f"Calculating MD5 for file: {file}")
                 md5_local = calculate_md5(file)
-                local_hashes[file.name] = md5_local
-                logger.info(f"MD5 calculated successfully for {file}")
+                local_hashes[image_name] = md5_local
+
+                # Suche nach PNG-Dateien mit den ersten 4 Zeichen des Dateinamens
+                from app.services.image_processing import find_png_file
+                image_name_bild = image_name[:-4]
+                matching_files = find_png_file(image_name_bild)
+
+                if matching_files:
+                    # Nehme die erste gefundene Datei
+                    found_file = matching_files[0]
+                    found_file_str = str(found_file.name)
+
+                    # Prüfe zuerst, ob der Text in der Datenbank vorhanden ist
+                    with sqlite3.connect(Settings.DB_PATH) as conn:
+                        cursor = conn.execute("""
+                            SELECT score FROM image_quality_scores 
+                            WHERE image_name = ? AND score_type = ?
+                        """, (found_file_str, score_type_map['text']))
+                        db_result = cursor.fetchone()
+
+                    if db_result and db_result[0]:
+                        logger.info(f"Textlänge aus DB für {image_name}: {db_result[0]} Zeichen")
+                    else:
+                        # Wenn nicht in DB, dann wie bisher downloaden
+                        from app.services.image_processing import download_text_file
+                        content = download_text_file(
+                            folder_name=found_file.parent.name,
+                            image_name=found_file.name,
+                            cache_dir=Settings.TEXT_FILE_CACHE_DIR
+                        )
+
+                        if content:
+                            logger.info(f"Textlänge für {image_name}: {len(content)}")
+
+                            # Speichere die Textlänge in der Datenbank
+                            with sqlite3.connect(Settings.DB_PATH) as conn:
+                                conn.execute("""
+                                    INSERT OR REPLACE INTO image_quality_scores 
+                                    (image_name, score_type, score)
+                                    VALUES (?, ?, ?)
+                                """, (found_file_str, score_type_map['text'], len(content)))
+
+
+
             except Exception as e:
-                logger.error(f"[Fehler] {file.name}: {e}")
+                logger.error(f"Fehler bei der Verarbeitung von {image_name}: {str(e)}")
             file_counter += 1
 
             progress = int(((dir_counter + file_counter / max(total_files, 1)) / total_dirs) * 100)
