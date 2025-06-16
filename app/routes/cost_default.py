@@ -13,7 +13,7 @@ logging.basicConfig(
 def load_default_costs(year: int, month: int) -> List[Dict[str, Any]]:
     """Verteilt die monatlichen Default-Kosten gleichmäßig auf alle Tage des angegebenen Monats."""
 
-    # Zusätzliche monatliche Beträge für bestimmte Zeiträume
+    # Zusätzliche monatliche Beträge für bestimmte Zeiträume wingo
     additional_amounts = {
         (2025, 2): 83.90,  # Februar 2025
         (2025, 3): 31.95,  # März 2025
@@ -28,10 +28,15 @@ def load_default_costs(year: int, month: int) -> List[Dict[str, Any]]:
         (2025, 12): 36.95,  #geschätzt
     }
 
-    # Bestimme den Basisbetrag und zusätzliche Beträge
+    # Bestimme den Basisbetrag und zusätzliche Beträge JetBrain
+    base_amount = 0  # Standardmäßig kein Basisbetrag
+    if year > 2025 or (year == 2025 and month >= 3):
+        base_amount = 17.0
+
+    # Bestimme den Basisbetrag und zusätzliche Beträge JetBrain
     base_amount = 0  # Standardmäßig kein Basisbetrag
     if year > 2025 or (year == 2025 and month >= 6):
-        base_amount = 9.0  # Ab Juni 2025 kommen 9 CHF dazu
+        base_amount = 9.0
 
     # Gesamtbetrag berechnen
     monthly_amount = additional_amounts.get((year, month), 0.0) + base_amount

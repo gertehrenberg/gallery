@@ -149,7 +149,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
             'color': 'rgba(75, 192, 192, 0.6)'  # Türkis
         },
         {
-            'label': 'JetBrains, Wingo',
+            'label': 'JetBrains, Wingo, One',
             'data': values_default,
             'color': 'rgba(153, 102, 255, 0.6)'  # Violett
         }
