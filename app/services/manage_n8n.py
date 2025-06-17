@@ -1,15 +1,28 @@
+import subprocess
+from typing import Any
 import asyncio
+import json
 import os
 import sqlite3
 from pathlib import Path
 
-from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
+# Type-Hint für IDE und Fallback-Import
+try:
+    from recoll import recoll
+except ImportError:
+    # Dummy-Klasse für IDE, wird nie zur Laufzeit verwendet
+    class recoll:  # type: ignore
+        @staticmethod
+        def connect(*args: Any, **kwargs: Any) -> Any: ...
+
+from googleapiclient.http import MediaFileUpload
 
 from app.config import Settings
-from app.config_gdrive import folder_id_by_name, SettingsGdrive, calculate_md5
+from app.config_gdrive import folder_id_by_name, SettingsGdrive, calculate_md5, sanitize_filename
 from app.routes.auth import load_drive_service, load_drive_service_token
+from app.routes.gdrive_from_lokal import save_structured_hashes
 from app.utils.logger_config import setup_logger
-from app.utils.progress import list_all_files
+from app.utils.progress import list_all_files, save_simple_hashes
 
 TASK_TYPE = 'gemini'
 
@@ -118,25 +131,6 @@ async def insert_task(file_md5: str, task_type: str, file_name: str, status: str
         return False
 
 
-async def download_text_file(service, file_id: str, file_name: str, task_type: str) -> bool:
-    """Lädt eine Textdatei aus Google Drive herunter"""
-    try:
-        text_file_path = Path(Settings.TEXT_FILE_CACHE_DIR) / file_name
-        request = service.files().get_media(fileId=file_id)
-
-        with open(text_file_path, 'wb') as f:
-            downloader = MediaIoBaseDownload(f, request)
-            done = False
-            while not done:
-                _, done = downloader.next_chunk()
-
-        logger.info(f"[{task_type}] Text-Datei heruntergeladen: {file_name}")
-        return True
-    except Exception as e:
-        logger.error(f"[{task_type}] Fehler beim Herunterladen der Text-Datei {file_name}: {e}")
-        return False
-
-
 async def move_file_to_textfiles(service, file_id: str, file_name: str, task_type: str) -> bool:
     """Verschiebt eine Datei in den textfiles-Ordner"""
     try:
@@ -168,46 +162,46 @@ async def delete_drive_file(service, file_id: str, file_name: str, task_type: st
         return False
 
 
-async def delete_rendered_html_files(file_md5: str, task_type: str) -> bool:
-    """Löscht alle MD5-bezogenen HTML-Dateien"""
+async def delete_rendered_html_files(md5: str) -> None:
+    """Löscht alle gerenderten HTML-Dateien für eine bestimmte MD5"""
     try:
-        rendered_html_dir = Settings.RENDERED_HTML_DIR
-        if not rendered_html_dir.exists():
-            return True
+        html_dir = Path(Settings.RENDERED_HTML_DIR)
+        if not html_dir.exists():
+            return
 
-        pattern = f"{file_md5}*.j2"
-        deleted = False
-        for file in rendered_html_dir.glob(pattern):
-            file.unlink()
-            deleted = True
+        # Suche nach allen HTML-Dateien die mit der MD5 beginnen
+        pattern = f"{md5}*.html"
+        for html_file in html_dir.glob(pattern):
+            if html_file.exists():
+                html_file.unlink()
+                logger.info(f"Gelöschte HTML-Datei: {html_file}")
 
-        if deleted:
-            logger.info(f"[{task_type}] Gerenderte HTML-Dateien gelöscht für MD5: {file_md5}")
-        return True
     except Exception as e:
-        logger.error(f"[{task_type}] Fehler beim Löschen der HTML-Dateien für MD5 {file_md5}: {e}")
-        return False
+        logger.error(f"[delete_rendered_html_files] Fehler beim Löschen der HTML-Dateien für MD5 {md5}: {e}")
 
 
-async def process_completed_task(service, file_md5: str, file_name: str, save_files_dict: dict, task_type: str) -> bool:
+async def process_completed_task(service, file_name: str, save_files_dict: dict, task_type: str) -> bool:
     """Verarbeitet einen abgeschlossenen Task"""
     try:
         # 1. Text-Datei herunterladen
         text_file_id = save_files_dict.get(f"{file_name}.txt")
-        if not text_file_id or not await download_text_file(service, text_file_id, f"{file_name}.txt", task_type):
+        if not text_file_id or not await download_file(service, Path(Settings.TEXT_FILE_CACHE_DIR), text_file_id,
+                                                       f"{file_name}.txt"):
             return False
 
         # 2. Text-Datei in textfiles-Ordner verschieben
         if not await move_file_to_textfiles(service, text_file_id, f"{file_name}.txt", task_type):
             return False
 
+        # Berechne MD5 der heruntergeladenen Text-Datei
+        text_path = Path(Settings.TEXT_FILE_CACHE_DIR)
+        text_file_full_path = text_path / f"{file_name}.txt"
+        text_md5 = calculate_md5(text_file_full_path)
+        await update_hash_files(text_path, f"{file_name}.txt", text_md5, text_file_id)
+
         # 3. Bild-Datei aus Google Drive löschen
         image_file_id = save_files_dict.get(file_name)
         if not image_file_id or not await delete_drive_file(service, image_file_id, file_name, task_type):
-            return False
-
-        # 4. Gerenderte HTML-Dateien löschen
-        if not await delete_rendered_html_files(file_md5, task_type):
             return False
 
         logger.info(f"[{task_type}] Alle Aktionen erfolgreich für: {file_name}")
@@ -217,9 +211,13 @@ async def process_completed_task(service, file_md5: str, file_name: str, save_fi
         return False
 
 
-async def check_uploading_tasks(service, task_type: str = TASK_TYPE) -> None:
+async def check_uploading_tasks(service, image_text_pairs, task_type: str = TASK_TYPE) -> None:
     """Überprüft und verarbeitet alle Tasks mit Status 'uploaded'"""
     logger.info(f"[{task_type}] Prüfe 'uploaded' Tasks...")
+
+    if not image_text_pairs:
+        logger.info("Keine Bild/Text Paare im Save-Ordner gefunden")
+        return
 
     try:
         # Hole alle uploaded Tasks
@@ -262,7 +260,7 @@ async def check_uploading_tasks(service, task_type: str = TASK_TYPE) -> None:
                     # Beide Dateien existieren bereits
                     logger.info(f"[{task_type}] Dateien im Save: {file_name}")
 
-                    if await process_completed_task(service, file_md5, file_name, save_files_dict, task_type):
+                    if await process_completed_task(service, file_name, save_files_dict, task_type):
                         await update_task_status(file_md5, 'completed', task_type)
                     else:
                         await update_task_status(file_md5, 'error', task_type)
@@ -278,6 +276,36 @@ async def check_uploading_tasks(service, task_type: str = TASK_TYPE) -> None:
 
     except Exception as e:
         logger.error(f"[{task_type}] Fehler bei der Überprüfung der uploading Tasks: {e}")
+
+
+async def search_recoll(query: str, config_dir: str = "/data/recoll_config") -> list:
+    """
+    Führt eine Recoll-Suche durch und gibt die Ergebnisse zurück.
+
+    Args:
+        query: Suchanfrage
+        config_dir: Pfad zum Recoll-Konfigurationsverzeichnis
+
+    Returns:
+        Liste der gefundenen Dokumente
+    """
+    try:
+        cmd = ["recollq", "-c", config_dir, query]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            logger.info(f"Fehler bei der Suche: {result.stderr}")
+            return []
+
+        # Ergebnisse nach Zeilen aufteilen und leere Zeilen entfernen
+        results = [line.strip() for line in result.stdout.split('\n') if line.strip()]
+
+        # Die erste Zeile enthält normalerweise die Recoll-Query-Info, diese überspringen wir
+        return results[1:] if results else []
+
+    except Exception as e:
+        logger.info(f"Fehler bei der Ausführung der Suche: {e}")
+        return []
 
 
 async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
@@ -305,10 +333,24 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
             )
         """)
 
+    logger.info(await search_recoll("Vagina"))
+
     while True:
         try:
+            await clean_filenames_in_save_folder(service)
+
+            # Hole alle Dateien aus dem Save-Ordner
+            save_folder_id = folder_id_by_name("save")
+            save_files = await list_all_files(save_folder_id, service)
+            save_files_dict = {f['name']: f for f in save_files}
+
+            # Finde Bild/Text Paare
+            image_text_pairs = await get_pairs(save_files_dict)
+
             # Überprüfe uploading Tasks in jedem Durchlauf
-            await check_uploading_tasks(service, task_type)
+            await check_uploading_tasks(service, image_text_pairs, task_type)
+
+            await process_save_folder_pairs(service, image_text_pairs)
 
             # Hole nur erlaubte Bilddateien
             local_files = [f for f in local_gemini_path.iterdir()
@@ -324,7 +366,6 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
                 # MD5 berechnen
                 file_md5 = calculate_md5(file)
                 try:
-
                     current_status = await get_task_status(file_md5, task_type)
 
                     # Überspringe, wenn bereits erfolgreich hochgeladen
@@ -366,6 +407,200 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
             await asyncio.sleep(300)
 
 
+async def get_pairs(save_files_dict):
+    image_text_pairs = {}
+    for file_name, file_info in save_files_dict.items():
+        if any(file_name.lower().endswith(ext) for ext in Settings.IMAGE_EXTENSIONS):
+            base_name = file_name
+            text_file = base_name + '.txt'
+            if text_file in save_files_dict:
+                image_text_pairs[base_name] = {
+                    'image': file_info,
+                    'text': save_files_dict[text_file]
+                }
+    return image_text_pairs
+
+
+async def download_file(service, target_dir: Path, file_id: str, file_name: str) -> bool:
+    """Downloads a file from Google Drive"""
+    try:
+        file_path = target_dir / file_name
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        with file_path.open('wb') as f:
+            downloader = service.files().get_media(fileId=file_id)
+            f.write(downloader.execute())
+
+        logger.info(f"Datei heruntergeladen: {file_path}")
+        return True
+    except Exception as e:
+        logger.error(f"Fehler beim Herunterladen von {file_name}: {e}")
+        return False
+
+
+async def update_hash_files(directory: Path, file_name: str, file_md5: str, file_id: str) -> None:
+    """Aktualisiert beide Hash-Dateien in einem Verzeichnis"""
+    try:
+        # Update GDrive hash file
+        gdrive_hash_path = directory / Settings.GDRIVE_HASH_FILE
+        gdrive_hashes = {}
+        if gdrive_hash_path.exists():
+            try:
+                with gdrive_hash_path.open('r', encoding='utf-8') as f:
+                    gdrive_hashes = json.load(f)
+            except json.JSONDecodeError as e:
+                logger.error(f"Fehler beim Lesen der GDrive Hash-Datei: {e}")
+                # Erstelle Backup der beschädigten Datei
+                backup_path = gdrive_hash_path.with_suffix('.bak')
+                gdrive_hash_path.rename(backup_path)
+                gdrive_hashes = {}
+
+        gdrive_hashes[file_name] = {
+            'md5': file_md5,
+            'id': file_id
+        }
+        await save_structured_hashes(gdrive_hashes, gdrive_hash_path)
+
+        # Update Gallery hash file
+        gallery_hash_path = directory / Settings.GALLERY_HASH_FILE
+        gallery_hashes = {}
+        if gallery_hash_path.exists():
+            try:
+                with gallery_hash_path.open('r', encoding='utf-8') as f:
+                    gallery_hashes = json.load(f)
+            except json.JSONDecodeError as e:
+                logger.error(f"Fehler beim Lesen der Gallery Hash-Datei: {e}")
+                # Erstelle Backup der beschädigten Datei
+                backup_path = gallery_hash_path.with_suffix('.bak')
+                gallery_hash_path.rename(backup_path)
+                gallery_hashes = {}
+
+        gallery_hashes[file_name] = file_md5
+        await save_simple_hashes(gallery_hashes, gallery_hash_path)
+
+        # Text-Cache aktualisieren wenn es eine Textdatei ist
+        if file_name.lower().endswith('.txt'):
+            file_name_without_ext = file_name.lower()[:-4]
+            Settings.CACHE["text_cache"].pop(file_name_without_ext, None)
+            await delete_rendered_html_files(file_md5)
+
+        logger.info(f"Hash-Dateien aktualisiert für: {file_name}")
+    except Exception as e:
+        logger.error(f"Fehler beim Aktualisieren der Hash-Dateien für {file_name}: {e}")
+
+
+async def clean_filenames_in_save_folder(service) -> bool:
+    """Bereinigt Dateinamen im 'save' Ordner von Zeilenumbrüchen"""
+    try:
+        save_folder_id = folder_id_by_name("save")
+
+        # Alle Dateien im save-Ordner auflisten
+        files = service.files().list(
+            q=f"'{save_folder_id}' in parents and trashed=false",
+            fields="files(id, name)"
+        ).execute().get('files', [])
+
+        cleaned_count = 0
+        for file in files:
+            original_name = file['name']
+            clean_name = sanitize_filename(original_name)
+            if original_name != clean_name:
+                try:
+                    # Datei umbenennen
+                    service.files().update(
+                        fileId=file['id'],
+                        body={'name': clean_name}
+                    ).execute()
+                    cleaned_count += 1
+                    logger.info(f"Datei bereinigt: '{original_name}' -> '{clean_name}'")
+                except Exception as e:
+                    logger.error(f"Fehler beim Bereinigen von '{original_name}': {e}")
+
+        logger.info(f"Bereinigung abgeschlossen. {cleaned_count} Dateien korrigiert.")
+        return True
+    except Exception as e:
+        logger.error(f"Fehler bei der Dateinamenbereinigung: {e}")
+        return False
+
+
+async def process_save_folder_pairs(service, image_text_pairs) -> None:
+    """Verarbeitet Bild/Text-Datei Paare im Save-Ordner unabhängig von external_tasks"""
+    logger.info("Prüfe Save-Ordner auf Bild/Text Paare...")
+
+    try:
+        if not image_text_pairs:
+            logger.info("Keine Bild/Text Paare im Save-Ordner gefunden")
+            return
+
+        # Verarbeite gefundene Paare
+        for base_name, files in image_text_pairs.items():
+            try:
+                # Text-Datei verarbeiten
+                text_file = files['text']
+                text_path = Path(Settings.TEXT_FILE_CACHE_DIR)
+                if await download_file(service, text_path, text_file['id'], f"{base_name}.txt"):
+                    text_md5 = calculate_md5(text_path / f"{base_name}.txt")
+                    await update_hash_files(text_path, f"{base_name}.txt", text_md5, text_file['id'])
+                else:
+                    logger.error(f"Fehler beim Herunterladen der Textdatei: {base_name}.txt")
+                    continue
+
+                # Prüfe ob Bild bereits existiert
+                image_exists = False
+                for category in Settings.kategorien:
+                    category_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / category["key"]
+                    if category_path.exists():
+                        image_name = files['image']['name']
+                        if (category_path / image_name).exists():
+                            logger.info(f"Bild {image_name} bereits in Kategorie {category['key']} vorhanden")
+                            image_exists = True
+                            break
+
+                # Bild herunterladen wenn nicht vorhanden
+                if not image_exists:
+                    image_file = files['image']
+                    image_path = Path(Settings.IMAGE_FILE_CACHE_DIR)
+                    if await download_file(service, image_path, image_file['id'], image_file['name']):
+                        image_md5 = calculate_md5(image_path / image_file['name'])
+                        await update_hash_files(image_path, image_file['name'], image_md5, image_file['id'])
+                    else:
+                        logger.error(f"Fehler beim Herunterladen des Bildes: {image_file['name']}")
+                        continue
+
+                save_folder_id = folder_id_by_name("save")
+                recheck_folder_id = folder_id_by_name("recheck")
+                textfiles_folder_id = folder_id_by_name("textfiles")
+
+                # Verschiebe Dateien in Google Drive
+                try:
+                    # Text-Datei verschieben
+                    service.files().update(
+                        fileId=text_file['id'],
+                        addParents=textfiles_folder_id,
+                        removeParents=save_folder_id,
+                        fields='id, parents'
+                    ).execute()
+                    logger.info(f"Textdatei nach textfiles verschoben: {base_name}.txt")
+
+                    # Bild verschieben
+                    service.files().update(
+                        fileId=files['image']['id'],
+                        addParents=recheck_folder_id,
+                        removeParents=save_folder_id,
+                        fields='id, parents'
+                    ).execute()
+                    logger.info(f"Bild nach recheck verschoben: {files['image']['name']}")
+
+                except Exception as e:
+                    logger.error(f"Fehler beim Verschieben der Dateien für {base_name}: {e}")
+
+            except Exception as e:
+                logger.error(f"Fehler bei der Verarbeitung von {base_name}: {e}")
+
+    except Exception as e:
+        logger.error(f"Fehler bei der Überprüfung des Save-Ordners: {e}")
+
+
 def p4():
     """Konfiguration und Start des Gemini-Prozesses"""
     Settings.DB_PATH = '../../gallery_local.db'
@@ -376,10 +611,17 @@ def p4():
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
     Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
 
-    # clear_gemini_tasks()
+    # asyncio.run(clear_gemini_tasks())
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    asyncio.run(manage_gemini_process(service))
+    asyncio.run(clean_filenames_in_save_folder(service))
+    save_folder_id = folder_id_by_name("save")
+    save_files = asyncio.run(list_all_files(save_folder_id, service))
+    save_files_dict = {f['name']: f for f in save_files}
+
+    # Finde Bild/Text Paare
+    image_text_pairs = asyncio.run(get_pairs(save_files_dict))
+    asyncio.run(process_save_folder_pairs(service, image_text_pairs))
 
 
 if __name__ == "__main__":

@@ -32,6 +32,7 @@ from app.scores.comfyUI import reload_comfyui
 from app.scores.faces import reload_faces
 from app.scores.nsfw import reload_nsfw
 from app.scores.quality import reload_quality
+from app.scores.texte import reload_texte
 from app.tools import readimages, save_pair_cache, fill_pair_cache
 from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
@@ -127,6 +128,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
         {"label": "Reload Gesichter", "url": f"{_BASE}/test?direction=reload_faces", "icon": "😶"},
         {"label": "Reload Quality-Scores", "url": f"{_BASE}/test?direction=reload_quality", "icon": "⭐"},
         {"label": "Reload NSFW-Scores", "url": f"{_BASE}/test?direction=reload_nsfw", "icon": "🚫"},
+        {"label": "Reload Texte", "url": f"{_BASE}/test?direction=reload_texte", "icon": "🚫"},
         {"label": 'Reload ComfyUI nur in "KI"', "url": f"{_BASE}/test?direction=reload_comfyui", "icon": "🖼️"},
         {"label": "Lösche Doppelte Bilder", "url": f"{_BASE}/test?direction=del_double_images", "icon": "👯"},
         {"label": "Gen Pages", "url": f"{_BASE}/test?direction=gen_pages", "icon": "📘"}
@@ -316,6 +318,11 @@ calls = {
         "start_url": "/gallery/dashboard/multi/reload_nsfw",
         "progress_url": "/gallery/dashboard/progress"
     },
+    "reload_texte": {
+        "label": "Erstell die Text-Längen neu ...",
+        "start_url": "/gallery/dashboard/multi/reload_texte",
+        "progress_url": "/gallery/dashboard/progress"
+    },
     "reload_faces": {
         "label": "Erstell die Gesichter neu ...",
         "start_url": "/gallery/dashboard/multi/reload_faces",
@@ -379,8 +386,6 @@ async def dashboard_progress(request: Request):
 
 @router.post("/dashboard/start")
 async def start_progress(folder: str = Form(...), direction: str = Form(...)):
-    import threading
-
     logger.info(f"🔄 start_progress: {folder} {direction}")
 
     kategorientabelle = {k["key"]: k for k in Settings.kategorien}
@@ -1023,6 +1028,12 @@ async def _reload_nsfw(folder: str = Form(...), direction: str = Form(...)):
         asyncio.create_task(reload_nsfw())
     return {"status": "ok"}
 
+@router.post("/dashboard/multi/reload_texte")
+async def _reload_texte(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        asyncio.create_task(reload_texte())
+    return {"status": "ok"}
+
 
 @router.post("/dashboard/multi/reload_quality")
 async def _reload_quality(folder: str = Form(...), direction: str = Form(...)):
@@ -1552,7 +1563,8 @@ def p5():
     Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
-    asyncio.run(process_text_files())
+    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+    asyncio.run(gdrive_zu_local(service, "recheck"))
 
 if __name__ == "__main__":
     p5()

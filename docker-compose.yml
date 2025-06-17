@@ -13,9 +13,15 @@ services:
       - .:/app
       - ./secrets:/app/secrets
       - ./cache:/data
+      - ./cache/recoll_config:/data/recoll_config:rw
+      - ./cache/textfiles:/data/textfiles:rw
       - ./cache/thumbnailfiles300:/app/thumbnails
       - ./cache/imagefiles:/app/imagefiles
       - ./cache/facefiles:/app/facefiles
+    environment:
+      - HOME=/data
+      - XDG_CONFIG_HOME=/data
+      - RECOLL_CONFDIR=/data/recoll_config
     restart: unless-stopped
 
 networks:

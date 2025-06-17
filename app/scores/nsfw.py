@@ -4,13 +4,10 @@ from pathlib import Path
 from app.config import Settings, reverse_score_type_map, score_type_map  # Importiere die Settings-Klasse
 from app.database import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores, delete_scores_by_type
 from app.tools import readimages
+from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logger = setup_logger(__name__)
 
 NSFW_SERVICE_URL = "http://nsfw-service:8000/check-nsfw-path/"
 

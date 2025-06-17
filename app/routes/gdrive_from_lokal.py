@@ -189,7 +189,7 @@ def save_gdrive_hashes(gdrive_hashes: Dict, hashfile_path: Path, folder: str) ->
             temp_path.unlink()  # Lösche temporäre Datei bei Fehler
 
 
-def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_path: Path):
+async def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_path: Path):
     """
     Speichert strukturierte Hashes in einer JSON-Datei.
 

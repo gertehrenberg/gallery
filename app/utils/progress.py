@@ -137,8 +137,6 @@ async def list_all_files(folder_id, service):
 async def write_local_hashes_progress(extensions, file_folder_dir, subfolders: bool = True):
     logger.info(f"Starting write_local_hashes_progress with dir: {file_folder_dir}, subfolders: {subfolders}")
 
-    text_cache = None
-
     if Settings.TEXT_FILE_CACHE_DIR == file_folder_dir:
         text_cache = Settings.CACHE["text_cache"]
         text_cache.clear()
