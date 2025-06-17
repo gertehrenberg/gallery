@@ -393,7 +393,7 @@ class SettingsFilter:
 async def update_text_history(text: str = Form(...)):
     """Aktualisiert die Text-Historie"""
     text = text.strip().replace(":", " > ")  # Ersetze ":" durch ">"
-    logger.info(f'[update_history] Filter-Text: "{text}"')
+    logger.info(f'[update_text_history] Filter-Text: "{text}"')
 
     if text:
         dummy_scores = {key: 0 for key in score_type_map.keys()}
@@ -406,31 +406,31 @@ async def update_text_history(text: str = Form(...)):
                 # Extrahiere die erlaubten Schlüssel für das Log
                 allowed_keys = error_msg.split("erlaubt: ")[1].strip(")")
                 msg = f"Ungültiger Schlüssel verwendet.\nErlaubte Schlüssel sind:\n{allowed_keys}"
-                logger.warning(f'[update_history] {msg}')
+                logger.warning(f'[update_text_history] {msg}')
                 return {
                     "status": f"❌ {msg}"
                 }
             msg = f'Validierungsfehler: {error_msg}'
-            logger.warning(f'[update_history] {msg}')
+            logger.warning(f'[update_text_history] {msg}')
             return {
                 "status": f"❌ {msg}"
             }
         except Exception as e:
             msg = f'Unerwarteter Fehler: {str(e)}'
-            logger.error(f'[update_history] {msg}')
+            logger.error(f'[update_text_history] {msg}')
             return {
                 "status": f"❌ {msg}"
             }
         if text in SettingsFilter.FILTER_HISTORY:
             SettingsFilter.FILTER_HISTORY.remove(text)
-            logger.debug(f'[update_history] Filter-Text aus Historie entfernt: "{text}"')
+            logger.debug(f'[update_text_history] Filter-Text aus Historie entfernt: "{text}"')
 
         SettingsFilter.FILTER_HISTORY.insert(0, text)
         SettingsFilter.FILTER_HISTORY = SettingsFilter.FILTER_HISTORY[:10]  # Auf 10 Einträge begrenzen
         SettingsFilter.FILTER_TEXT = text
-        logger.info(f'[update_history] Filter-Text, neue Historie: {SettingsFilter.FILTER_HISTORY}')
+        logger.info(f'[update_text_history] Filter-Text, neue Historie: {SettingsFilter.FILTER_HISTORY}')
     else:
-        logger.info('[update_history] Filter-Text zurückgesetzt (leer)')
+        logger.info('[update_text_history] Filter-Text zurückgesetzt (leer)')
         SettingsFilter.FILTER_TEXT = None
 
     return {
@@ -443,7 +443,7 @@ async def update_text_history(text: str = Form(...)):
 async def update_search_history(text: str = Form(...)):
     """Aktualisiert die Text-Historie"""
     text = text.strip().replace(":", " > ")  # Ersetze ":" durch ">"
-    logger.info(f'[update_history] Search-Text: "{text}"')
+    logger.info(f'[update_search_history] Search-Text: "{text}"')
 
     text = text.strip()
     if text:
@@ -453,21 +453,21 @@ async def update_search_history(text: str = Form(...)):
 
         if has_special_chars:
             msg = "Eingabe enthält Sonderzeichen"
-            logger.warning(f'[update_history] {msg}')
+            logger.warning(f'[update_search_history] {msg}')
             return {
                 "status": f"❌ {msg}"
             }
 
         if text in SettingsFilter.SEARCH_HISTORY:
             SettingsFilter.SEARCH_HISTORY.remove(text)
-            logger.debug(f'[update_history] Search-Text aus Historie entfernt: "{text}"')
+            logger.debug(f'[update_search_history] Search-Text aus Historie entfernt: "{text}"')
 
         SettingsFilter.SEARCH_HISTORY.insert(0, text)
         SettingsFilter.SEARCH_HISTORY = SettingsFilter.SEARCH_HISTORY[:10]  # Auf 10 Einträge begrenzen
         SettingsFilter.SEARCH_TEXT = text
-        logger.info(f'[update_history] Search-Text aktualisiert, neue Historie: {SettingsFilter.SEARCH_HISTORY}')
+        logger.info(f'[update_search_history] Search-Text aktualisiert, neue Historie: {SettingsFilter.SEARCH_HISTORY}')
     else:
-        logger.info('[update_history] Search-Text zurückgesetzt (leer)')
+        logger.info('[update_search_history] Search-Text zurückgesetzt (leer)')
         SettingsFilter.SEARCH_TEXT = None
 
     return {
