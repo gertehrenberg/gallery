@@ -18,6 +18,7 @@ from app.database import set_status, load_status, save_status, \
     get_scores_filtered_by_expr  # Importiere die benötigten Funktionen
 from app.dependencies import require_login
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
+from app.scores.texte import search_recoll
 from app.services.image_processing import prepare_image_data, clean
 from app.utils.logger_config import setup_logger
 from app.utils.progress import update_progress, stop_progress, progress_state
@@ -32,6 +33,7 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), ".
 logger = setup_logger(__name__)
 
 Settings.app_ready = False
+
 
 def is_file_in_folder(image_id: str, folder_name: str) -> bool:
     """Prüft nur lokal im Cache, ob eine Datei in einem Ordner ist."""
@@ -121,8 +123,8 @@ def show_images_gallery(
     image_keys = []
     total_images = 0
 
-    if SettingsFilter.TEXT_FILTER:
-        score_expr_raw = SettingsFilter.TEXT_FILTER
+    if SettingsFilter.FILTER_TEXT:
+        score_expr_raw = SettingsFilter.FILTER_TEXT
     else:
         score_expr_raw = None
 
@@ -160,6 +162,21 @@ def show_images_gallery(
                 logger.warning(f"[score_filter] ⚠️ Fehler beim Score-Filter '{score_expr}': {e}")
                 score_expr = None
                 filtered_names = None
+
+    if SettingsFilter.SEARCH_TEXT:
+        search_results = asyncio.run(search_recoll(SettingsFilter.SEARCH_TEXT))
+        search_results_lower = {name.lower() for name in search_results}
+
+        if filtered_names is None:
+            # Wenn noch keine Einschränkung existiert, nur Textsuche verwenden
+            filtered_names = list(search_results_lower)
+        else:
+            # Wenn bereits eine Einschränkung existiert, Schnittmenge bilden
+            filtered_names = [name for name in filtered_names if name.lower() in search_results_lower]
+
+        score_expr = "textsearch"  # Markieren dass gefiltert wurde
+        logger.info(f"[Gallery] Nach Textsuche: {len(filtered_names)} Bilder")
+
 
     # 3. Hauptschleife über alle Bilder
     logger.info("[Gallery] Starte Hauptschleife über Bilder")
@@ -250,7 +267,7 @@ def show_images_gallery(
         # Status dynamisch nachschieben
         status = load_status(image_name)
         value = Settings.CACHE["text_cache"].get(image_name, "")  # Verwende Caches aus Settings
-        if isinstance(value, str) :
+        if isinstance(value, str):
             if "Error 2" in value:
                 status["recheck"] = True
 
@@ -288,8 +305,10 @@ def show_images_gallery(
         "kategorien": Settings.kategorien,
         "images_html": ''.join(images_html_parts),
         "lastcall": lastcall,
-        "last_texts": SettingsFilter.TEXT_HISTORY,
-        "filter_text": SettingsFilter.TEXT_FILTER
+        "last_texts": SettingsFilter.FILTER_HISTORY,
+        "filter_text": SettingsFilter.FILTER_TEXT,
+        "search_history": SettingsFilter.SEARCH_HISTORY,
+        "search_text": SettingsFilter.SEARCH_TEXT
     })
 
 
@@ -362,20 +381,19 @@ async def _gen_pages(folder: str = Form(...), direction: str = Form(...)):
     return {"status": "ok"}
 
 
-# In config.py der Settings-Klasse hinzufügen:
 class SettingsFilter:
-    # ... existierende Attribute ...
-
     # Filter-Status
-    TEXT_FILTER = None  # Aktiver Filter-Text oder None wenn deaktiviert
-    TEXT_HISTORY = []  # Liste der letzten 10 Texteinträge
+    FILTER_TEXT = None
+    FILTER_HISTORY = []
 
+    SEARCH_TEXT = None
+    SEARCH_HISTORY = []
 
 @router.post("/filter/update_history")
 async def update_text_history(text: str = Form(...)):
     """Aktualisiert die Text-Historie"""
     text = text.strip().replace(":", " > ")  # Ersetze ":" durch ">"
-    logger.info(f'[update_history] Score-Filter-Ausdruck: "{text}"')
+    logger.info(f'[update_history] Filter-Text: "{text}"')
 
     if text:
         dummy_scores = {key: 0 for key in score_type_map.keys()}
@@ -403,23 +421,49 @@ async def update_text_history(text: str = Form(...)):
             return {
                 "status": f"❌ {msg}"
             }
-        if text in SettingsFilter.TEXT_HISTORY:
-            SettingsFilter.TEXT_HISTORY.remove(text)
-            logger.debug(f'[update_history] Eintrag aus Historie entfernt: "{text}"')
+        if text in SettingsFilter.FILTER_HISTORY:
+            SettingsFilter.FILTER_HISTORY.remove(text)
+            logger.debug(f'[update_history] Filter-Text aus Historie entfernt: "{text}"')
 
-        SettingsFilter.TEXT_HISTORY.insert(0, text)
-        SettingsFilter.TEXT_HISTORY = SettingsFilter.TEXT_HISTORY[:10]  # Auf 10 Einträge begrenzen
-        SettingsFilter.TEXT_FILTER = text
-        logger.info(f'[update_history] Filter aktualisiert, neue Historie: {SettingsFilter.TEXT_HISTORY}')
+        SettingsFilter.FILTER_HISTORY.insert(0, text)
+        SettingsFilter.FILTER_HISTORY = SettingsFilter.FILTER_HISTORY[:10]  # Auf 10 Einträge begrenzen
+        SettingsFilter.FILTER_TEXT = text
+        logger.info(f'[update_history] Filter-Text, neue Historie: {SettingsFilter.FILTER_HISTORY}')
     else:
-        logger.info('[update_history] Filter zurückgesetzt (leer)')
-        SettingsFilter.TEXT_FILTER = None
+        logger.info('[update_history] Filter-Text zurückgesetzt (leer)')
+        SettingsFilter.FILTER_TEXT = None
 
     return {
         "status": "ok",
-        "last_texts": SettingsFilter.TEXT_HISTORY,
-        "filter_text": SettingsFilter.TEXT_FILTER
+        "last_texts": SettingsFilter.FILTER_HISTORY,
+        "filter_text": SettingsFilter.FILTER_TEXT
     }
+
+@router.post("/search/update_history")
+async def update_search_history(text: str = Form(...)):
+    """Aktualisiert die Text-Historie"""
+    text = text.strip().replace(":", " > ")  # Ersetze ":" durch ">"
+    logger.info(f'[update_history] Search-Text: "{text}"')
+
+    if text:
+        if text in SettingsFilter.SEARCH_HISTORY:
+            SettingsFilter.SEARCH_HISTORY.remove(text)
+            logger.debug(f'[update_history] Search-Text aus Historie entfernt: "{text}"')
+
+        SettingsFilter.SEARCH_HISTORY.insert(0, text)
+        SettingsFilter.SEARCH_HISTORY = SettingsFilter.SEARCH_HISTORY[:10]  # Auf 10 Einträge begrenzen
+        SettingsFilter.SEARCH_TEXT = text
+        logger.info(f'[update_history] Search-Text aktualisiert, neue Historie: {SettingsFilter.SEARCH_HISTORY}')
+    else:
+        logger.info('[update_history] Search-Text zurückgesetzt (leer)')
+        SettingsFilter.SEARCH_TEXT = None
+
+    return {
+        "status": "ok",
+        "search_history": SettingsFilter.SEARCH_HISTORY,
+        "search_text": SettingsFilter.SEARCH_TEXT
+    }
+
 
 
 END_PAGE = 1

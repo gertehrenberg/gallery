@@ -6,15 +6,6 @@ import os
 import sqlite3
 from pathlib import Path
 
-# Type-Hint für IDE und Fallback-Import
-try:
-    from recoll import recoll
-except ImportError:
-    # Dummy-Klasse für IDE, wird nie zur Laufzeit verwendet
-    class recoll:  # type: ignore
-        @staticmethod
-        def connect(*args: Any, **kwargs: Any) -> Any: ...
-
 from googleapiclient.http import MediaFileUpload
 
 from app.config import Settings
@@ -278,36 +269,6 @@ async def check_uploading_tasks(service, image_text_pairs, task_type: str = TASK
         logger.error(f"[{task_type}] Fehler bei der Überprüfung der uploading Tasks: {e}")
 
 
-async def search_recoll(query: str, config_dir: str = "/data/recoll_config") -> list:
-    """
-    Führt eine Recoll-Suche durch und gibt die Ergebnisse zurück.
-
-    Args:
-        query: Suchanfrage
-        config_dir: Pfad zum Recoll-Konfigurationsverzeichnis
-
-    Returns:
-        Liste der gefundenen Dokumente
-    """
-    try:
-        cmd = ["recollq", "-c", config_dir, query]
-        result = subprocess.run(cmd, capture_output=True, text=True)
-
-        if result.returncode != 0:
-            logger.info(f"Fehler bei der Suche: {result.stderr}")
-            return []
-
-        # Ergebnisse nach Zeilen aufteilen und leere Zeilen entfernen
-        results = [line.strip() for line in result.stdout.split('\n') if line.strip()]
-
-        # Die erste Zeile enthält normalerweise die Recoll-Query-Info, diese überspringen wir
-        return results[1:] if results else []
-
-    except Exception as e:
-        logger.info(f"Fehler bei der Ausführung der Suche: {e}")
-        return []
-
-
 async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
     """Überwacht den Gemini-Ordner und verarbeitet Bilddateien"""
     logger.info(f"[{task_type}] Starte Überwachungsprozess")
@@ -332,8 +293,6 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
                 drive_file_id TEXT
             )
         """)
-
-    logger.info(await search_recoll("Vagina"))
 
     while True:
         try:

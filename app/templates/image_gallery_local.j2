@@ -321,7 +321,7 @@
                     type="text"
                     id="newTextInput"
                     list="textHistory"
-                    placeholder="Text eingeben oder auswählen..."
+                    placeholder="Filtertext eingeben oder auswählen..."
                     style="padding: 6px 10px; border-radius: 5px; width: 360px;"
                     value="{{ filter_text or '' }}"
             />
@@ -331,7 +331,28 @@
                 {% endfor %}
             </datalist>
             <button
-                    onclick="submitText()"
+                    onclick="submitFilterText()"
+                    style="padding: 6px 10px; border-radius: 5px;"
+            >
+                ✓
+            </button>
+        </div>
+        <div class="input-group" style="display: flex; gap: 6px;">
+            <input
+                    type="text"
+                    id="searchInput"
+                    list="searchHistory"
+                    placeholder="Suchtext eingeben oder auswählen..."
+                    style="padding: 6px 10px; border-radius: 5px; width: 360px;"
+                    value="{{ search_text or '' }}"
+            />
+            <datalist id="searchHistory">
+                {% for text in search_history %}
+                    <option value="{{ text }}">
+                {% endfor %}
+            </datalist>
+            <button
+                    onclick="submitSearchText()"
                     style="padding: 6px 10px; border-radius: 5px;"
             >
                 ✓
@@ -438,7 +459,8 @@
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
         <button style="padding: 4px 8px; font-size: 12px;"
                 onclick="saveAndGoRefresh({{ page }}, {{ count }}, '{{ folder_name }}')">
-            {% if filter_text %}⚡ {% endif %}Seite {{ page }} von {{ total_pages }} ({{ total_images }})
+            {% if filter_text %}⚡ {% endif %} {% if search_text %}⚡ {% endif %} Seite {{ page }} von {{ total_pages }}
+            ({{ total_images }})
         </button>
     </div>
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
@@ -820,7 +842,7 @@
         saveAndGoRefresh(PAGE, COUNT, FOLDER);
     }
 
-    function updateTextFilter(updateHistory = false) {
+    function updateFilterText(updateHistory = false) {
         const inputElement = document.getElementById('newTextInput');
         const text = inputElement.value.trim();
 
@@ -861,15 +883,10 @@
             });
     }
 
-    // Wrapper-Funktion für die Historie-Funktionalität
-    function submitText() {
-        updateTextFilter(true);
-    }
-
-    const input = document.getElementById('newTextInput');
-    input.addEventListener('keypress', (event) => {
+    const inputfilter = document.getElementById('newTextInput');
+    inputfilter.addEventListener('keypress', (event) => {
         if (event.key === 'Enter') {
-            submitText();
+            submitFilterText();
             event.preventDefault();
         }
     });
@@ -881,8 +898,78 @@
         // Nur wenn das Menü sichtbar ist
         if (menu.style.display === "block" && inputElement) {
             inputElement.value = text;
-            submitText(); // Direkt submitten
+            submitFilterText(); // Direkt submitten
         }
+    }
+
+    // Wrapper-Funktion für die Historie-Funktionalität
+    function submitFilterText() {
+        updateFilterText(true);
+    }
+
+    function updateSearchText(updateHistory = false) {
+        const inputElement = document.getElementById('searchInput');
+        const text = inputElement.value.trim();
+
+        if (updateHistory && text === undefined) return;
+
+        const formData = new FormData();
+        formData.append('text', text);
+
+        fetch('/gallery/search/update_history', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    if (updateHistory) {
+                        const datalist = document.getElementById('searchHistory');
+                        datalist.innerHTML = data.search_history
+                            .map(t => `<option value="${t}">`)
+                            .join('');
+                    }
+
+                    const menu = document.getElementById("menu");
+                    menu.style.display = "none";
+                    localStorage.setItem("menuOpen", false);
+
+                    // Seite neu laden
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("page", PAGE);
+                    url.searchParams.set("count", COUNT);
+                    url.searchParams.set("folder", FOLDER);
+                    url.searchParams.set("textflag", TEXTFLAG);
+                    window.location.href = url.toString();
+                } else {
+                    // Fehlermeldung für 5 Sekunden anzeigen
+                    showMessage(data.status, true, 5000);
+                }
+            });
+    }
+
+    const inputsearch = document.getElementById('searchInput');
+    inputsearch.addEventListener('keypress', (event) => {
+        if (event.key === 'Enter') {
+            submitSearchText();
+            event.preventDefault();
+        }
+    });
+
+    function setSearchText(text) {
+        const inputElement = document.getElementById('searchInput');
+        const menu = document.getElementById("menu");
+
+        // Nur wenn das Menü sichtbar ist
+        if (menu.style.display === "block" && inputElement) {
+            inputElement.value = text;
+            submitSearchText(); // Direkt submitten
+        }
+    }
+
+    // Wrapper-Funktion für die Historie-Funktionalität
+    function submitSearchText() {
+        updateSearchText(true);
     }
 
     // Click-Handler für die Balken bei Seitenladung hinzufügen

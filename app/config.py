@@ -93,3 +93,6 @@ class Settings:
     folders_total = len(kategorien)
     current_loading_folder = ""
     folders_loaded = 0
+
+    RECOLL_CONFIG_DIR = "/data/recoll_config"
+
