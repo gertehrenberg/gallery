@@ -89,7 +89,7 @@ def p4():
     Settings.RECOLL_CONFIG_DIR = "../../cache/recoll_config"
 
     # Fix: Properly run the async function and store its result
-    erg = asyncio.run(search_recoll("Vagina"))
+    erg = asyncio.run(search_recoll("keine Verbesserung"))
     logger.info(erg)
 
 

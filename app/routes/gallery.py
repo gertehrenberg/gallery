@@ -445,7 +445,19 @@ async def update_search_history(text: str = Form(...)):
     text = text.strip().replace(":", " > ")  # Ersetze ":" durch ">"
     logger.info(f'[update_history] Search-Text: "{text}"')
 
+    text = text.strip()
     if text:
+
+        # Prüfe auf Sonderzeichen (außer Leerzeichen)
+        has_special_chars = any(not c.isalnum() and not c.isspace() for c in text)
+
+        if has_special_chars:
+            msg = "Eingabe enthält Sonderzeichen"
+            logger.warning(f'[update_history] {msg}')
+            return {
+                "status": f"❌ {msg}"
+            }
+
         if text in SettingsFilter.SEARCH_HISTORY:
             SettingsFilter.SEARCH_HISTORY.remove(text)
             logger.debug(f'[update_history] Search-Text aus Historie entfernt: "{text}"')
