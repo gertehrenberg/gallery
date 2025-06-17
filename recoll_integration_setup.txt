@@ -49,3 +49,68 @@ for result in results:
 4. Dokumenttypen erweitern
 
 Stand: 2025-06-16
+
+
+
+RECOLL SETUP ZUSAMMENFASSUNG
+===========================
+
+1. AKTUELLER STAND (2025-06-17 10:34)
+---------------------------------------------
+- Gefundene Textdateien: 17.172
+- Indexierte Dateien: 7.566
+- Fehlende Indexierung: 9.606 Dateien
+
+2. KONFIGURATIONSDATEIEN
+-----------------------
+A. /data/recoll_config/recoll.conf:
+topdirs = /data/textfiles
+indexedmimetypes = text/plain text/*
+skippednames = .* *~
+followLinks = 1
+loglevel = 6
+logfilename = /data/recoll_config/recoll.log
+daemloglevel = 6
+idxflushmb = 10
+filtermaxmbytes = 100
+nomd5types = .txt
+aspellLanguage = de
+defaultcharset = UTF-8
+
+B. /data/recoll_config/mimeconf:
+[index]
+text/plain = internal
+
+3. WICHTIGE VERZEICHNISSE
+------------------------
+- Konfiguration: /data/recoll_config
+- Textdateien: /data/textfiles
+- Datenbank: /data/recoll_config/xapiandb
+- Logdatei: /data/recoll_config/recoll.log
+
+4. DURCHGEFÜHRTE ÄNDERUNGEN
+--------------------------
+1. Korrektur der mimeconf-Datei:
+   - Alter Eintrag: text/plain = txt;
+   - Neuer Eintrag: text/plain = internal
+
+5. NÄCHSTE SCHRITTE
+------------------
+1. Analyse warum nicht alle Dateien indexiert wurden
+2. Überprüfung der Log-Datei auf Fehler
+3. Überprüfung der Dateiberechtigungen
+4. Möglicherweise Anpassung der filtermaxmbytes-Einstellung
+
+6. BEFEHLE FÜR VERWALTUNG
+------------------------
+# Vollständige Neuindexierung
+docker exec -it gallery recollindex -c /data/recoll_config -Z
+
+# Suche durchführen
+docker exec -it gallery recollq -c /data/recoll_config "suchbegriff"
+
+# Log ansehen
+docker exec -it gallery cat /data/recoll_config/recoll.log
+
+# Dateianzahl prüfen
+docker exec -it gallery bash -c "find /data/textfiles -name "*.txt" | wc -l"

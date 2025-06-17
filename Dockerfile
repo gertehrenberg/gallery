@@ -4,7 +4,10 @@ FROM python:3.11-slim-bullseye
 WORKDIR /app
 
 # System-Pakete installieren
+ System-Pakete installieren
 RUN apt-get update && \
+    apt-get install -y ca-certificates && \
+    apt-get update --fix-missing && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
