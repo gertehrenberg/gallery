@@ -4,7 +4,6 @@ FROM python:3.11-slim-bullseye
 WORKDIR /app
 
 # System-Pakete installieren
- System-Pakete installieren
 RUN apt-get update && \
     apt-get install -y ca-certificates && \
     apt-get update --fix-missing && \
