@@ -202,9 +202,10 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
             try:
                 with sqlite3.connect(Settings.DB_PATH) as conn:
                     cursor = conn.execute("""
-                        SELECT COUNT(*) FROM image_quality_scores 
-                        WHERE score_type = ?
-                        """, ((score_type_map['text'],)))  # Doppelte Klammern für ein einzelnes Tuple
+                                          SELECT COUNT(*)
+                                          FROM image_quality_scores
+                                          WHERE score_type = ?
+                                          """, ((score_type_map['text'],)))  # Doppelte Klammern für ein einzelnes Tuple
                     count_result = cursor.fetchone()
                     if count_result:
                         db_count = count_result[0]
@@ -414,12 +415,12 @@ def is_valid_image(filename: str) -> bool:
 
 
 async def lokal_zu_gdrive(service, folder_name: str):
-    logger.info(f"lokal_zu_gdrive: {folder_name}")
+    await update_progress_text(f"🔄 Starte lokale Synchronisation für Ordner: {folder_name}")
     await init_progress_state()
     progress_state["running"] = True
 
     cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
-
+    await update_progress_text("📥 Lade globale GDrive Hashes...")
     global_gdrive_hashes = load_all_gdrive_hashes(cache_dir)
     hashfiles = list(cache_dir.rglob(Settings.GALLERY_HASH_FILE))
 
@@ -435,7 +436,7 @@ async def lokal_zu_gdrive(service, folder_name: str):
             with gallery_hashfile.open("r", encoding="utf-8") as f:
                 local_hashes = {k: v for k, v in json.load(f).items() if is_valid_image(k)}
         except Exception as e:
-            logger.error(f"[Fehler] {gallery_hashfile}: {e}")
+            await update_progress_text(f"⚠️ Fehler beim Lesen der lokalen Hash-Datei {gallery_hashfile}: {e}")
             continue
 
         try:
@@ -448,7 +449,7 @@ async def lokal_zu_gdrive(service, folder_name: str):
         count = 0
         total = len(local_hashes)
 
-        await update_progress(f"Verarbeite Ordner {folder}", 0)
+        await update_progress(f"🗂️ Verarbeite Ordner {folder}", 0)
 
         for name, md5 in local_hashes.items():
             existing = gdrive_hashes.get(name)
@@ -457,14 +458,15 @@ async def lokal_zu_gdrive(service, folder_name: str):
             if name not in gdrive_hashes or current_md5 != md5:
                 file_info = global_gdrive_hashes.get(md5)
                 if file_info and is_valid_image(name):
-                    logger.info(f"[✓] {name} fehlt in {folder}, aber global vorhanden als: {file_info['name']}")
+                    await update_progress_text(
+                        f"✓ {name} fehlt in {folder}, aber global vorhanden als: {file_info['name']}")
                     file_id = file_info.get("id")
                     if file_id:
                         target_folder_id = folder_id_by_name(folder)
                         if not target_folder_id:
-                            logger.info(f"[!] Keine Ordner-ID für {folder} gefunden")
+                            await update_progress_text(f"⚠️ Keine Ordner-ID für {folder} gefunden")
                             count += 1
-                            await update_progress(f"Verarbeite Datei {name} ({count}/{total})",
+                            await update_progress(f"📄 Verarbeite Datei {name} ({count}/{total})",
                                                   int((count / total) * 100))
                             continue
                         try:
@@ -475,7 +477,7 @@ async def lokal_zu_gdrive(service, folder_name: str):
                             }
                             updated = True
                         except Exception as e:
-                            logger.error(f"[Fehler beim Verschieben] {name}: {e}")
+                            await update_progress_text(f"⚠️ Fehler beim Verschieben von {name}: {e}")
                 else:
                     local_file = folder_path / name
                     if local_file.exists() and is_valid_image(name):
@@ -494,13 +496,13 @@ async def lokal_zu_gdrive(service, folder_name: str):
                                     "id": uploaded["id"]
                                 }
                                 updated = True
-                                logger.info(f"[↑] {name} hochgeladen in {folder}")
+                                await update_progress_text(f"⬆️ {name} nach {folder} hochgeladen")
                             except Exception as e:
-                                logger.error(f"[Fehler beim Hochladen] {name}: {e}")
+                                await update_progress_text(f"⚠️ Fehler beim Hochladen von {name}: {e}")
                         else:
-                            logger.info(f"[!] Keine Zielordner-ID für {folder} gefunden")
+                            await update_progress_text(f"⚠️ Keine Zielordner-ID für {folder} gefunden")
                     else:
-                        logger.info(f"[!] {name} fehlt in {folder} und global nicht gefunden")
+                        await update_progress_text(f"❌ {name} fehlt in {folder} und global nicht gefunden")
 
             count += 1
             if total > 0:
@@ -509,7 +511,7 @@ async def lokal_zu_gdrive(service, folder_name: str):
         if updated:
             with gdrive_hashfile.open("w", encoding="utf-8") as f:
                 json.dump(gdrive_hashes, f, indent=2)
-            logger.info(f"[↑] hashes.json aktualisiert für Ordner {folder}")
+            await update_progress_text(f"💾 Hash-Datei für Ordner {folder} aktualisiert")
 
     affected_folders = await sync2(
         service=service,
@@ -519,14 +521,13 @@ async def lokal_zu_gdrive(service, folder_name: str):
         hashfiles=hashfiles
     )
 
-    # Aktualisiere die Hash-Dateien für alle betroffenen Ordner
-    await update_progress_text("Aktualisiere Hash-Dateien...")
+    await update_progress_text("📝 Aktualisiere Hash-Dateien...")
     for affected_folder in affected_folders:
         try:
             await process_image_folders_gdrive_progress(service, affected_folder)
-            await update_progress_text(f"[✓] Hash-Datei aktualisiert für {affected_folder}")
+            await update_progress_text(f"✅ Hash-Datei für {affected_folder} aktualisiert")
         except Exception as e:
-            logger.error(f"[Fehler beim Aktualisieren der Hash-Datei für {affected_folder}]: {e}")
+            await update_progress_text(f"⚠️ Fehler beim Aktualisieren der Hash-Datei für {affected_folder}: {e}")
 
 
 async def process_image_folders_gdrive_progress(service, folder_name: str):
@@ -786,7 +787,7 @@ async def _reloadcache(folder: str = Form(...), direction: str = Form(...)):
 
 
 @router.post("/dashboard/multi/manage_save")
-async def _manage_save(folder: str = Form(...), direction: str=Form(...)):
+async def _manage_save(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
         asyncio.create_task(manage_save_progress(None))
     return {"status": "ok"}
@@ -810,7 +811,7 @@ async def fill_pair_cache_folder(folder_name: str, image_file_cache_dir, pair_ca
         subpath = os.path.join(folder_path, name)
         if os.path.isfile(subpath):
             if any(subpath.lower().endswith(key) for key in [folder_name]):
-                readimages(folder_path, pair_cache)
+                await readimages(folder_path, pair_cache)
     try:
         with open(pair_cache_path_local, 'w') as f:
             json.dump(pair_cache, f)
@@ -1027,6 +1028,7 @@ async def _reload_nsfw(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
         asyncio.create_task(reload_nsfw())
     return {"status": "ok"}
+
 
 @router.post("/dashboard/multi/reload_texte")
 async def _reload_texte(folder: str = Form(...), direction: str = Form(...)):
@@ -1247,7 +1249,7 @@ async def process_category(folder_key: str, folder_name: str):
     # Process images
     image_dir = f"{Settings.IMAGE_FILE_CACHE_DIR}/{folder_key}"
     await update_progress_text(f"📸 Lese Bilder aus {image_dir}")
-    readimages(image_dir, pair_cache)
+    await readimages(image_dir, pair_cache)
 
     # Save cache
     save_pair_cache(pair_cache, Settings.PAIR_CACHE_PATH)
@@ -1328,155 +1330,113 @@ async def fill_file_parents_cache_progress(db_path: str, folder_key: str | None)
 @router.post("/dashboard/multi/del_double_images")
 async def _del_double_images(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
-        asyncio.create_task(move_md5_duplicates())
+        asyncio.create_task(handle_duplicates())
     return {"status": "ok"}
 
 
-async def move_md5_duplicates():
-    logger.info("🚀 move_md5_duplicates()")
+async def handle_duplicates():
+    logger.info("🚀 Starting duplicate handling")
 
     try:
         await init_progress_state()
         progress_state["running"] = True
-        await update_progress_text("🔄 Starting MD5 duplicate detection")
+        await update_progress_text("🔄 Starting duplicate detection")
 
         # Create temp directory if it doesn't exist
         temp_dir = Settings.TEMP_DIR_PATH
         temp_dir.mkdir(parents=True, exist_ok=True)
 
-        # Dictionary to store MD5 hashes and their corresponding files
+        # Dictionaries to store file information
         md5_map = {}
-        all_files = []
+        filename_map = {}
 
-        # Collect all files and their MD5 hashes from selected categories
-        index = 1
+        # Process all categories
+        folderindex = 1
         total = len(Settings.kategorien)
+
+        # Single pass through all files
         for kat in Settings.kategorien:
             folder_name = kat["key"]
-
             local_files = {}
-            await update_progress(f"Kategorie: {folder_name} : {index}/{total}",
-                                  int(index / total * 100), 0.02)
-            index += 1
 
-            readimages(str(Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name), local_files)
+            await update_progress(f"Scanning category: {folder_name} : {folderindex}/{total}",
+                                  int(folderindex / total * 100), 0.02)
 
+            # Single readimages call for both operations
+            await readimages(str(Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name), local_files)
+
+            counter = 0
             for image_name, entry in local_files.items():
-                await update_progress_text(f"Kategorie: {folder_name} : {index}/{total} Bild {image_name}",
-                                           0.01, False)
+                if counter % 50 == 0:
+                    await update_progress_text(
+                        f"Processing: {folder_name} : {folderindex}/{total} Image {image_name} ({counter})",
+                        0.01, True)
+                counter += 1
+
+                full_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+                file_info = {
+                    "path": full_path,
+                    "image_name": image_name,
+                    "category": folder_name,
+                    "image_id": entry.get("image_id", None)
+                }
+
+                # Process MD5 duplicates
                 if "image_id" in entry:
                     md5 = entry["image_id"]
-                    full_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
-
                     if md5 not in md5_map:
                         md5_map[md5] = []
-                    md5_map[md5].append({
-                        "path": full_path,
-                        "image_name": image_name,
-                        "category": folder_name
-                    })
+                    md5_map[md5].append(file_info)
 
-                    all_files.append(entry)
+                # Process filename duplicates
+                if image_name not in filename_map:
+                    filename_map[image_name] = []
+                filename_map[image_name].append(file_info)
 
-        # Process MD5 duplicates
+            folderindex += 1
+
+        # Handle MD5 duplicates
         moved_count = 0
-        total_duplicates = sum(1 for files in md5_map.values() if len(files) > 1)
-
-        await update_progress_text(f"Found {total_duplicates} groups of MD5 duplicate images")
+        total_md5_duplicates = sum(1 for files in md5_map.values() if len(files) > 1)
+        await update_progress_text(f"Found {total_md5_duplicates} groups of MD5 duplicate images")
 
         for md5, files in md5_map.items():
-            if len(files) > 1:  # If we have duplicates
-                # Keep the first file, move others to TEMP_DIR
+            if len(files) > 1:
                 for duplicate in files[1:]:
                     source_path = duplicate["path"]
                     dest_path = temp_dir / f"{duplicate['category']}_{duplicate['image_name']}"
-
                     try:
                         source_path.rename(dest_path)
                         moved_count += 1
                         await update_progress_text(
-                            f"Moving MD5 duplicate: {duplicate['image_name']} ({moved_count}/{total_duplicates})"
+                            f"Moving MD5 duplicate: {duplicate['image_name']} ({moved_count}/{total_md5_duplicates})"
                         )
                     except Exception as e:
                         logger.error(f"Error moving file {source_path}: {e}")
 
-        await update_progress_text(f"✅ Completed! Moved {moved_count} MD5 duplicate files to {temp_dir}")
-
-    except Exception as e:
-        logger.error(f"Error in move_md5_duplicates: {e}")
-        await update_progress_text(f"❌ Error: {str(e)}")
-
-    finally:
-        await rename_filename_duplicates()
-
-
-async def rename_filename_duplicates():
-    logger.info("🚀 rename_filename_duplicates()")
-
-    try:
-        await init_progress_state()
-        progress_state["running"] = True
-        await update_progress_text("🔄 Starting filename duplicate detection")
-
-        # Dictionary to store filenames and their locations
-        filename_map = {}
-        all_files = []
-
-        # Collect all files from selected categories
-        index = 1
-        total = len(Settings.kategorien)
-        for kat in Settings.kategorien:
-            folder_name = kat["key"]
-
-            local_files = {}
-            await update_progress(f"Kategorie: {folder_name} : {index}/{total}",
-                                  int(index / total * 100), 0.02)
-            index += 1
-
-            readimages(str(Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name), local_files)
-
-            for image_name, entry in local_files.items():
-                await update_progress_text(f"Kategorie: {folder_name} : {index}/{total} Bild {image_name}",
-                                           0.01, False)
-
-                if image_name not in filename_map:
-                    filename_map[image_name] = []
-                filename_map[image_name].append({
-                    "path": Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name,
-                    "image_name": image_name,
-                    "category": folder_name,
-                    "image_id": entry.get("image_id", None)
-                })
-
-                all_files.append(entry)
-
-        # Process filename duplicates
+        # Handle filename duplicates
         renamed_count = 0
-        total_duplicates = sum(1 for files in filename_map.values() if len(files) > 1)
-
-        await update_progress_text(f"Found {total_duplicates} groups of filename duplicates")
+        total_name_duplicates = sum(1 for files in filename_map.values() if len(files) > 1)
+        await update_progress_text(f"Found {total_name_duplicates} groups of filename duplicates")
 
         for filename, files in filename_map.items():
-            if len(files) > 1:  # If we have files with the same name
-                # Sort files by path to ensure consistent handling
+            if len(files) > 1:
                 files.sort(key=lambda x: str(x["path"]))
-
-                # Keep the first file as is
                 original = files[0]
                 await update_progress_text(f"Keeping original: {original['path']}")
 
-                # Rename other files with same name using their MD5
                 for duplicate in files[1:]:
+                    if not duplicate["image_id"]:
+                        continue
                     source_path = duplicate["path"]
-                    prefix = duplicate["image_id"]
-                    new_name = f"{prefix}_{duplicate['image_name']}"
+                    new_name = f"{duplicate['image_id']}_{duplicate['image_name']}"
                     new_path = source_path.parent / new_name
 
                     try:
                         source_path.rename(new_path)
                         renamed_count += 1
                         await update_progress_text(
-                            f"Renamed file: {duplicate['image_name']} -> {new_name} ({renamed_count}/{total_duplicates})"
+                            f"Renamed file: {duplicate['image_name']} -> {new_name} ({renamed_count}/{total_name_duplicates})"
                         )
                         logger.info(f"Renamed {source_path} to {new_path}")
                     except Exception as e:
@@ -1484,10 +1444,14 @@ async def rename_filename_duplicates():
                         logger.error(error_msg)
                         await update_progress_text(f"❌ {error_msg}")
 
-        await update_progress_text(f"✅ Completed! Renamed {renamed_count} duplicate filenames")
+        final_message = (
+            f"✅ Completed! Moved {moved_count} MD5 duplicates to {temp_dir} and "
+            f"renamed {renamed_count} filename duplicates"
+        )
+        await update_progress_text(final_message)
 
     except Exception as e:
-        error_msg = f"Error in rename_filename_duplicates: {e}"
+        error_msg = f"Error in handle_duplicates: {e}"
         logger.error(error_msg)
         await update_progress_text(f"❌ {error_msg}")
 
@@ -1555,6 +1519,7 @@ def p4():
 
     asyncio.run(gdrive_zu_local(service, "recheck"))
 
+
 def p5():
     Settings.DB_PATH = '../../gallery_local.db'
     Settings.TEMP_DIR_PATH = Path("../../cache/temp")
@@ -1564,7 +1529,8 @@ def p5():
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    asyncio.run(gdrive_zu_local(service, "recheck"))
+    asyncio.run(reloadcache_progress(service, "recheck"))
+
 
 if __name__ == "__main__":
     p5()

@@ -59,15 +59,42 @@
                 <div id="checkboxes-{{ image_id }}">
                     <form class="checkbox-container">
                         <input name="image_id" type="hidden" value="{{ image_id }}"/>
-                        <!-- Verstecktes Eingabefeld für image_name -->
                         {% for k in kategorien %}
                             <label>
                                 <input name="{{ image_id }}_{{ k.key }}"
-                                       type="checkbox" {{ 'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label }}
+                                       type="checkbox"
+                                       data-group="{{ image_id }}_group"
+                                       onchange="handleCheckboxChange(this)"
+                                       {{ 'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label }}
                             </label>
                         {% endfor %}
                     </form>
                 </div>
+                <script>
+                function handleCheckboxChange(checkbox) {
+                    const group = checkbox.dataset.group;
+                    const checkboxes = document.querySelectorAll(`input[data-group="${group}"]`);
+
+                    if (checkbox.checked) {
+                        checkboxes.forEach(cb => {
+                            if (cb !== checkbox) {
+                                cb.checked = false;
+                            }
+                        });
+                    }
+
+                    const formData = new FormData();
+                    formData.append('image_id', checkbox.name.split('_')[0]);
+                    checkboxes.forEach(cb => {
+                        formData.append(cb.name, cb.checked);
+                    });
+
+                    fetch('/gallery/save', {
+                        method: 'POST',
+                        body: formData
+                    });
+                }
+                </script>
             </td>
         </tr>
         <tr>

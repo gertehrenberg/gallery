@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from pathlib import Path
@@ -30,7 +31,7 @@ if __name__ == "__main__":
 
         local_files = {}
 
-        readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
+        asyncio.run(readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files))
 
         local_path = Path(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key) / Settings.GALLERY_HASH_FILE
 

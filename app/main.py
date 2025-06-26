@@ -79,9 +79,9 @@ app.include_router(static.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(manage_gemini_process(None))
+# @app.on_event("startup")
+# async def startup_event():
+#     asyncio.create_task(manage_gemini_process(None))
 
 
 def local():

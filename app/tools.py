@@ -1,3 +1,4 @@
+import asyncio
 import json
 from datetime import datetime
 from pathlib import Path
@@ -8,6 +9,7 @@ from PIL import Image
 from app.config import Settings
 from app.config_gdrive import calculate_md5
 from app.utils.logger_config import setup_logger
+from app.utils.progress import update_progress_text
 
 logger = setup_logger(__name__)
 
@@ -90,12 +92,11 @@ def fill_pair_cache(image_file_cache_dir: str, pair_cache: Dict[str, Any], pair_
         # Verarbeite alle Verzeichnisse
         for item in root_path.iterdir():
             if item.is_dir() and process_directory(item):
-                readimages(str(item), pair_cache)
-
+                asyncio.run(readimages(str(item), pair_cache))
                 # Verarbeite Unterverzeichnisse
                 for subitem in item.iterdir():
                     if subitem.is_dir() and process_directory(subitem):
-                        readimages(str(subitem), pair_cache)
+                        asyncio.run(readimages(str(subitem), pair_cache))
 
         save_pair_cache(pair_cache, pair_cache_path_local)
 
@@ -197,7 +198,7 @@ def update_date_in_txt_file(txt_file_path: Path, german_date: str) -> None:
         logger.error(f"Fehler beim Aktualisieren der Datei {txt_file_path}: {e}")
 
 
-def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
+async def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
     """
     Liest Bilder aus einem Verzeichnis und aktualisiert den Cache.
 
@@ -208,6 +209,8 @@ def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
     folder = Path(folder_path)
     bilder_daten: List[Dict[str, Any]] = []
 
+    counter = 0
+
     for file_path in folder.iterdir():
         if not (file_path.is_file() and file_path.suffix.lower() in Settings.IMAGE_EXTENSIONS):
             continue
@@ -215,6 +218,11 @@ def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
         image_name = file_path.name.lower()
         md5_hash = calculate_md5(file_path)
         endung = file_path.suffix.lower()[1:]
+
+        # Update progress text only every 50th file
+        if counter % 50 == 0:
+            await update_progress_text(f"File: {image_name} ({counter})")
+        counter += 1
 
         # Datum ermitteln und txt-Datei aktualisieren
         aufnahmedatum, german_date = get_image_date(file_path)

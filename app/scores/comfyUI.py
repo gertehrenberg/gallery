@@ -117,7 +117,7 @@ class ComfyUIScanner:
             await stop_progress()
             return 0
 
-        readimages(os.path.join(self.image_dir, COMFYUI_CATEGORY), self.local_files)
+        await readimages(os.path.join(self.image_dir, COMFYUI_CATEGORY), self.local_files)
 
         all_files = [
             {**entry, "image_name": image_name}

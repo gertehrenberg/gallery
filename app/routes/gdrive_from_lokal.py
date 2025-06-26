@@ -15,7 +15,8 @@ from app.routes.auth import load_drive_service_token
 from app.routes.dashboard_help import fillcache_local
 from app.tools import find_image_name_by_id
 from app.utils.logger_config import setup_logger
-from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, save_simple_hashes
+from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, save_simple_hashes, \
+    update_progress_text
 
 logger = setup_logger(__name__)
 
@@ -59,7 +60,7 @@ async def gdrive_from_lokal(service, folder_name: str):
     for gallery_hashfile in hashfiles:
         folder_path = gallery_hashfile.parent
         folder = folder_path.name
-        logger.info(f"folder: {folder}")
+        await update_progress_text(f"folder: {folder}")
         if not (folder == folder_name):
             continue
 
@@ -93,7 +94,8 @@ async def gdrive_from_lokal(service, folder_name: str):
                 if name not in gdrive_hashes or current_md5 != md5:
                     file_info = global_gdrive_hashes.get(md5)
                     if file_info:
-                        logger.info(f"[✓] {name} fehlt in {folder}, aber global vorhanden als: {file_info['name']}")
+                        await update_progress_text(
+                            f"[✓] {name} fehlt in {folder}, aber global vorhanden als: {file_info['name']}")
                         file_id = file_info.get("id")
                         if file_id:
                             target_folder_id = folder_id_map.get(folder)
@@ -129,7 +131,7 @@ async def gdrive_from_lokal(service, folder_name: str):
                                         "id": uploaded["id"]
                                     }
                                     updated = True
-                                    logger.info(f"[↑] {name} hochgeladen in {folder}")
+                                    await update_progress_text(f"[↑] {name} hochgeladen in {folder}")
                                 except Exception as e:
                                     logger.error(f"[Fehler beim Hochladen] {name}: {e}")
                             else:
@@ -148,7 +150,7 @@ async def gdrive_from_lokal(service, folder_name: str):
         process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR,
                                      [folder_name])
 
-    asyncio.run(stop_progress())
+    await stop_progress()
 
 
 def save_gdrive_hashes(gdrive_hashes: Dict, hashfile_path: Path, folder: str) -> None:
@@ -207,7 +209,7 @@ async def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_pat
         logger.error(f"[Fehler] Konnte Hashes nicht in {hashfile_path} speichern: {e}")
 
 
-def process_image_folders_gdrive(service, extensions, file_folder_dir, folder_names: List[str]):
+async def process_image_folders_gdrive(service, extensions, file_folder_dir, folder_names: List[str]):
     subfolders = False
 
     for folder_name in folder_names:
@@ -224,7 +226,7 @@ def process_image_folders_gdrive(service, extensions, file_folder_dir, folder_na
                         q=query,
                         spaces='drive',
                         fields="nextPageToken, files(id, name, size, parents, md5Checksum)",
-                        pageSize=1000,
+                        pageSize=50,
                         supportsAllDrives=True,
                         includeItemsFromAllDrives=True,
                         pageToken=page_token
@@ -266,7 +268,7 @@ def process_image_folders_gdrive(service, extensions, file_folder_dir, folder_na
             hash_file_path = local_dir / Settings.GDRIVE_HASH_FILE
 
             # Save the hashes
-            save_structured_hashes(gdrive_hashes, hash_file_path)
+            await save_structured_hashes(gdrive_hashes, hash_file_path)
 
 
 def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict[str, str]]:
@@ -617,7 +619,6 @@ def p1():
     # ))
 
 
-
 def p2():
     # Basis-Pfade
     Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
@@ -657,7 +658,7 @@ def p2():
             try:
                 logger.info(f"Attempting to regenerate hash file for folder: {folder_key}")
                 process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR,
-                                          [folder_id_by_name(folder_key)])
+                                             [folder_id_by_name(folder_key)])
 
                 # Try to read the newly generated file
                 if local_path.exists():
@@ -680,7 +681,8 @@ def p2():
     logger.info(f"Anzahl Ordner gesamt: {len(hash_cache)}")
 
     process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR,
-                             ["textfiles"])
+                                 ["textfiles"])
+
 
 if __name__ == "__main__":
     p2()

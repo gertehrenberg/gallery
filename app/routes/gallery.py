@@ -249,6 +249,11 @@ def show_images_gallery(
                         if indices:
                             text_content = text_content[:min(indices)]
 
+            # Stelle sicher, dass quality_scores ein Dictionary ist
+            quality_scores = image_data.get("quality_scores", {})
+            if not isinstance(quality_scores, dict):
+                quality_scores = {}
+
             rendered_html = templates.get_template("image_entry_local.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
                 text_content=text_content,
@@ -256,7 +261,7 @@ def show_images_gallery(
                 folder_name=folder_name,
                 image_id=image_id,
                 status={},
-                quality_scores=image_data["quality_scores"],
+                quality_scores=quality_scores,
                 nsfw_scores=image_data["nsfw_scores"],
                 kategorien=Settings.kategorien,
                 extra_thumbnails=image_data["extra_thumbnails"]

@@ -121,7 +121,7 @@ async def reload_nsfw():
 
         local_files = {}
 
-        readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
+        await readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
 
         all_files = []
 

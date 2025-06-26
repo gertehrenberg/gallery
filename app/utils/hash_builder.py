@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -10,6 +11,7 @@ from app.config_gdrive import folder_id_by_name, get_all_subfolders, sanitize_fi
     SettingsGdrive, calculate_md5
 from app.database import clear_folder_status_db_by_name, load_folder_status_from_db_by_name
 from app.routes.auth import load_drive_service_token
+from app.routes.dashboard_help import fill_file_parents_cache_by_name
 from app.tools import readimages, save_pair_cache
 from app.utils.progress import save_simple_hashes
 
@@ -145,6 +147,6 @@ def onefolder(folder_id):
     for key in to_delete:
         del pair_cache[key]
 
-    readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_id, pair_cache)
+    asyncio.run(readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_id, pair_cache))
     save_pair_cache(pair_cache, pair_cache_path_local)
     fill_file_parents_cache_by_name(Settings.DB_PATH, folder_id)

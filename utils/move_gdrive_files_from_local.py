@@ -5,8 +5,8 @@ from typing import Dict
 from googleapiclient.http import MediaFileUpload
 from tqdm import tqdm
 
-from app.config_gdrive import IMAGE_FILE_CACHE_DIR
-from app.config_gdrive import load_drive_service, compare_hashfile_counts
+from app.config import Settings
+from app.routes.auth import load_drive_service
 
 
 def build_folder_id_map(service) -> Dict[str, str]:
@@ -175,7 +175,7 @@ def move_file_to_folder(service, file_id: str, target_folder_id: str):
 
 if __name__ == "__main__":
     service = load_drive_service()
-    move_gdrive_files_from_local(service, Path(IMAGE_FILE_CACHE_DIR))
-    compare_hashfile_counts(IMAGE_FILE_CACHE_DIR)
+    move_gdrive_files_from_local(service, Path(Settings.IMAGE_FILE_CACHE_DIR))
+    compare_hashfile_counts(Settings.IMAGE_FILE_CACHE_DIR)
 
 
