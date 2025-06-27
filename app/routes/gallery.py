@@ -13,15 +13,16 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
 from app.config import Settings, score_type_map  # Importiere die Settings-Klasse
+from app.config_gdrive import SettingsGdrive
 from app.database import set_status, load_status, save_status, \
     move_marked_images_by_checkbox, get_checkbox_count, \
     get_scores_filtered_by_expr  # Importiere die benötigten Funktionen
 from app.dependencies import require_login
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.scores.texte import search_recoll
-from app.services.image_processing import prepare_image_data, clean
+from app.services.image_processing import prepare_image_data, clean, newpaircache
 from app.utils.logger_config import setup_logger
-from app.utils.progress import update_progress, stop_progress, progress_state
+from app.utils.progress import update_progress, stop_progress, progress_state, update_progress_text, init_progress_state
 from app.utils.score_parser import parse_score_expression
 
 DEFAULT_COUNT: str = "6"
@@ -61,9 +62,10 @@ def show_image_redirect(
     textflag = request.query_params.get('textflag', '1')
     image_name = unquote(request.query_params.get('image_name', '')).strip().lower()
 
+    pair_cache = newpaircache(folder_name)
     pagecounter = 0
-    for image_name_l in Settings.CACHE["pair_cache"]:
-        pair = Settings.CACHE["pair_cache"][image_name_l]
+    for image_name_l in pair_cache:
+        pair = pair_cache[image_name_l]
         image_id = pair.get("image_id", "")
         if is_file_in_folder(image_id, folder_name):
             pagecounter += 1
@@ -177,11 +179,15 @@ def show_images_gallery(
         score_expr = "textsearch"  # Markieren dass gefiltert wurde
         logger.info(f"[Gallery] Nach Textsuche: {len(filtered_names)} Bilder")
 
+    pair_cache = newpaircache(folder_name)
+    if len(pair_cache) == 0:
+        logger.warning("[Gallery] pair_cache leer, zeige Ladebildschirm")
+        return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
 
     # 3. Hauptschleife über alle Bilder
     logger.info("[Gallery] Starte Hauptschleife über Bilder")
-    for image_name in Settings.CACHE["pair_cache"].keys():
-        pair = Settings.CACHE["pair_cache"][image_name]
+    for image_name in pair_cache.keys():
+        pair = pair_cache[image_name]
         image_id = pair['image_id']
         if not is_file_in_folder(image_id, folder_name):
             continue
@@ -203,7 +209,7 @@ def show_images_gallery(
 
     logger.info("[Gallery] Beginne HTML-Generierung")
     for image_name in image_keys:
-        pair = Settings.CACHE["pair_cache"][image_name]  # Verwende Caches aus Settings
+        pair = pair_cache[image_name]  # Verwende Caches aus Settings
         image_id = pair['image_id']
 
         image_id_text = f"{image_id}_{textflag}"
@@ -381,8 +387,11 @@ def get_marked_images_count(checkbox: str, user: str = Depends(require_login)):
 
 @router.post("/dashboard/multi/gen_pages")
 async def _gen_pages(folder: str = Form(...), direction: str = Form(...)):
+    """Startet die Generierung von Seiten für einen Ordner."""
     if not progress_state["running"]:
-        asyncio.create_task(gen_pages())
+        await init_progress_state()
+        progress_state["running"] = True
+        asyncio.create_task(gen_pages(folder))
     return {"status": "ok"}
 
 
@@ -393,6 +402,7 @@ class SettingsFilter:
 
     SEARCH_TEXT = None
     SEARCH_HISTORY = []
+
 
 @router.post("/filter/update_history")
 async def update_text_history(text: str = Form(...)):
@@ -444,6 +454,7 @@ async def update_text_history(text: str = Form(...)):
         "filter_text": SettingsFilter.FILTER_TEXT
     }
 
+
 @router.post("/search/update_history")
 async def update_search_history(text: str = Form(...)):
     """Aktualisiert die Text-Historie"""
@@ -482,16 +493,29 @@ async def update_search_history(text: str = Form(...)):
     }
 
 
-
 END_PAGE = 1
-TEXT_FLAGS = range(1, 5)  # 1 bis 4
+TEXT_FLAGS: list[int] = [1, 2, 3, 4]
 
 
-def get_total_images_from_cache(folder_key: str) -> int:
-    logger.debug(f"🔍 get_total_images_from_cache(folder_key={folder_key})")
-    pair_cache: Dict = Settings.CACHE.get("pair_cache", {})
-    count = sum(1 for img_data in pair_cache.values() if img_data.get("folder") == folder_key)
-    logger.debug(f"📊 get_total_images_from_cache → {count} Bilder für Folder '{folder_key}'")
+async def get_total_images_from_cache(folder_key: str) -> int:
+    await update_progress_text(f"🔍 get_total_images_from_cache(folder_key={folder_key})")
+
+    count = 0
+
+    folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
+    if folder_path.exists():
+        gallery_hash_file = folder_path / Settings.GALLERY_HASH_FILE
+
+        try:
+            if gallery_hash_file.exists():
+                with open(gallery_hash_file, 'r') as f:
+                    local_hashes = json.load(f)
+                    count = len(local_hashes)
+
+        except Exception as e:
+            await update_progress_text(f"❌ Fehler beim Lesen/Schreiben der Cache-Dateien: {e}")
+
+    await update_progress_text(f"📊 get_total_images_from_cache → {count} Bilder für Folder '{folder_key}'")
     return count
 
 
@@ -502,37 +526,41 @@ def calculate_start_page(total_images: int, images_per_page: int = 24) -> int:
     return result
 
 
-async def gen_pages():
-    logger.info("🚀 gen_pages()")
+async def gen_pages(folder_name: str):
+    await update_progress_text(f"🚀 gen_pages({folder_name})")
 
     if hasattr(gen_pages, 'is_running') and gen_pages.is_running:
-        logger.warning("⚠️ gen_pages läuft bereits!")
+        await update_progress_text("⚠️ gen_pages läuft bereits!")
         return
 
     gen_pages.is_running = True
 
     try:
         for kategorie in Settings.kategorien:
-            total_images = get_total_images_from_cache(kategorie["key"])
+            if folder_name:
+                if folder_name != kategorie["key"]:
+                    continue
+            total_images = await get_total_images_from_cache(kategorie["key"])
             start_page = calculate_start_page(total_images)
 
-            logger.info(f"📁 Verarbeite Kategorie: {kategorie} (Seiten: {start_page}-{END_PAGE}, Flags: 1-4)")
-            await process_pages(kategorie["key"], start_page)
+            await update_progress_text(
+                f"📁 Verarbeite Kategorie: {kategorie} (Seiten: {start_page}-{END_PAGE}, Flags: 1-1)")
+            await process_pages(kategorie["key"], start_page, [1])
     finally:
         gen_pages.is_running = False
         await stop_progress()
 
 
-async def process_pages(folder_key: str, start_page: int):
+async def process_pages(folder_key: str, start_page: int, text_flags=TEXT_FLAGS):
     """Verarbeitet Seiten direkt ohne HTTP"""
-    logger.debug(f"📥 process_pages(folder_key={folder_key}, start_page={start_page})")
+    await update_progress_text(f"📥 process_pages(folder_key={folder_key}, start_page={start_page})")
 
     total_start = time.time()
     total_pages = start_page - END_PAGE + 1
-    total_operations = total_pages * len(TEXT_FLAGS)
+    total_operations = total_pages * len(text_flags)
     operation_count = 0
 
-    for textflag in TEXT_FLAGS:
+    for textflag in text_flags:
         for page in range(start_page, END_PAGE - 1, -1):
             page_start = time.time()
 
@@ -564,16 +592,30 @@ async def process_pages(folder_key: str, start_page: int):
             )
 
             if success:
-                logger.info(
+                await update_progress_text(
                     f"✅ [{folder_key}|Flag {textflag}] Seite {page} vollständig – "
                     f"Gesamt: {total_page_time:.2f}s"
                 )
             else:
-                logger.warning(
+                await update_progress_text(
                     f"⚠️ [{folder_key}|Flag {textflag}] Seite {page} fehlgeschlagen – "
                     f"Gesamt: {total_page_time:.2f}s"
                 )
                 await asyncio.sleep(5)
 
     total_duration = time.time() - total_start
-    logger.info(f"🏁 [{folder_key}] Gesamtzeit: {total_duration:.1f} Sekunden")
+    await update_progress_text(f"🏁 [{folder_key}] Gesamtzeit: {total_duration:.1f} Sekunden")
+
+
+def p4():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+
+    asyncio.run(gen_pages("delete"))
+
+
+if __name__ == "__main__":
+    p4()

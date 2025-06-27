@@ -84,6 +84,7 @@ def collect_all_folders(service, parent_id, name_to_id, id_to_name):
             q=f"mimeType = 'application/vnd.google-apps.folder' and trashed = false and '{parent_id}' in parents",
             spaces="drive",
             fields="nextPageToken, files(id, name)",
+            pageSize=Settings.PAGESIZE,
             pageToken=page_token
         ).execute()
 

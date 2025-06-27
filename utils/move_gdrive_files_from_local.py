@@ -20,7 +20,7 @@ def build_folder_id_map(service) -> Dict[str, str]:
                 fields="nextPageToken, files(id, name)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,
-                pageSize=1000,
+                pageSize=Settings.PAGESIZE,
                 pageToken=page_token
             ).execute()
             for file in response.get("files", []):
@@ -150,7 +150,7 @@ def build_folder_id_map(service) -> Dict[str, str]:
                 fields="nextPageToken, files(id, name)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,
-                pageSize=1000,
+                pageSize=Settings.PAGESIZE,
                 pageToken=page_token
             ).execute()
             for file in response.get("files", []):

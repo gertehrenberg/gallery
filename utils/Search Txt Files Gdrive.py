@@ -5,6 +5,7 @@ from typing import List
 from googleapiclient.http import MediaIoBaseDownload
 from tqdm import tqdm
 
+from app.config import Settings
 from config import IMAGE_FILE_CACHE_DIR, TEXT_FILE_CACHE_DIR, load_drive_service, sanitize_filename
 
 # Basisordner (lokal) vorbereiten
@@ -29,7 +30,7 @@ def list_txt_files_recursive(service, parent_id: str) -> List[dict]:
                 fields="nextPageToken, files(id, name, mimeType, parents)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,
-                pageSize=1000,
+                pageSize=Settings.PAGESIZE,
                 pageToken=page_token
             ).execute()
 

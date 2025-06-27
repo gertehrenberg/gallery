@@ -68,6 +68,8 @@ class Settings:
 
     CHECKBOX_CATEGORIES = [k["key"] for k in kategorien]
 
+    PAGESIZE = 1000
+
     # Standardordnername
     FOLDER_NAME = next((k["key"] for k in kategorien if k["key"] == "real"), None)
 

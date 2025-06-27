@@ -5,6 +5,7 @@ from pathlib import Path
 from googleapiclient.http import MediaIoBaseDownload
 from tqdm import tqdm
 
+from app.config import Settings
 from app.config_gdrive import REAL_FOLDER_ID
 from app.config_gdrive import TEXT_FOLDER_ID, TEXT_FILE_CACHE_DIR
 from app.config_gdrive import load_drive_service, compare_hashfile_counts
@@ -21,8 +22,8 @@ def list_txt_files(service, folder_id):
             response = service.files().list(
                 q=f"'{folder_id}' in parents and mimeType='text/plain' and trashed=false",
                 fields="nextPageToken, files(id, name, size, md5Checksum, parents)",
-                pageToken=page_token,
-                pageSize=1000
+                pageSize=Settings.PAGESIZE,
+                pageToken=page_token
             ).execute()
             files.extend(response.get('files', []))
             page_token = response.get('nextPageToken', None)

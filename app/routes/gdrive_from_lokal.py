@@ -147,8 +147,11 @@ async def gdrive_from_lokal(service, folder_name: str):
                 save_gdrive_hashes(gdrive_hashes, gdrive_hashfile, folder)
 
     if await lokal_from_gdrive_move(service, folder_name):
-        process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR,
-                                     [folder_name])
+        await process_image_folders_gdrive(
+            service,
+            Settings.IMAGE_EXTENSIONS,
+            Settings.IMAGE_FILE_CACHE_DIR,
+            [folder_name])
 
     await stop_progress()
 
@@ -226,9 +229,9 @@ async def process_image_folders_gdrive(service, extensions, file_folder_dir, fol
                         q=query,
                         spaces='drive',
                         fields="nextPageToken, files(id, name, size, parents, md5Checksum)",
-                        pageSize=50,
                         supportsAllDrives=True,
                         includeItemsFromAllDrives=True,
+                        pageSize=Settings.PAGESIZE,
                         pageToken=page_token
                     ).execute()
                     batch = response.get('files', [])
@@ -300,7 +303,7 @@ def build_folder_id_map(service) -> Dict[str, str]:
             fields="nextPageToken, files(id, name)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,
-            pageSize=1000,
+            pageSize=Settings.PAGESIZE,
             pageToken=page_token
         ).execute()
         for file in response.get("files", []):

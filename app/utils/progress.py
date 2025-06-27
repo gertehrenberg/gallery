@@ -47,6 +47,11 @@ async def stop_progress():
     progress_state["running"] = False
     await update_progress("Abgeschlossen.", 100)
 
+async def hold_progress():
+    logger.info("Hold progress")
+    progress_state["running"] = False
+    await update_progress_text("Warte ...")
+
 
 async def list_files(folder_id, service, sign="!="):
     logger.info(f"Starting list_files with folder_id: {folder_id}, sign: {sign}")
@@ -63,8 +68,8 @@ async def list_files(folder_id, service, sign="!="):
         response = service.files().list(
             q=f"'{folder_id}' in parents and mimeType {sign} 'text/plain' and trashed=false",
             fields="nextPageToken, files(id, name, size, md5Checksum, parents)",
-            pageToken=page_token,
-            pageSize=50
+            pageSize=Settings.PAGESIZE,
+            pageToken=page_token
         ).execute()
 
         files_batch = response.get('files', [])
@@ -106,8 +111,8 @@ async def list_all_files(folder_id, service):
         response = service.files().list(
             q=f"'{folder_id}' in parents and trashed=false",
             fields="nextPageToken, files(id, name, size, md5Checksum, parents)",
-            pageToken=page_token,
-            pageSize=50
+            pageSize=Settings.PAGESIZE,
+            pageToken=page_token
         ).execute()
 
         files_batch = response.get('files', [])

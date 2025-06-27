@@ -28,7 +28,7 @@ def load_default_costs(year: int, month: int) -> List[Dict[str, Any]]:
         (2025, 12): 36.95,  #geschätzt
     }
 
-    # Bestimme den Basisbetrag und zusätzliche Beträge JetBrain
+    # Bestimme den Basisbetrag und zusätzliche Beträge One
     base_amount = 0  # Standardmäßig kein Basisbetrag
     if year > 2025 or (year == 2025 and month >= 3):
         base_amount = 17.0
@@ -36,7 +36,7 @@ def load_default_costs(year: int, month: int) -> List[Dict[str, Any]]:
     # Bestimme den Basisbetrag und zusätzliche Beträge JetBrain
     base_amount = 0  # Standardmäßig kein Basisbetrag
     if year > 2025 or (year == 2025 and month >= 6):
-        base_amount = 9.0
+        base_amount = 19.0 #AI & Basis
 
     # Gesamtbetrag berechnen
     monthly_amount = additional_amounts.get((year, month), 0.0) + base_amount

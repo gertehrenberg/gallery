@@ -220,7 +220,7 @@ async def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
         endung = file_path.suffix.lower()[1:]
 
         # Update progress text only every 50th file
-        if counter % 50 == 0:
+        if counter % Settings.PAGESIZE == 0:
             await update_progress_text(f"File: {image_name} ({counter})")
         counter += 1
 

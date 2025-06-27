@@ -49,8 +49,8 @@ def list_image_files(service, folder_id):
             response = service.files().list(
                 q=f"'{folder_id}' in parents and mimeType != 'text/plain' and trashed=false",
                 fields="nextPageToken, files(id, name, size, md5Checksum, parents)",
-                pageToken=page_token,
-                pageSize=1000
+                pageSize=Settings.PAGESIZE,
+                pageToken=page_token
             ).execute()
             files.extend(response.get('files', []))
             page_token = response.get('nextPageToken', None)
@@ -91,8 +91,8 @@ def list_txt_files(service, folder_id):
             response = service.files().list(
                 q=f"'{folder_id}' in parents and mimeType='text/plain' and trashed=false",
                 fields="nextPageToken, files(id, name, size, md5Checksum, parents)",
-                pageToken=page_token,
-                pageSize=1000
+                pageSize=Settings.PAGESIZE,
+                pageToken=page_token
             ).execute()
             files.extend(response.get('files', []))
             page_token = response.get('nextPageToken', None)

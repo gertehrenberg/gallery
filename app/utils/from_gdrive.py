@@ -35,6 +35,7 @@ def find_and_download_missing_images(service, recheck_folder_id: str) -> None:
                 q=query,
                 spaces='drive',
                 fields='nextPageToken, files(id, name, md5Checksum)',
+                pageSize=Settings.PAGESIZE,
                 pageToken=page_token,
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True
@@ -164,6 +165,7 @@ def find_and_download_missing_text_files(service, textfiles_folder_id: str) -> N
                 q=query,
                 spaces='drive',
                 fields='nextPageToken, files(id, name, md5Checksum)',
+                pageSize=Settings.PAGESIZE,
                 pageToken=page_token
             ).execute()
 

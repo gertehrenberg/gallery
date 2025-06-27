@@ -66,9 +66,9 @@ def process_image_folders(service, extensions, file_folder_dir, folder_ids: List
                         q=query,
                         spaces='drive',
                         fields="nextPageToken, files(id, name, size, parents, md5Checksum)",
-                        pageSize=1000,
                         supportsAllDrives=True,
                         includeItemsFromAllDrives=True,
+                        pageSize=Settings.PAGESIZE,
                         pageToken=page_token
                     ).execute()
                     batch = response.get('files', [])

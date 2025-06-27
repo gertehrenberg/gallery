@@ -1,5 +1,6 @@
 from tqdm import tqdm
 
+from app.config import Settings
 from config import load_drive_service, EXTERN_FOLDER_ID, RECHECK_FOLDER_ID
 
 FROM_FOLDE_ID = RECHECK_FOLDER_ID
@@ -18,7 +19,7 @@ def get_files_in_folder(service, folder_id):
                 fields="nextPageToken, files(id, name, md5Checksum)",
                 supportsAllDrives=True,
                 includeItemsFromAllDrives=True,
-                pageSize=1000,
+                pageSize=Settings.PAGESIZE,
                 pageToken=page_token
             ).execute()
             files.extend(response.get("files", []))
