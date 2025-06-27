@@ -1,6 +1,7 @@
 import asyncio
 import os
 import threading
+
 # Importiere die Cache-Funktionen aus app/services/cache_management.py
 from fastapi import FastAPI
 from fastapi.templating import Jinja2Templates
@@ -14,9 +15,9 @@ from app.config import Settings
 from app.database import init_db
 # Importiere die Routen
 from app.routes import auth, gallery, static, admin, login, dashboard
-from app.routes.auth import SCOPES, TOKEN_FILE, load_drive_service
+from app.routes.auth import SCOPES, TOKEN_FILE
 from app.routes.dashboard_help import fillcache_local
-from app.routes.dashboard import fill_file_parents_cache
+from app.routes.hashes import fill_file_parents_cache
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
 from app.services.manage_n8n import manage_gemini_process
@@ -79,9 +80,10 @@ app.include_router(static.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 
-# @app.on_event("startup")
-# async def startup_event():
-#     asyncio.create_task(manage_gemini_process(None))
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(manage_gemini_process(None))
 
 
 def local():
