@@ -19,7 +19,7 @@ progress_state = {
 }
 
 
-async def update_progress(status: str, progress: int, ctime=0.1, showlog=True):
+async def update_progress(status: str, progress: int, ctime=0.01, showlog=True):
     if isinstance(status, str) and len(status) > 0:
         progress_state["status"] = status
     progress_state["progress"] = progress
@@ -28,7 +28,7 @@ async def update_progress(status: str, progress: int, ctime=0.1, showlog=True):
     await asyncio.sleep(ctime)
 
 
-async def update_progress_text(status: str, ctime=0.1, showlog=True):
+async def update_progress_text(status: str, ctime=0.01, showlog=True):
     if isinstance(status, str) and len(status) > 0:
         progress_state["status"] = status
     if showlog:
@@ -46,6 +46,7 @@ async def stop_progress():
     logger.info("Stopping progress")
     progress_state["running"] = False
     await update_progress("Abgeschlossen.", 100)
+
 
 async def hold_progress():
     logger.info("Hold progress")
@@ -148,14 +149,13 @@ async def write_local_hashes_progress(extensions, file_folder_dir, subfolders: b
 
     with sqlite3.connect(Settings.DB_PATH) as conn:
         query = """
-        UPDATE image_quality_scores 
-        SET image_name = SUBSTR(image_name, 1, LENGTH(image_name) - 4)
-        WHERE score_type = 9 
-        AND LOWER(image_name) LIKE '%.txt'
-        """
-        conn.execute(query)
+                UPDATE image_quality_scores
+                SET image_name = SUBSTR(image_name, 1, LENGTH(image_name) - 4)
+                WHERE score_type = ?
+                  AND LOWER(image_name) LIKE '%.txt' \
+                """
+        conn.execute(query, (score_type_map['text'],))
         conn.commit()
-
 
     root = Path(file_folder_dir)
     all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
@@ -192,9 +192,11 @@ async def write_local_hashes_progress(extensions, file_folder_dir, subfolders: b
                     # Prüfe zuerst, ob der Text in der Datenbank vorhanden ist
                     with sqlite3.connect(Settings.DB_PATH) as conn:
                         cursor = conn.execute("""
-                            SELECT score FROM image_quality_scores 
-                            WHERE image_name = ? AND score_type = ?
-                        """, (found_file_str, score_type_map['text']))
+                                              SELECT score
+                                              FROM image_quality_scores
+                                              WHERE image_name = ?
+                                                AND score_type = ?
+                                              """, (found_file_str, score_type_map['text']))
                         db_result = cursor.fetchone()
 
                     if db_result and db_result[0]:

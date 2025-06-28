@@ -15,7 +15,6 @@ from fastapi import Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from google.cloud import bigquery
-from googleapiclient.http import MediaIoBaseDownload
 from starlette.responses import JSONResponse
 
 from app.config import Settings, score_type_map
@@ -26,7 +25,7 @@ from app.routes.auth import load_drive_service, load_drive_service_token
 from app.routes.cost_openai_api import load_openai_costs_from_dir
 from app.routes.cost_runpod import load_runpod_costs_from_dir
 from app.routes.hashes import update_gdrive_hashes, is_valid_image, reloadcache_progress, \
-    delete_duplicates_in_gdrive_folder
+    delete_duplicates_in_gdrive_folder, download_file, upload_file_to_gdrive
 from app.scores.comfyUI import reload_comfyui
 from app.scores.faces import reload_faces
 from app.scores.nsfw import reload_nsfw
@@ -555,61 +554,6 @@ async def move_gdrive_files_by_local(service, folder_name: str):
     )
 
 
-from googleapiclient.http import MediaFileUpload
-
-
-async def upload_file_to_gdrive(service, file_path: Path, target_folder_id: str) -> bool:
-    """
-    Lädt eine Datei in Google Drive hoch.
-
-    Args:
-        service: Google Drive Service Objekt
-        file_path: Path Objekt zur lokalen Datei
-        target_folder_id: ID des Zielordners in Google Drive
-
-    Returns:
-        bool: True wenn Upload erfolgreich, False bei Fehler
-    """
-    try:
-        await update_progress_text(f"⬆️ Lade {file_path.name} hoch...")
-
-        # Metadata für die Datei
-        file_metadata = {
-            'name': file_path.name,
-            'parents': [target_folder_id]
-        }
-
-        # MediaFileUpload Objekt erstellen
-        media = MediaFileUpload(
-            str(file_path),
-            mimetype='image/*',
-            resumable=True
-        )
-
-        # Upload mit Progress-Updates
-        request = service.files().create(
-            body=file_metadata,
-            media_body=media,
-            fields='id'
-        )
-
-        response = None
-        while response is None:
-            status, response = request.next_chunk()
-            if status:
-                await update_progress(
-                    f"⬆️ Upload von {file_path.name}",
-                    int(status.progress() * 100)
-                )
-
-        await update_progress_text(f"✅ {file_path.name} erfolgreich hochgeladen (ID: {response.get('id')})")
-        return True
-
-    except Exception as e:
-        await update_progress_text(f"❌ Fehler beim Hochladen von {file_path.name}: {e}")
-        return False
-
-
 async def sync2(service, folder_name: str, gdrive_hashes: Dict,
                 local_hashes: Dict, hashfiles: List[Path]) -> Set[str]:
     affected_folders = {folder_name}
@@ -858,7 +802,7 @@ async def copy_or_move_local_by_gdrive(service, folder_name: str):
                                 f"Abbruch: Datei konnte nicht verschoben werden: {best_match} → {local_target}")
                     elif file_id:
                         try:
-                            download_file(service, file_id, local_target)
+                            await download_file(service, file_id, local_target)
                             if local_target.exists():
                                 await update_progress_text(f"📥 Heruntergeladen: {name} → {current_folder}")
                                 folder_gallery_hashes[name] = {"md5": md5, "id": file_id} if file_id else md5
@@ -879,15 +823,6 @@ async def copy_or_move_local_by_gdrive(service, folder_name: str):
         await update_progress_text(f"❌ Fehler bei gdrive_zu_local: {e}")
 
     await stop_progress()
-
-
-def download_file(service, file_id, local_path):
-    request = service.files().get_media(fileId=file_id)
-    with open(local_path, 'wb') as f:
-        downloader = MediaIoBaseDownload(f, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
 
 
 @router.post("/dashboard/multi/reloadcache")
@@ -1068,12 +1003,12 @@ async def perform_local_sync(service, save_files, local_file_dir, existing_hashe
                 if remote_md5 == local_md5:
                     status.append("✅ lokal identisch")
                 else:
-                    download_file(service, file_id, local_path)
+                    await download_file(service, file_id, local_path)
                     downloaded += 1
                     action = "Aktualisiert"
                     status.append("🔁 lokal aktualisiert")
             else:
-                download_file(service, file_id, local_path)
+                await download_file(service, file_id, local_path)
                 downloaded += 1
                 action = "Heruntergeladen"
                 status.append("⬇️ heruntergeladen")
@@ -1411,7 +1346,7 @@ def p5():
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    asyncio.run(move_gdrive_files_by_local(service, "double"))
+    asyncio.run(move_gdrive_files_by_local(service, "recheck"))
 
 
 if __name__ == "__main__":

@@ -4,8 +4,10 @@ from pathlib import Path
 
 from tqdm import tqdm
 
-from config import IMAGE_FILE_CACHE_DIR, TEXT_FILE_CACHE_DIR
+from app.config_gdrive import sanitize_filename
 from config import IMAGE_EXTENSIONS, TEMP_FILE_DIR
+from config import IMAGE_FILE_CACHE_DIR, TEXT_FILE_CACHE_DIR
+
 
 def find_missing_text_files(image_cache_dir: Path, text_dir: Path):
     missing = []
@@ -84,6 +86,7 @@ def find_missing_text_files(image_cache_dir: Path, text_dir: Path):
                 print(f"[→] .txt-Datei verschoben: {txt_file} → {temp_txt}")
             except Exception as e:
                 print(f"[Fehler beim Verschieben der .txt-Datei] {txt_file}: {e}")
+
 
 if __name__ == "__main__":
     find_missing_text_files(Path(IMAGE_FILE_CACHE_DIR), Path(TEXT_FILE_CACHE_DIR))

@@ -3,8 +3,10 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Any
 from typing import Optional
+
+from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
 from app.config import Settings
 from app.config_gdrive import sanitize_filename, folder_id_by_name, SettingsGdrive, collect_all_folders
@@ -49,6 +51,29 @@ async def delete_all_hashfiles_async(file_folder_dir: str, subfolders: bool = Tr
     return deleted
 
 
+async def update_local_hashes(folder_name):
+    local_cache = {}
+    folder_path = os.path.join(Settings.IMAGE_FILE_CACHE_DIR, folder_name)
+
+    await update_progress_text(f"📁 Verarbeite Kategorie: {folder_name}")
+
+    await readimages(folder_path, local_cache)
+
+    for image_name, entry in local_cache.items():
+        image_id = entry.get('image_id')
+        if image_id:
+            save_folder_status_to_db(Settings.DB_PATH, image_id, folder_name)
+
+    hash_file = Path(folder_path) / Settings.GALLERY_HASH_FILE
+    local_hashes = {name: data.get('image_id', '') for name, data in local_cache.items()}
+
+    try:
+        await save_simple_hashes(local_hashes, hash_file)
+        await update_progress_text(f"✅ {len(local_hashes)} Hashes gespeichert für {folder_name}")
+    except Exception as e:
+        await update_progress_text(f"❌ Fehler beim Speichern der Hashes für {folder_name}: {e}")
+
+
 async def update_all_local_hashes():
     """Aktualisiert die Hash-Dateien für alle Kategorien."""
     await init_progress_state()
@@ -56,26 +81,13 @@ async def update_all_local_hashes():
 
     try:
         total_kategorien = len(Settings.kategorien)
-        local_cache = {}
 
         for idx, kategorie in enumerate(Settings.kategorien, 1):
             folder_name = kategorie["key"]
             folder_path = os.path.join(Settings.IMAGE_FILE_CACHE_DIR, folder_name)
 
-            await update_progress_text(f"📁 Verarbeite Kategorie: {folder_name}")
             await update_progress(f"Kategorie {folder_name}", int((idx / total_kategorien) * 100))
-
-            local_cache.clear()
-            await readimages(folder_path, local_cache)
-
-            hash_file = Path(folder_path) / Settings.GALLERY_HASH_FILE
-            local_hashes = {name: data.get('image_id', '') for name, data in local_cache.items()}
-
-            try:
-                await save_simple_hashes(local_hashes, hash_file)
-                await update_progress_text(f"✅ {len(local_hashes)} Hashes gespeichert für {folder_name}")
-            except Exception as e:
-                await update_progress_text(f"❌ Fehler beim Speichern der Hashes für {folder_name}: {e}")
+            await update_local_hashes(folder_path)
 
         await update_progress_text("✅ Hash-Aktualisierung abgeschlossen")
 
@@ -202,11 +214,9 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
 
         elif folder_key in Settings.CHECKBOX_CATEGORIES:
             await update_progress_text(f"📂 Modus: Einzelne Kategorie ({folder_key})")
-            folder_name = next(
-                (k["label"] for k in Settings.kategorien if k["key"] == folder_key),
-                folder_key
-            )
-            await process_category(folder_key, folder_name)
+            folder_name = folder_key
+            await update_gdrive_hashes(service, folder_name)
+            await update_local_hashes(folder_name)
             Settings.folders_loaded += 1
 
         else:
@@ -215,7 +225,9 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
             pair_cache.clear()
 
             for kategorie in Settings.kategorien:
-                await process_category(kategorie["key"], kategorie["label"])
+                folder_name = kategorie["key"]
+                await update_gdrive_hashes(service, folder_name)
+                await update_local_hashes(folder_name)
                 Settings.folders_loaded += 1
 
             await update_progress_text("🗃️ Modus: Textverarbeitung")
@@ -630,11 +642,13 @@ async def delete_duplicates_in_gdrive_folder(service, folder_id: str) -> None:
         await update_progress_text(f"❌ Fehler: {str(e)}")
 
 
-async def move_duplicates_in_folder(folder_path: str) -> None:
+async def move_duplicates_in_folder(folder_path: str) -> dict[str, list[Path]]:
     """
     Verschiebt doppelte Bilddateien in einem lokalen Ordner und seinen Unterordnern
     in den TEMP_DIR_PATH Ordner.
     """
+    files_by_md5: Dict[str, List[Path]] = {}
+
     try:
         base_folder = Path(folder_path)
         folder_name = base_folder.name
@@ -648,7 +662,7 @@ async def move_duplicates_in_folder(folder_path: str) -> None:
         total_files = 0
         files_to_process = []
 
-        await update_progress_text(f"[{folder_name}] 📂 Sammle Dateien...", ctime=0.01)
+        await update_progress_text(f"[{folder_name}] 📂 Sammle Dateien...")
 
         # Sammle erst alle Ordner und zähle Dateien
         for subdir in base_folder.rglob("*"):
@@ -669,7 +683,6 @@ async def move_duplicates_in_folder(folder_path: str) -> None:
         await update_progress_text(f"[{folder_name}] 📂 {len(folders)} Ordner, {total_files} Dateien gefunden")
 
         # Verarbeite Dateien
-        files_by_md5: Dict[str, List[Path]] = {}
         processed_files = 0
         last_progress = 0
 
@@ -686,7 +699,7 @@ async def move_duplicates_in_folder(folder_path: str) -> None:
                         file_path = new_path
                     except Exception as e:
                         await update_progress_text(
-                            f"[{folder_name}] ❌ Fehler beim Umbenennen von {original_name}: {str(e)}", ctime=0.01)
+                            f"[{folder_name}] ❌ Fehler beim Umbenennen von {original_name}: {str(e)}")
                         continue
 
                 # MD5 Hash berechnen
@@ -708,7 +721,7 @@ async def move_duplicates_in_folder(folder_path: str) -> None:
 
             except Exception as e:
                 await update_progress_text(
-                    f"[{folder_name}] ❌ Fehler bei {file_path.name}: {str(e)}", ctime=0.01)
+                    f"[{folder_name}] ❌ Fehler bei {file_path.name}: {str(e)}")
 
         # Duplikate in temp Ordner verschieben
         duplicates_found = sum(len(files) - 1 for files in files_by_md5.values() if len(files) > 1)
@@ -748,14 +761,302 @@ async def move_duplicates_in_folder(folder_path: str) -> None:
             f"[{folder_name}] ✅ Abgeschlossen: {moved_count} von {duplicates_found} Duplikaten verschoben")
 
     except Exception as e:
-        await update_progress_text(f"[{folder_name}] ❌ Fehler: {str(e)}")
+        await update_progress_text(f"[{folder_path}] ❌ Fehler: {str(e)}")
+
+    return files_by_md5
 
 
-async def move_duplicates_in_gdrive_folder(service, folder_id: str) -> None:
+async def download_file(service, file_id, local_path):
+    request = service.files().get_media(fileId=file_id)
+    with open(local_path, 'wb') as f:
+        downloader = MediaIoBaseDownload(f, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+
+
+async def upload_file_to_gdrive(service, file_path: Path, target_folder_id: str) -> bool:
+    """
+    Lädt eine Datei in Google Drive hoch.
+
+    Args:
+        service: Google Drive Service Objekt
+        file_path: Path Objekt zur lokalen Datei
+        target_folder_id: ID des Zielordners in Google Drive
+
+    Returns:
+        bool: True wenn Upload erfolgreich, False bei Fehler
+    """
+    try:
+        await update_progress_text(f"⬆️ Lade {file_path.name} hoch...")
+
+        # Metadata für die Datei
+        file_metadata = {
+            'name': file_path.name,
+            'parents': [target_folder_id]
+        }
+
+        # MediaFileUpload Objekt erstellen
+        media = MediaFileUpload(
+            str(file_path),
+            mimetype='image/*',
+            resumable=True
+        )
+
+        # Upload mit Progress-Updates
+        request = service.files().create(
+            body=file_metadata,
+            media_body=media,
+            fields='id'
+        )
+
+        response = None
+        while response is None:
+            status, response = request.next_chunk()
+            if status:
+                await update_progress(
+                    f"⬆️ Upload von {file_path.name}",
+                    int(status.progress() * 100)
+                )
+
+        await update_progress_text(f"✅ {file_path.name} erfolgreich hochgeladen (ID: {response.get('id')})")
+        return True
+
+    except Exception as e:
+        await update_progress_text(f"❌ Fehler beim Hochladen von {file_path.name}: {e}")
+        return False
+
+
+async def dd(
+        service: object,
+        files_by_md5: Dict[str, List[Path]] | None,
+        md5_groups_gdrive: dict[Any, Any] | None) -> None:
+    """
+
+    :type service: object
+    """
+    # Speichern der aktuellen Daten
+    cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR).parent
+    cache_dir.mkdir(exist_ok=True)
+
+    files_cache = cache_dir / "files_by_md5.json"
+    gdrive_cache = cache_dir / "md5_groups_gdrive.json"
+
+    # Laden der Caches, wenn Parameter None sind
+    if files_by_md5 is None:
+        try:
+            with files_cache.open('r') as f:
+                # Konvertiere Pfad-Strings zurück zu Path-Objekten
+                data = json.load(f)
+                files_by_md5 = {
+                    md5: [Path(p) for p in paths]
+                    for md5, paths in data.items()
+                }
+        except (FileNotFoundError, json.JSONDecodeError):
+            files_by_md5 = {}
+
+    if md5_groups_gdrive is None:
+        try:
+            with gdrive_cache.open('r') as f:
+                md5_groups_gdrive = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            md5_groups_gdrive = {}
+
+    if not files_by_md5 or not md5_groups_gdrive:
+        return
+
+    try:
+        # Konvertiere Path-Objekte zu Strings für JSON-Serialisierung
+        serializable_files = {
+            md5: [str(p) for p in paths]
+            for md5, paths in files_by_md5.items()
+        }
+        with files_cache.open('w') as f:
+            json.dump(serializable_files, f, indent=2)
+
+        with gdrive_cache.open('w') as f:
+            json.dump(md5_groups_gdrive, f, indent=2)
+    except Exception as e:
+        await update_progress_text(f"❌ Fehler beim Speichern der Caches: {str(e)}")
+
+    folder_name = "Alle"
+    # Nach dem Verschieben der Duplikate, Vergleich mit GDrive durchführen
+    await update_progress_text(f"[{folder_name}] 🔄 Vergleiche mit GDrive-Hashes...")
+
+    # Finde Dateien die nur lokal existieren
+    local_only_hashes = set(files_by_md5.keys()) - set(md5_groups_gdrive.keys())
+    if local_only_hashes:
+        await update_progress_text(f"[{folder_name}] 📌 {len(local_only_hashes)} Dateien nur lokal gefunden")
+
+        for md5 in local_only_hashes:
+            local_files = files_by_md5[md5]
+            for file_path in local_files:
+                try:
+                    # Bestimme den Zielordner aus dem Elternverzeichnis der Datei
+                    target_folder = file_path.parent.name
+                    target_folder_id = folder_id_by_name(target_folder)
+
+                    if not target_folder_id:
+                        await update_progress_text(
+                            f"[{folder_name}] ⚠️ Keine Folder-ID für: {target_folder}")
+                        continue
+
+                    # Upload durchführen
+                    success = await upload_file_to_gdrive(
+                        service,
+                        file_path,
+                        target_folder_id
+                    )
+
+                    if success:
+                        await update_progress_text(
+                            f"[{folder_name}] 📤 Hochgeladen: {file_path.name} → {target_folder}")
+
+                except Exception as e:
+                    await update_progress_text(
+                        f"[{folder_name}] ❌ Upload-Fehler bei {file_path.name}: {str(e)}")
+                    continue
+
+    # Finde Dateien die nur in GDrive existieren
+    gdrive_only_hashes = set(md5_groups_gdrive.keys()) - set(files_by_md5.keys())
+    if gdrive_only_hashes:
+        await update_progress_text(f"[{folder_name}] ☁️ {len(gdrive_only_hashes)} Dateien nur in GDrive gefunden")
+        for md5 in gdrive_only_hashes:
+            gdrive_files = md5_groups_gdrive[md5]
+            for file_info in gdrive_files:
+                name = file_info.get('name');
+                await update_progress_text(f"[{folder_name}] ☁️ Nur GDrive: {name}")
+                try:
+                    file_id = file_info.get('id')
+                    local_file = Path(Settings.IMAGE_FILE_CACHE_DIR) / "recheck" / name
+                    await download_file(service, file_id, local_file)
+                    if local_file.exists():
+                        await update_progress_text(f"📥 Heruntergeladen: {local_file}")
+                except Exception as e:
+                    await update_progress_text(f"❌ Download-Fehler bei {name}: {e}")
+
+    # Finde Unterschiede bei Dateien die in beiden existieren
+    common_hashes = set(files_by_md5.keys()) & set(md5_groups_gdrive.keys())
+    name_mismatches = []
+
+    for md5 in common_hashes:
+        local_names = {f.name for f in files_by_md5[md5]}
+        gdrive_names = {f.get('name', '') for f in md5_groups_gdrive[md5]}
+
+        # Prüfe auf Namensunterschiede
+        if local_names != gdrive_names:
+            name_mismatches.append({
+                'md5': md5,
+                'local_names': local_names,
+                'gdrive_names': gdrive_names
+            })
+
+    if name_mismatches:
+        await update_progress_text(
+            f"[{folder_name}] ⚠️ {len(name_mismatches)} Dateien mit unterschiedlichen Namen gefunden")
+        for mismatch in name_mismatches:
+            try:
+                if not mismatch['local_names']:
+                    await update_progress_text(
+                        f"[{folder_name}] ⚠️ Keine lokalen Namen für MD5: {mismatch['md5']}",
+                        ctime=0.01)
+                    continue
+
+                local_name = mismatch['local_names'].pop()
+                sanitized_name = sanitize_filename(local_name)
+
+                # Hier fehlt die GDrive File ID - wir müssen sie aus md5_groups_gdrive holen
+                gdrive_files = md5_groups_gdrive[mismatch['md5']]
+                for gdrive_file in gdrive_files:
+                    service.files().update(
+                        fileId=gdrive_file['id'],
+                        body={'name': sanitized_name}
+                    ).execute()
+                    await update_progress_text(
+                        f"[{folder_name}] ✏️ Umbenannt: {gdrive_file['name']} → {sanitized_name}")
+
+            except Exception as e:
+                await update_progress_text(
+                    f"[{folder_name}] ❌ Fehler beim Umbenennen (MD5: {mismatch['md5']}): {str(e)}")
+                continue
+
+    summary = (
+        f"[{folder_name}] 📊 Zusammenfassung:\n"
+        f"- {len(local_only_hashes)} Dateien nur lokal\n"
+        f"- {len(gdrive_only_hashes)} Dateien nur in GDrive\n"
+        f"- {len(name_mismatches)} Dateien mit Namensunterschieden"
+    )
+
+
+async def move_duplicates_to_temp(
+        service: object,
+        md5_groups: dict,
+        temp_folder_id: str,
+        folder_name: str
+) -> int:
+    """
+    Verschiebt Duplikate in einen temporären Ordner.
+
+    Args:
+        service: Google Drive Service
+        md5_groups: Dictionary mit MD5-Hash als Key und Liste von Dateien als Value
+        temp_folder_id: ID des temporären Ordners
+        folder_name: Name des aktuellen Ordners für Logging
+
+    Returns:
+        int: Anzahl der verschobenen Dateien
+    """
+    moved_count = 0
+    total_duplicates = sum(len(file_group) - 1
+                           for file_group in md5_groups.values()
+                           if len(file_group) > 1)
+
+    if total_duplicates == 0:
+        return 0
+
+    await update_progress(f"[{folder_name}] 🔍 Verarbeite Duplikate", 0)
+
+    current_count = 0
+    for md5, file_group in md5_groups.items():
+        if len(file_group) > 1:
+            original = file_group[0]
+            duplicates = file_group[1:]
+
+            for dup in duplicates:
+                try:
+                    service.files().update(
+                        fileId=dup['id'],
+                        addParents=temp_folder_id,
+                        removeParents=dup['parents'][0]
+                    ).execute()
+                    moved_count += 1
+                    current_count += 1
+
+                    # Update nur alle 5% oder bei jedem 10ten File
+                    if current_count % 10 == 0 or (current_count / total_duplicates) * 100 % 5 == 0:
+                        progress = int((current_count / total_duplicates) * 100)
+                        await update_progress(
+                            f"[{folder_name}] 📦 Verschiebe Duplikate ({current_count}/{total_duplicates})",
+                            progress
+                        )
+
+                except Exception as e:
+                    await update_progress_text(
+                        f"[{folder_name}] ❌ Fehler beim Verschieben von {dup['name']}: {str(e)}")
+                    current_count += 1
+                    continue
+
+    await update_progress(f"[{folder_name}] ✅ {moved_count} Duplikate verschoben", 100)
+    return moved_count
+
+
+async def move_duplicates_in_gdrive_folder(service, folder_id: str) -> dict[Any, Any]:
     """
     Verschiebt doppelte Bilddateien in einem Google Drive Ordner und seinen Unterordnern
     in einen 'temp' Ordner.
     """
+    md5_groups = {}
+
     try:
         folder_name = service.files().get(fileId=folder_id, fields="name").execute().get("name", "Unbekannt")
         await update_progress_text(f"[{folder_name}] 🔍 Initialisiere Suche nach Duplikaten...")
@@ -825,7 +1126,6 @@ async def move_duplicates_in_gdrive_folder(service, folder_id: str) -> None:
                         f"[{folder_name}] ❌ Fehler beim Umbenennen von {original_name}: {str(e)}")
 
         # Duplikate nach MD5 gruppieren
-        md5_groups = {}
         for file in files:
             if not any(file.get('name', '').lower().endswith(ext) for ext in Settings.IMAGE_EXTENSIONS):
                 continue
@@ -836,32 +1136,21 @@ async def move_duplicates_in_gdrive_folder(service, folder_id: str) -> None:
                     md5_groups[md5] = []
                 md5_groups[md5].append(file)
 
-        # Duplikate in temp Ordner verschieben
-        moved_count = 0
-        for md5, file_group in md5_groups.items():
-            if len(file_group) > 1:
-                original = file_group[0]
-                duplicates = file_group[1:]
-
-                for dup in duplicates:
-                    try:
-                        service.files().update(
-                            fileId=dup['id'],
-                            addParents=temp_folder_id,
-                            removeParents=dup['parents'][0]
-                        ).execute()
-                        moved_count += 1
-                        await update_progress_text(f"[{folder_name}] 📦 Verschoben: {dup['name']}")
-                    except Exception as e:
-                        await update_progress_text(
-                            f"[{folder_name}] ❌ Fehler beim Verschieben von {dup['name']}: {str(e)}")
-                        continue
+        # Verschiebe Duplikate
+        moved_count = await move_duplicates_to_temp(
+            service=service,
+            md5_groups=md5_groups,
+            temp_folder_id=temp_folder_id,
+            folder_name=folder_name
+        )
 
         await update_progress_text(
             f"[{folder_name}] ✅ Abgeschlossen: {moved_count} Duplikate in temp Ordner verschoben")
 
     except Exception as e:
         await update_progress_text(f"[{folder_name}] ❌ Fehler: {str(e)}")
+
+    return md5_groups
 
 
 def p5():
@@ -889,6 +1178,24 @@ def p5():
         print(f"Inkonsistente Ordner: {len(result['inconsistencies'])}")
 
 
+async def mache_alles(service):
+    await init_progress_state()
+    progress_state["running"] = True
+    await update_progress_text("🔄 Starting duplicate detection")
+
+    await update_all_local_hashes()
+    await update_all_gdrive_hashes(service)
+    await dd(service, None, None)
+
+    files_by_md5 = await  move_duplicates_in_folder(Settings.IMAGE_FILE_CACHE_DIR)
+
+    md5_groups_gdrive = await move_duplicates_in_gdrive_folder(service, folder_id_by_name("imagefiles"))
+
+    await dd(service, files_by_md5, md5_groups_gdrive)
+    await update_all_local_hashes()
+    await update_all_gdrive_hashes(service)
+
+
 def p6():
     Settings.DB_PATH = '../../gallery_local.db'
     Settings.TEMP_DIR_PATH = Path("../../cache/temp")
@@ -899,11 +1206,20 @@ def p6():
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
-    asyncio.run(move_duplicates_in_gdrive_folder(service, folder_id_by_name("imagefiles")))
-    asyncio.run(update_all_gdrive_hashes(service))
+    asyncio.run(mache_alles(service))
 
-    asyncio.run(move_duplicates_in_folder(Settings.IMAGE_FILE_CACHE_DIR))
-    asyncio.run(update_all_local_hashes())
+
+def p7():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+
+    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+
+    asyncio.run(reloadcache_progress(service, "recheck"))
 
 
 if __name__ == "__main__":
