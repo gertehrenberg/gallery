@@ -17,7 +17,6 @@ from app.database import init_db
 from app.routes import auth, gallery, static, admin, login, dashboard
 from app.routes.auth import SCOPES, TOKEN_FILE
 from app.routes.dashboard_help import fillcache_local
-from app.routes.hashes import fill_file_parents_cache
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
 from app.services.manage_n8n import manage_gemini_process
@@ -62,8 +61,6 @@ def slow_start():
     logger.info("🏁 Starte langsames Initialisieren...")
     try:
         init_db(Settings.DB_PATH)
-        fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
-        fill_file_parents_cache(Settings.DB_PATH)
     except Exception as e:
         logger.error(f"Fehler bei der Initialisierung: {e}")
         # Anwendungsstart abbrechen

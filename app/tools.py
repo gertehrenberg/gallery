@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple, Any
@@ -7,7 +8,7 @@ from typing import Optional, Dict, List, Tuple, Any
 from PIL import Image
 
 from app.config import Settings
-from app.config_gdrive import calculate_md5
+from app.config_gdrive import calculate_md5, SettingsGdrive
 from app.utils.logger_config import setup_logger
 from app.utils.progress import update_progress_text
 
@@ -19,45 +20,109 @@ class ImageCacheError(Exception):
     pass
 
 
+def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
+    pair_cache = Settings.CACHE["pair_cache"]
+    pair_cache.clear()
+
+    logger.info(f"[fillcache_local] 📂 Lesen: {pair_cache_path_local}")
+
+    if os.path.exists(pair_cache_path_local):
+        try:
+            with open(pair_cache_path_local, 'r') as f:
+                pair_cache.update(json.load(f))
+                logger.info(f"[fillcache_local] Pair-Cache geladen: {len(pair_cache)} Paare")
+                return
+        except Exception as e:
+            logger.warning(f"[fillcache_local] Fehler beim Laden von pair_cache.json: {e}")
+
+    fill_pair_cache(image_file_cache_dir, pair_cache, pair_cache_path_local)
+
+
 def find_image_id_by_name(image_name: str) -> Optional[str]:
     """
     Findet die Image-ID für einen gegebenen Bildnamen im Cache.
+    Versucht den Cache neu zu laden falls keine ID gefunden wird.
 
     Args:
-        image_name: Name des Bildes
+        image_name: Name des Bildes (case-insensitive)
 
     Returns:
         Optional[str]: Image-ID wenn gefunden, sonst None
     """
     logger.info(f"🔎 Suche ID für Bild: {image_name}")
+
+    # Normalisiere den Bildnamen (lowercase)
+    image_name = image_name.lower()
+
+    # Erste Suche im Cache
     pair_cache = Settings.CACHE.get("pair_cache", {})
-    pair = pair_cache.get(image_name)
+    if pair := pair_cache.get(image_name):
+        image_id = pair.get('image_id')
+        if image_id:
+            logger.info(f"✅ Gefunden: {image_id}")
+            return image_id
 
-    if pair:
-        logger.info(f"✅ Gefunden: {pair.get('image_id')}")
-        return pair.get('image_id')
+    # Cache neu laden wenn nichts gefunden wurde
+    logger.info("🔄 Keine ID im Cache gefunden, lade Cache neu...")
+    try:
+        fillcache_local(
+            str(Settings.PAIR_CACHE_PATH),
+            Settings.IMAGE_FILE_CACHE_DIR
+        )
 
-    logger.warning(f"❌ Kein Eintrag gefunden für: {image_name}")
+        # Erneute Suche nach der Cache-Aktualisierung
+        pair_cache = Settings.CACHE.get("pair_cache", {})
+        if pair := pair_cache.get(image_name):
+            image_id = pair.get('image_id')
+            if image_id:
+                logger.info(f"✅ Nach Cache-Aktualisierung gefunden: {image_id}")
+                return image_id
+
+    except Exception as e:
+        logger.error(f"❌ Fehler beim Neuladen des Cache: {e}")
+
+    logger.warning(f"❌ Keine ID gefunden für Bild: {image_name}")
     return None
 
 
 def find_image_name_by_id(image_id: str) -> Optional[str]:
     """
     Findet den Bildnamen für eine gegebene Image-ID im Cache.
+    Versucht den Cache neu zu laden falls keine ID gefunden wird.
 
     Args:
-        image_id: ID des Bildes
+        image_id: ID des Bildes im Google Drive
 
     Returns:
-        Optional[str]: Bildname wenn gefunden, sonst None
+        Optional[str]: Name der Bilddatei wenn gefunden, sonst None
     """
-    # logger.info(f"🔍 Suche Bildname für ID: {image_id}")
+    logger.info(f"🔎 Suche Bildname für ID: {image_id}")
+
+    # Erster Versuch im existierenden Cache
     pair_cache = Settings.CACHE.get("pair_cache", {})
 
     for image_name, pair in pair_cache.items():
         if pair.get("image_id") == image_id:
-            # logger.info(f"✅ Gefunden: {image_name}")
+            logger.info(f"✅ Gefunden: {image_name}")
             return image_name
+
+    # Cache neu laden wenn nichts gefunden wurde
+    logger.info(f"🔄 Cache-Miss für ID {image_id}, lade Cache neu...")
+    try:
+        fillcache_local(
+            str(Settings.PAIR_CACHE_PATH),
+            Settings.IMAGE_FILE_CACHE_DIR
+        )
+
+        # Erneute Suche im aktualisierten Cache
+        pair_cache = Settings.CACHE.get("pair_cache", {})
+        for image_name, pair in pair_cache.items():
+            if pair.get("image_id") == image_id:
+                logger.info(f"✅ Nach Cache-Aktualisierung gefunden: {image_name}")
+                return image_name
+
+    except Exception as e:
+        logger.error(f"❌ Fehler beim Neuladen des Cache: {e}")
 
     logger.warning(f"❌ Kein Bildname gefunden für ID: {image_id}")
     return None
@@ -243,3 +308,17 @@ async def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
     bilder_daten.sort(key=lambda x: x['data']['aufnahmedatum'], reverse=True)
     for bild in bilder_daten:
         pair_cache[bild['name']] = bild['data']
+
+def p5():
+    Settings.DB_PATH = '../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../cache/gdrive_folders.pkl")
+
+    find_image_name_by_id("ad85c7d9b978ef73332b017063d15d29")
+
+
+if __name__ == "__main__":
+    p5()

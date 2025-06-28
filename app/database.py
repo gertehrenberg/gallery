@@ -227,7 +227,6 @@ def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, 
         logger.warning(f"[move_file_db] ⚠️ Kein Eintrag im pair_cache für: {image_name}")
         return False
     image_id = pair["image_id"]
-    file_parents_cache = Settings.CACHE.get("file_parents_cache")
 
     for attempt in range(retries):
         try:
@@ -237,19 +236,6 @@ def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, 
                          WHERE image_id = ?
                            AND folder_id = ?
                          """, (new_folder_id, image_id, old_folder_id))
-
-            if old_folder_id in file_parents_cache:
-                try:
-                    file_parents_cache[old_folder_id].remove(image_id)
-                except ValueError:
-                    logger.warning(
-                        f"[move_file_db] Datei {image_name} war nicht im Cache von {old_folder_id} vorhanden.")
-
-            if new_folder_id not in file_parents_cache:
-                file_parents_cache[new_folder_id] = []
-
-            if image_id not in file_parents_cache[new_folder_id]:
-                file_parents_cache[new_folder_id].append(image_id)
 
             conn.commit()
             logger.info(f"[move_file_db] ✅ Erfolgreich verschoben (nur DB): {image_id}")
@@ -495,10 +481,11 @@ def check_folder_status_in_db(db_path, image_id, folder_key):
     cursor = conn.cursor()
     try:
         cursor.execute("""
-            SELECT 1 FROM image_folder_status 
-            WHERE image_id = ? AND folder_id = ?
-            LIMIT 1
-        """, (image_id, folder_key))
+                       SELECT 1
+                       FROM image_folder_status
+                       WHERE image_id = ?
+                         AND folder_id = ? LIMIT 1
+                       """, (image_id, folder_key))
         exists = cursor.fetchone() is not None
         return exists
     finally:
@@ -521,11 +508,11 @@ def save_folder_status_to_db(db_path: str, image_id: str, folder_key: str):
 def load_scores_from_db(db_path, image_name):
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute("""
-            SELECT score_type, score
-            FROM image_quality_scores
-            WHERE LOWER(image_name) = LOWER(?)
-              AND score_type BETWEEN 10 AND 15
-        """, (image_name,)).fetchall()
+                            SELECT score_type, score
+                            FROM image_quality_scores
+                            WHERE LOWER(image_name) = LOWER(?)
+                              AND score_type BETWEEN 10 AND 15
+                            """, (image_name,)).fetchall()
 
     # Ergebnis in dict umwandeln:
     score_map = {}
@@ -573,9 +560,9 @@ def get_scores_filtered_by_expr(db_path, expr):
 def load_all_nsfw_images(db_path: str, score_type: int, score: int) -> set[str]:
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute("""
-            SELECT DISTINCT LOWER(image_name)
-            FROM image_quality_scores
-            WHERE score_type = ? 
-            AND score > ?
-        """, (score_type, score)).fetchall()
+                            SELECT DISTINCT LOWER(image_name)
+                            FROM image_quality_scores
+                            WHERE score_type = ?
+                              AND score > ?
+                            """, (score_type, score)).fetchall()
         return {row[0] for row in rows}

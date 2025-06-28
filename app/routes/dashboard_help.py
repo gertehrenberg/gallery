@@ -36,20 +36,6 @@ def _process_image_files(image_files, folder_name, file_parents_cache, db_path):
         save_folder_status_to_db(db_path, image_id, folder_name)
 
 
-def fill_file_parents_cache_by_name(db_path: str, folder_key: str):
-    file_parents_cache = Settings.CACHE["file_parents_cache"]
-    if folder_key not in file_parents_cache:
-        file_parents_cache[folder_key] = []
-
-    folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
-    if not _prepare_folder(folder_path):
-        return
-
-    image_files = list(folder_path.iterdir())
-    _process_image_files(image_files, folder_key, file_parents_cache, db_path)
-    logger.info(f"[fill_folder_cache] ✅ Einzelner Ordner verarbeitet: {folder_key}")
-
-
 def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
     pair_cache = Settings.CACHE["pair_cache"]
     pair_cache.clear()

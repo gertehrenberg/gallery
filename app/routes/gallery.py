@@ -4,7 +4,6 @@ import math
 import os
 import time
 from pathlib import Path
-from typing import Dict
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Request, Query, Form
@@ -33,14 +32,6 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), ".
 
 logger = setup_logger(__name__)
 
-Settings.app_ready = False
-
-
-def is_file_in_folder(image_id: str, folder_name: str) -> bool:
-    """Prüft nur lokal im Cache, ob eine Datei in einem Ordner ist."""
-    parents = Settings.CACHE["file_parents_cache"].get(folder_name, [])  # Verwende Caches aus Settings
-    return image_id in parents
-
 
 @router.get("/images", response_class=HTMLResponse)
 def show_image_redirect(
@@ -65,14 +56,11 @@ def show_image_redirect(
     pair_cache = newpaircache(folder_name)
     pagecounter = 0
     for image_name_l in pair_cache:
-        pair = pair_cache[image_name_l]
-        image_id = pair.get("image_id", "")
-        if is_file_in_folder(image_id, folder_name):
-            pagecounter += 1
-            if image_name_l.strip().lower() == image_name:
-                clean(image_name)
-                url = f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}&lasttextflag={textflag}"
-                return RedirectResponse(url=url)
+        pagecounter += 1
+        if image_name_l.strip().lower() == image_name:
+            clean(image_name)
+            url = f"/gallery/?page={pagecounter}&count=1&folder={folder_name}&textflag=2&lastpage={page}&lastcount={count}&lasttextflag={textflag}"
+            return RedirectResponse(url=url)
 
     url = f"/gallery/?page={page}&count={count}&folder={folder_name}&textflag={textflag}"
     return RedirectResponse(url=url)
@@ -187,11 +175,6 @@ def show_images_gallery(
     # 3. Hauptschleife über alle Bilder
     logger.info("[Gallery] Starte Hauptschleife über Bilder")
     for image_name in pair_cache.keys():
-        pair = pair_cache[image_name]
-        image_id = pair['image_id']
-        if not is_file_in_folder(image_id, folder_name):
-            continue
-
         # Nur Bilder mit positivem Score-Match weiterverarbeiten
         if score_expr and filtered_names is not None:
             if image_name.lower() not in filtered_names:
@@ -362,7 +345,7 @@ async def verarbeite_checkbox(
         count: str = Query(DEFAULT_COUNT),
         folder: str = Query(DEFAULT_FOLDER),
         user: str = Depends(require_login)):
-    logger.info(f"📦 Starte move_marked_images_by_checkbox() von '{folder}' nach '{checkbox}'")
+    logger.info(f"📦 Starte verarbeite_checkbox() von '{folder}' nach '{checkbox}'")
     if checkbox not in Settings.CHECKBOX_CATEGORIES:
         logger.warning("❌ Ungültige Checkbox-Kategorie")
         return JSONResponse(status_code=400, content={"status": "invalid checkbox"})

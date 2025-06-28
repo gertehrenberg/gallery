@@ -1097,24 +1097,6 @@ async def _reload_comfyui(folder: str = Form(...), direction: str = Form(...)):
     return {"status": "ok"}
 
 
-def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
-    pair_cache = Settings.CACHE["pair_cache"]
-    pair_cache.clear()
-
-    logger.info(f"[fillcache_local] 📂 Lesen: {pair_cache_path_local}")
-
-    if os.path.exists(pair_cache_path_local):
-        try:
-            with open(pair_cache_path_local, 'r') as f:
-                pair_cache.update(json.load(f))
-                logger.info(f"[fillcache_local] Pair-Cache geladen: {len(pair_cache)} Paare")
-                return
-        except Exception as e:
-            logger.warning(f"[fillcache_local] Fehler beim Laden von pair_cache.json: {e}")
-
-    fill_pair_cache(image_file_cache_dir, pair_cache, pair_cache_path_local)
-
-
 def load_rendered_html_file(file_dir: Path, file_name: str) -> str | None:
     file_path = file_dir / (file_name + ".j2")
     if file_path.is_file():
@@ -1330,7 +1312,7 @@ def p4():
     Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
-    # fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
+    fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 

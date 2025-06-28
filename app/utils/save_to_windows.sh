@@ -99,6 +99,10 @@ log "${GREEN}Starte Backup: $NOW${NC}"
 log "Quelle: $SRC"
 log "Ziel: $LATEST"
 
+# Erstelle notwendige Verzeichnisse
+mkdir -p "$LATEST/cache/thumbnailfiles300/.rsync-partial"
+chmod 755 "$LATEST/cache/thumbnailfiles300/.rsync-partial"
+
 # 5) Rsync mit maximaler Fortschrittsanzeige und Wiederaufnahme-Funktion
 RSYNC_OPTS=(
     -aHAX                    # Archive mode + ACLs + extended attributes
@@ -106,7 +110,7 @@ RSYNC_OPTS=(
     --delete-excluded        # Delete excluded files too
     --exclude-from="$EXCLUDE_FILE"
     --partial               # Behalte teilweise übertragene Dateien
-    --partial-dir=.rsync-partial  # Temporäres Verzeichnis für teilweise Übertragungen
+    --partial-dir="$LATEST/cache/thumbnailfiles300/.rsync-partial"  # Absoluter Pfad für partial-dir
     --delay-updates         # Verzögere Updates bis zum Schluss
     --info=progress2        # Detaillierte Fortschrittsanzeige
     --info=name0           # Zeige aktuelle Datei
@@ -123,6 +127,7 @@ if [[ -d "$LATEST" ]]; then
     log "Setze Backup fort...${NC}"
 else
     log "${GREEN}Starte neues Backup: $LATEST${NC}"
+    mkdir -p "$LATEST"
 fi
 
 # Wenn ein vorheriges vollständiges Backup existiert
@@ -136,12 +141,12 @@ log "${GREEN}Starte Synchronisation...${NC}"
 if ! rsync "${RSYNC_OPTS[@]}" "$SRC/" "$LATEST/"; then
     error "rsync wurde unterbrochen oder ist fehlgeschlagen."
     log "${YELLOW}Sie können das Backup später mit demselben Befehl fortsetzen."
-    log "Teilweise übertragene Dateien bleiben in $LATEST/.rsync-partial${NC}"
+    log "Teilweise übertragene Dateien bleiben in $LATEST/cache/thumbnailfiles300/.rsync-partial${NC}"
     exit 1
 fi
 
 # Nach erfolgreichem rsync
-rm -rf "$LATEST/.rsync-partial"
+rm -rf "$LATEST/cache/thumbnailfiles300/.rsync-partial"
 
 # 6) "letzte"-Symlink aktualisieren
 if ! ln -nfs "$LATEST" "$DEST/letzte"; then

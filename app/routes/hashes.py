@@ -10,12 +10,10 @@ from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
 from app.config import Settings
 from app.config_gdrive import sanitize_filename, folder_id_by_name, SettingsGdrive, collect_all_folders
-from app.database import clear_folder_status_db_by_name, save_folder_status_to_db, clear_folder_status_db, \
-    load_folder_status_from_db
+from app.database import save_folder_status_to_db, load_folder_status_from_db
 from app.routes.auth import load_drive_service_token
-from app.routes.dashboard_help import _prepare_folder, _process_image_files
 from app.routes.gdrive_from_lokal import save_structured_hashes
-from app.tools import readimages, save_pair_cache
+from app.tools import readimages
 from app.utils.progress import init_progress_state, progress_state, update_progress, update_progress_text, \
     save_simple_hashes, hold_progress, stop_progress, write_local_hashes_progress
 
@@ -254,52 +252,6 @@ async def process_text_files():
     )
 
 
-async def process_category(folder_key: str, folder_name: str):
-    """
-    Processes a single category folder.
-
-    Args:
-        folder_key: The key of the folder to process
-        folder_name: The display name of the folder
-    """
-    await update_progress_text(f"📂 Verarbeite Kategorie: {folder_key} ({folder_name})")
-
-    pair_cache = Settings.CACHE.get("pair_cache")
-
-    # Update progress
-    await update_progress(f"{folder_name}: fillcache_local ...", 33)
-
-    # Clear existing entries
-    to_delete = [
-        key for key, value in pair_cache.items()
-        if value.get("folder", "") == folder_key
-    ]
-
-    await update_progress_text(f"🧹 Entferne {len(to_delete)} bestehende Einträge aus pair_cache für {folder_key}")
-    for key in to_delete:
-        del pair_cache[key]
-
-    # Process images
-    image_dir = f"{Settings.IMAGE_FILE_CACHE_DIR}/{folder_key}"
-    await update_progress_text(f"📸 Lese Bilder aus {image_dir}")
-    await readimages(image_dir, pair_cache)
-
-    # Save cache
-    save_pair_cache(pair_cache, Settings.PAIR_CACHE_PATH)
-    await update_progress_text(f"💾 pair_cache gespeichert: {Settings.PAIR_CACHE_PATH}")
-
-    await update_progress(f"{folder_name}: fillcache_local fertig", 100)
-    await asyncio.sleep(1.0)
-
-    # Update database
-    await update_progress_text("🔄 Aktualisiere Elternpfade in DB")
-    await fill_file_parents_cache_progress(Settings.DB_PATH, folder_key)
-
-    # Write hashes
-    await update_progress_text("🧮 Schreibe lokale Hashes (Bilder)")
-    await write_local_hashes_progress(Settings.IMAGE_EXTENSIONS, image_dir, False)
-
-
 async def process_image_folders_gdrive_progress(service, folder_name: str):
     folder_id = folder_id_by_name(folder_name)
     if not folder_id:
@@ -348,58 +300,6 @@ async def process_image_folders_gdrive_progress(service, folder_name: str):
     await update_progress_text(f"Hash-Datei gespeichert für {folder_name}")
 
 
-async def fill_file_parents_cache_progress(db_path: str, folder_key: str | None):
-    if folder_key:
-
-        file_parents_cache = Settings.CACHE["file_parents_cache"]
-        if folder_key in file_parents_cache:
-            del file_parents_cache[folder_key]
-
-        folder_name = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
-
-        clear_folder_status_db_by_name(db_path, folder_key)
-
-        await update_progress_text(
-            "[fill_file_parents_cache_progress] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
-
-        file_parents_cache[folder_key] = []
-        folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
-        if not _prepare_folder(folder_path):
-            return
-        image_files = list(folder_path.iterdir())
-        await update_progress(f"{folder_name}: Kategorie: {folder_key} : {len(image_files)} Dateien", 0)
-        await _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path)
-        Settings.folders_loaded += 1
-        await update_progress_text(
-            f"[fill_file_parents_cache_progress] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
-    else:
-        file_parents_cache = Settings.CACHE["file_parents_cache"]
-        file_parents_cache.clear()
-
-        if await _load_file_parents_cache_from_db(db_path, file_parents_cache):
-            return
-
-        await update_progress_text(
-            "[fillfill_file_parents_cache_progress] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
-        clear_folder_status_db(db_path)
-
-        for kat in Settings.kategorien:
-            if folder_key and kat != folder_key:
-                continue
-            folder_key = kat["key"]
-            file_parents_cache[folder_key] = []
-            folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key
-            if not _prepare_folder(folder_path):
-                continue
-            await update_progress_text(f"[fill_file_parents_cache_progress] 📂 Lese Bilder aus: {folder_key}")
-            image_files = list(folder_path.iterdir())
-            await update_progress(f"Kategorie: {folder_key} : {len(image_files)} Dateien", 0)
-            await _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path)
-            Settings.folders_loaded += 1
-            await update_progress_text(
-                f"[fill_file_parents_cache_progress] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_key}")
-
-
 async def _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path):
     folder_name = label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
     total = len(image_files)
@@ -439,30 +339,6 @@ async def _load_file_parents_cache_from_db(db_path: str, file_parents_cache: dic
         await update_progress_text(
             f"[fill_folder_cache] ✅ Cache aus DB geladen: {Settings.folders_loaded}/{Settings.folders_total}")
     return True
-
-
-async def fill_file_parents_cache(db_path: str):
-    file_parents_cache = Settings.CACHE["file_parents_cache"]
-    file_parents_cache.clear()
-
-    if await _load_file_parents_cache_from_db(db_path, file_parents_cache):
-        return
-
-    await update_progress_text("[fill_folder_cache] 🚀 Keine Cache-Daten vorhanden, lade von lokal...")
-    clear_folder_status_db(db_path)
-
-    for kat in Settings.kategorien:
-        folder_name = kat["key"]
-        file_parents_cache[folder_name] = []
-        folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name
-        if not _prepare_folder(folder_path):
-            continue
-        await update_progress_text(f"[fill_folder_cache] 📂 Lese Bilder aus: {folder_name}")
-        image_files = list(folder_path.iterdir())
-        _process_image_files(image_files, folder_name, file_parents_cache, db_path)
-        Settings.folders_loaded += 1
-        await update_progress_text(
-            f"[fill_folder_cache] ✅ {Settings.folders_loaded}/{Settings.folders_total} Ordner geladen: {folder_name}")
 
 
 async def verify_file_cache_consistency(base_dir, folder_name: Optional[str] = None) -> dict:

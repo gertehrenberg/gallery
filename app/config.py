@@ -5,7 +5,7 @@ score_type_map = {
     "q1": 1,
     "q2": 2,
     "faces": 5,
-    "text" : 9,
+    "text": 9,
     "drawings": 10,
     "hentai": 11,
     "neutral": 12,
@@ -22,6 +22,7 @@ class Settings:
 
     Diese Klasse definiert alle Konstanten und Einstellungen, die für die Anwendung benötigt werden.
     """
+    app_ready = False
     DATA_DIR = Path('/data')
 
     DB_PATH = 'gallery_local.db'
@@ -87,7 +88,6 @@ class Settings:
         "image_cache": {},  # file_id -> { 'thumbnail': url }
         "text_cache": {},  # lowercase text filename -> content
         "pair_cache": {},  # lowercase image filename -> { image_id, text_id, web_link }
-        "file_parents_cache": {},
         "geo_cache": {},
         "score_filter_result": {}
     }
@@ -97,4 +97,3 @@ class Settings:
     folders_loaded = 0
 
     RECOLL_CONFIG_DIR = "/data/recoll_config"
-
