@@ -16,10 +16,10 @@ from app.database import init_db
 # Importiere die Routen
 from app.routes import auth, gallery, static, admin, login, dashboard
 from app.routes.auth import SCOPES, TOKEN_FILE
-from app.routes.dashboard_help import fillcache_local
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
 from app.services.manage_n8n import manage_gemini_process
+from app.tools import fillcache_local
 from app.utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)

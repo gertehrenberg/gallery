@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
 from app.config import Settings
-from app.database import delete_scores_by_type
+from app.utils.score_utils import delete_scores_by_type
 
 router = APIRouter()
 

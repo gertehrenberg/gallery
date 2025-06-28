@@ -1,6 +1,7 @@
 import re
-from app.config import score_type_map, reverse_score_type_map
-from app.database import load_scores_from_db
+
+from app.config import score_type_map
+from app.utils.db_utils import load_scores_from_db
 
 
 def parse_score_expression(expr, values):

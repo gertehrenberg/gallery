@@ -1,4 +1,4 @@
-import asyncio
+import json
 import json
 import os
 import shutil
@@ -10,10 +10,9 @@ from tqdm import tqdm
 
 from app.config import Settings
 from app.config_gdrive import sanitize_filename, folder_id_by_name, get_all_subfolders, SettingsGdrive, calculate_md5
-from app.database import load_folder_status_from_db
 from app.routes.auth import load_drive_service_token
-from app.routes.dashboard_help import fillcache_local
 from app.tools import find_image_name_by_id
+from app.utils.db_utils import load_folder_status_from_db
 from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, save_simple_hashes, \
     update_progress_text

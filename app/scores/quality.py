@@ -1,13 +1,15 @@
-import cv2
 import logging
-import numpy as np
 from pathlib import Path
+
+import cv2
+import numpy as np
 from skimage import feature
 
 from app.config import Settings
-from app.database import save_quality_scores, load_quality_from_db, delete_scores_by_type
 from app.tools import readimages
+from app.utils.db_utils import save_quality_scores, load_quality_from_db
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
+from app.utils.score_utils import delete_scores_by_type
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(

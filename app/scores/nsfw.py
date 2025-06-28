@@ -2,14 +2,16 @@ import logging
 from pathlib import Path
 
 from app.config import Settings, reverse_score_type_map, score_type_map  # Importiere die Settings-Klasse
-from app.database import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores, delete_scores_by_type
 from app.tools import readimages
+from app.utils.db_utils import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores
 from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
+from app.utils.score_utils import delete_scores_by_type
 
 logger = setup_logger(__name__)
 
 NSFW_SERVICE_URL = "http://nsfw-service:8000/check-nsfw-path/"
+
 
 def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, float] | None:
     try:

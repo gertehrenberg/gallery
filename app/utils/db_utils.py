@@ -1,0 +1,125 @@
+import sqlite3
+
+from app.config import Settings
+from app.utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
+
+
+def save_folder_status_to_db(db_path: str, image_id: str, folder_key: str):
+    logger.info(f"[save_folder_status_to_db] Start – db_path={db_path}, image_id={image_id}, folder_key={folder_key}")
+    try:
+        with sqlite3.connect(db_path) as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO image_folder_status (image_id, folder_id)
+                VALUES (?, ?)
+            """, (image_id, folder_key))
+            conn.commit()
+    except Exception as e:
+        logger.warning(f"[fill_folder_cache] Fehler beim Speichern von {image_id} → {folder_key}: {e}")
+
+
+def load_folder_status_from_db(db_path: str):
+    logger.info(f"[load_folder_status_from_db] Start – db_path={db_path}")
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("SELECT COUNT(*) FROM image_folder_status").fetchone()
+        if row and row[0] > 0:
+            return conn.execute("SELECT image_id, folder_id FROM image_folder_status").fetchall()
+        return []
+
+
+def load_face_from_db(db_path: str, image_name: str):
+    logger.info(f"[load_face_from_db] Start – db_path={db_path}, image_name={image_name}")
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("""
+                            SELECT score_type, score
+                            FROM image_quality_scores
+                            WHERE LOWER(image_name) = LOWER(?)
+                              AND score_type BETWEEN 5 AND 5
+                            """, (image_name,)).fetchall()
+
+
+def save_quality_scores(db_path: str, image_name: str, quality_scores: dict[str, int], mapping):
+    logger.info(
+        f"[save_quality_scores] Start – db_path={db_path}, image_name={image_name}, quality_scores={quality_scores}")
+    with sqlite3.connect(db_path) as conn:
+        for label, value in quality_scores.items():
+            type_id = mapping.get(label)
+            if type_id:
+                conn.execute("""
+                    INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+                    VALUES (?, ?, ?)
+                """, (image_name, type_id, value))
+
+
+def load_nsfw_from_db(db_path: str, image_name: str):
+    logger.info(f"[load_nsfw_from_db] Start – db_path={db_path}, image_name={image_name}")
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("""
+                            SELECT score_type, score
+                            FROM image_quality_scores
+                            WHERE LOWER(image_name) = LOWER(?)
+                              AND score_type BETWEEN 10 AND 15
+                            """, (image_name,)).fetchall()
+
+
+def save_nsfw_scores(db_path: str, image_name: str, nsfw_scores: dict[str, int], mapping):
+    logger.info(f"[save_nsfw_scores] Start – db_path={db_path}, image_name={image_name}, nsfw_scores={nsfw_scores}")
+    with sqlite3.connect(db_path) as conn:
+        for label, value in nsfw_scores.items():
+            type_id = mapping.get(label)
+            if type_id:
+                conn.execute("""
+                    INSERT OR REPLACE INTO image_quality_scores (image_name, score_type, score)
+                    VALUES (?, ?, ?)
+                """, (image_name, type_id, value))
+
+
+def load_all_nsfw_scores(db_path: str):
+    logger.info(f"[load_all_nsfw_scores] Start – db_path={db_path}")
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("""
+                            SELECT image_name, score_type, score
+                            FROM image_quality_scores
+                            WHERE score_type BETWEEN 10 AND 15
+                            """).fetchall()
+
+
+def load_quality_from_db(db_path: str, image_name: str):
+    logger.info(f"[load_quality_from_db] Start – db_path={db_path}, image_name={image_name}")
+    with sqlite3.connect(db_path) as conn:
+        return conn.execute("""
+                            SELECT score_type, score
+                            FROM image_quality_scores
+                            WHERE LOWER(image_name) = LOWER(?)
+                              AND score_type BETWEEN 1 AND 2
+                            """, (image_name,)).fetchall()
+
+
+def delete_checkbox_status(image_name: str):
+    logger.info(f"[delete_checkbox_status] Start – image_name={image_name}")
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+                       DELETE
+                       FROM checkbox_status
+                       WHERE LOWER(image_name) = LOWER(?)
+                       """, (image_name,))
+
+
+def load_scores_from_db(db_path, image_name):
+    with sqlite3.connect(db_path) as conn:
+        rows = conn.execute("""
+                            SELECT score_type, score
+                            FROM image_quality_scores
+                            WHERE LOWER(image_name) = LOWER(?)
+                              AND score_type BETWEEN 10 AND 15
+                            """, (image_name,)).fetchall()
+
+    # Ergebnis in dict umwandeln:
+    score_map = {}
+    for score_type, score in rows:
+        idx = score_type - 9  # 10 → score1, 11 → score2, ..., 15 → score6
+        score_map[f"score{idx}"] = score
+
+    return score_map

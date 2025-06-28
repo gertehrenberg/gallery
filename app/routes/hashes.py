@@ -10,10 +10,10 @@ from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
 from app.config import Settings
 from app.config_gdrive import sanitize_filename, folder_id_by_name, SettingsGdrive, collect_all_folders
-from app.database import save_folder_status_to_db, load_folder_status_from_db
 from app.routes.auth import load_drive_service_token
 from app.routes.gdrive_from_lokal import save_structured_hashes
 from app.tools import readimages
+from app.utils.db_utils import save_folder_status_to_db, load_folder_status_from_db
 from app.utils.progress import init_progress_state, progress_state, update_progress, update_progress_text, \
     save_simple_hashes, hold_progress, stop_progress, write_local_hashes_progress
 
@@ -1027,6 +1027,47 @@ async def move_duplicates_in_gdrive_folder(service, folder_id: str) -> dict[Any,
         await update_progress_text(f"[{folder_name}] ❌ Fehler: {str(e)}")
 
     return md5_groups
+
+
+async def update_local_hash(directory: Path, file_name: str, file_md5: str, addordel: bool) -> None:
+    """
+    Aktualisiert die lokale Hash-Datei in einem Verzeichnis.
+
+    Args:
+        directory: Verzeichnispfad
+        file_name: Name der Datei
+        file_md5: MD5-Hash der Datei
+        addordel: True zum Hinzufügen, False zum Entfernen des Hashes
+    """
+    try:
+        hash_path = directory / Settings.GALLERY_HASH_FILE
+        local_hashes = {}
+
+        if hash_path.exists():
+            try:
+                with hash_path.open('r', encoding='utf-8') as f:
+                    local_hashes = json.load(f)
+            except json.JSONDecodeError as e:
+                await update_progress_text(f"⚠️ Hash-Datei beschädigt: {e}")
+                backup_path = hash_path.with_suffix('.bak')
+                hash_path.rename(backup_path)
+
+        old_hash = local_hashes.get(file_name)
+
+        if addordel:
+            if old_hash != file_md5:
+                local_hashes[file_name] = file_md5
+                await update_progress_text(f"➕ Hash hinzugefügt - {file_name}: {file_md5}")
+        else:
+            if file_name in local_hashes:
+                del local_hashes[file_name]
+                await update_progress_text(f"➖ Hash entfernt - {file_name}")
+
+        await save_simple_hashes(local_hashes, hash_path)
+
+    except Exception as e:
+        await update_progress_text(f"❌ Hash-Update fehlgeschlagen - {file_name}: {str(e)}")
+        raise
 
 
 def p5():

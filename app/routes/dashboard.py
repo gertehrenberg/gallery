@@ -19,7 +19,6 @@ from starlette.responses import JSONResponse
 
 from app.config import Settings, score_type_map
 from app.config_gdrive import sanitize_filename, calculate_md5, folder_id_by_name, SettingsGdrive
-from app.database import count_folder_entries
 from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
 from app.routes.cost_openai_api import load_openai_costs_from_dir
@@ -32,6 +31,7 @@ from app.scores.nsfw import reload_nsfw
 from app.scores.quality import reload_quality
 from app.scores.texte import reload_texte
 from app.tools import readimages, fill_pair_cache
+from app.utils.folder_utils import count_folder_entries
 from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
     update_progress_text

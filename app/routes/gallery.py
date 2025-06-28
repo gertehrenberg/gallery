@@ -13,16 +13,15 @@ from starlette.responses import JSONResponse
 
 from app.config import Settings, score_type_map  # Importiere die Settings-Klasse
 from app.config_gdrive import SettingsGdrive
-from app.database import set_status, load_status, save_status, \
-    move_marked_images_by_checkbox, get_checkbox_count, \
-    get_scores_filtered_by_expr  # Importiere die benötigten Funktionen
 from app.dependencies import require_login
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.scores.texte import search_recoll
 from app.services.image_processing import prepare_image_data, clean, newpaircache
 from app.utils.logger_config import setup_logger
+from app.utils.move_utils import move_marked_images_by_checkbox, get_checkbox_count
 from app.utils.progress import update_progress, stop_progress, progress_state, update_progress_text, init_progress_state
 from app.utils.score_parser import parse_score_expression
+from app.utils.status_utils import set_status, save_status, load_status
 
 DEFAULT_COUNT: str = "6"
 DEFAULT_FOLDER: str = "real"
@@ -168,9 +167,6 @@ def show_images_gallery(
         logger.info(f"[Gallery] Nach Textsuche: {len(filtered_names)} Bilder")
 
     pair_cache = newpaircache(folder_name)
-    if len(pair_cache) == 0:
-        logger.warning("[Gallery] pair_cache leer, zeige Ladebildschirm")
-        return templates.TemplateResponse("loading.html", {"request": request}, status_code=200)
 
     # 3. Hauptschleife über alle Bilder
     logger.info("[Gallery] Starte Hauptschleife über Bilder")
@@ -350,7 +346,7 @@ async def verarbeite_checkbox(
         logger.warning("❌ Ungültige Checkbox-Kategorie")
         return JSONResponse(status_code=400, content={"status": "invalid checkbox"})
 
-    anzahl = move_marked_images_by_checkbox(folder, checkbox)
+    anzahl = await move_marked_images_by_checkbox(folder, checkbox)
     redirect_url = f"/gallery?page=1&count={count}&folder={checkbox}&done={checkbox}"
     logger.info(f"✅ Erfolgreich verschoben: {anzahl} Dateien -> {redirect_url}")
     return {"status": "ok", "redirect": redirect_url, "moved": anzahl}

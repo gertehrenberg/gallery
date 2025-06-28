@@ -12,12 +12,12 @@ from geopy.geocoders import Nominatim
 from starlette.responses import JSONResponse
 
 from app.config import Settings  # Importiere die Settings-Klasse
-from app.database import delete_checkbox_status, delete_scores
 from app.scores.faces import load_faces
 from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality
 from app.services.thumbnail import get_thumbnail_path, generate_thumbnail, thumbnail
 from app.tools import find_image_id_by_name
+from app.utils.db_utils import delete_checkbox_status
 from app.utils.logger_config import setup_logger
 from app.utils.progress import update_progress_text
 
@@ -198,6 +198,7 @@ def download_and_save_image(folder_name: str, image_name: str, image_id: str) ->
 
     return thumbnail_path
 
+
 def newpaircache(folder_name):
     pair_cache = {}
     folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name
@@ -218,6 +219,7 @@ def newpaircache(folder_name):
         except Exception as e:
             asyncio.run(update_progress_text(f"❌ Fehler beim Lesen/Schreiben der Cache-Dateien: {e}"))
     return pair_cache
+
 
 def prepare_image_data(count: int, folder_name: str, image_name: str):
     logger.info(f"📦 Starte prepare_image_data() für {image_name}")

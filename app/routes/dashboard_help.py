@@ -1,10 +1,7 @@
-import json
-import os
 from pathlib import Path
 
 from app.config import Settings
-from app.database import save_folder_status_to_db
-from app.tools import fill_pair_cache
+from app.utils.db_utils import save_folder_status_to_db
 from app.utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -35,20 +32,3 @@ def _process_image_files(image_files, folder_name, file_parents_cache, db_path):
         file_parents_cache[folder_name].append(image_id)
         save_folder_status_to_db(db_path, image_id, folder_name)
 
-
-def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
-    pair_cache = Settings.CACHE["pair_cache"]
-    pair_cache.clear()
-
-    logger.info(f"[fillcache_local] 📂 Lesen: {pair_cache_path_local}")
-
-    if os.path.exists(pair_cache_path_local):
-        try:
-            with open(pair_cache_path_local, 'r') as f:
-                pair_cache.update(json.load(f))
-                logger.info(f"[fillcache_local] Pair-Cache geladen: {len(pair_cache)} Paare")
-                return
-        except Exception as e:
-            logger.warning(f"[fillcache_local] Fehler beim Laden von pair_cache.json: {e}")
-
-    fill_pair_cache(image_file_cache_dir, pair_cache, pair_cache_path_local)
