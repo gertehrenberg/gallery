@@ -20,6 +20,7 @@ from app.tools import find_image_id_by_name
 from app.utils.db_utils import delete_checkbox_status
 from app.utils.logger_config import setup_logger
 from app.utils.progress import update_progress_text
+from app.utils.score_utils import delete_scores
 
 logger = setup_logger(__name__)
 

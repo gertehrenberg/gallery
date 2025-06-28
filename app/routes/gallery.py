@@ -13,6 +13,7 @@ from starlette.responses import JSONResponse
 
 from app.config import Settings, score_type_map  # Importiere die Settings-Klasse
 from app.config_gdrive import SettingsGdrive
+from app.database import get_scores_filtered_by_expr
 from app.dependencies import require_login
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.scores.texte import search_recoll
