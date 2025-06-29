@@ -5,7 +5,8 @@ from pathlib import Path
 from googleapiclient.http import MediaIoBaseDownload
 from tqdm import tqdm
 
-from config import IMAGE_FILE_CACHE_DIR, load_drive_service, GALLERY_HASH_FILE
+from app.config import Settings
+from app.routes.auth import load_drive_service
 
 
 def download_file(service, file_id, local_path):
@@ -18,7 +19,7 @@ def download_file(service, file_id, local_path):
 
 
 def map_gdrive_to_local():
-    base_dir = Path(IMAGE_FILE_CACHE_DIR)
+    base_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
     base_dir.mkdir(parents=True, exist_ok=True)
     service = load_drive_service()
     gallery_hashes = {}
@@ -91,7 +92,7 @@ def map_gdrive_to_local():
             elif best_match:
                 print(f"\033[94m[FEHLT] {name} → kein Download möglich, aber lokal gefunden\033[0m")
 
-    gallery_hash_path = base_dir / GALLERY_HASH_FILE
+    gallery_hash_path = base_dir / Settings.GALLERY_HASH_FILE
     with open(gallery_hash_path, "w", encoding="utf-8") as f:
         json.dump(gallery_hashes, f, indent=2)
 

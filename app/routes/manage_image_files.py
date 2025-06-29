@@ -7,8 +7,10 @@ from app.config_gdrive import folder_id_by_name
 from app.routes.hashes import update_gdrive_hashes, delete_duplicates_in_gdrive_folder, upload_file_to_gdrive
 from app.routes.manage_text_files import gdrive_textfiles_files_by_local, check_and_move_gdrive_files, \
     move_file_to_folder
-from app.utils.progress import init_progress_state, progress_state, update_progress, update_progress_text
-from app.utils.progress_detail import update_detail_status, update_detail_progress
+from app.utils.progress import init_progress_state, progress_state, update_progress_text, \
+    update_progress_auto
+from app.utils.progress_detail import update_detail_status, update_detail_progress, start_detail_progress, \
+    calc_detail_progress
 
 
 # await update_progress_text("🗑️ Lösche alte Hash-Dateien...")
@@ -20,9 +22,10 @@ async def move_gdrive_files_by_local(service, folder_name: str):
         await gdrive_textfiles_files_by_local(service, folder_name)
         return
 
-    await update_progress_text(f"🔄 Starte GDrive Synchronisation für Ordner: {folder_name}")
     await init_progress_state()
     progress_state["running"] = True
+
+    await update_progress_auto(f"🔄 Starte GDrive Synchronisation für Ordner: {folder_name}")
 
     # Lade alle lokalen Hash-Dateien
     cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
@@ -33,7 +36,7 @@ async def move_gdrive_files_by_local(service, folder_name: str):
         with (folder_path / Settings.GALLERY_HASH_FILE).open("r", encoding="utf-8") as f:
             local_hashes = json.load(f)
     except Exception as e:
-        await update_progress_text(f"⚠️ Fehler beim Lesen lokaler Hashes für {folder_name}: {e}")
+        await update_progress_auto(f"⚠️ Fehler beim Lesen lokaler Hashes für {folder_name}: {e}")
         return
 
     # Lade alle GDrive Hashes (aus allen Ordnern) mit Ordnerzuordnung
@@ -50,16 +53,19 @@ async def move_gdrive_files_by_local(service, folder_name: str):
                         entry_with_folder['source_folder'] = kategorie["key"]
                         all_gdrive_hashes[filename] = entry_with_folder
         except Exception as e:
-            await update_progress_text(f"ℹ️ Keine GDrive Hashes für {kategorie['key']}: {e}")
+            await update_progress_auto(f"ℹ️ Keine GDrive Hashes für {kategorie['key']}: {e}")
 
     moved = 0
     uploaded = 0
     total_files = len(local_hashes)
 
+    await start_detail_progress(f"🔍 Gefunden: {total_files} Dateien")
+
     gdrive_folder_names: Set[str] = set()
 
     # Verarbeite jede lokale Datei
     for idx, (filename, local_md5) in enumerate(local_hashes.items()):
+        progress = await calc_detail_progress(idx, total_files)
         was_moved, was_uploaded = await process_single_file(
             service, filename, local_md5, all_gdrive_hashes, folder_name, folder_path, gdrive_folder_names
         )
@@ -68,9 +74,10 @@ async def move_gdrive_files_by_local(service, folder_name: str):
         if was_uploaded:
             uploaded += 1
 
-        progress = int((idx + 1) / total_files * 1000)
-        await update_progress(f"🔄 Verarbeite Dateien ({idx + 1}/{total_files})", progress)
-        await update_detail_progress(detail_progress=progress)
+        await update_detail_progress(
+            detail_status=f"💾 Speichere DB Eintrag {idx + 1}/{total_files}",
+            detail_progress=progress
+        )
 
     # Update GDrive hashes wenn Änderungen vorgenommen wurden
     if moved > 0 or uploaded > 0:
@@ -83,7 +90,7 @@ async def move_gdrive_files_by_local(service, folder_name: str):
         f"✅ Synchronisation abgeschlossen. {moved} Dateien verschoben, {uploaded} Dateien hochgeladen")
 
     # Prüfe und verschiebe GDrive Dateien basierend auf lokalen Hashes
-    moved_gdrive = await check_and_move_gdrive_files(service, folder_name, cache_dir)
+    moved_gdrive = await check_and_move_gdrive_files(service, folder_name, cache_dir, Settings.IMAGE_EXTENSIONS)
     if moved_gdrive > 0:
         await update_progress_text(
             f"✅ Zusätzlich wurden {moved_gdrive} GDrive Dateien in ihre korrekten Ordner verschoben")

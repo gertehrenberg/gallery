@@ -4,7 +4,7 @@ import json
 import os
 import sqlite3
 from pathlib import Path
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 from typing import Optional
 
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
@@ -17,8 +17,9 @@ from app.routes.gdrive_from_lokal import save_structured_hashes
 from app.tools import readimages
 from app.utils.db_utils import save_folder_status_to_db, load_folder_status_from_db
 from app.utils.progress import init_progress_state, progress_state, update_progress, update_progress_text, \
-    save_simple_hashes, hold_progress, stop_progress
-from app.utils.progress_detail import update_detail_status, update_detail_progress
+    save_simple_hashes, hold_progress, stop_progress, update_progress_auto
+from app.utils.progress_detail import update_detail_status, update_detail_progress, start_detail_progress, \
+    stop_detail_progress, calc_detail_progress
 
 
 async def process_text_files():
@@ -63,20 +64,17 @@ async def process_text_files():
     await update_progress_text(f"🔄 Verarbeite {total_files} Textdateien")
 
     # Initialize progress for file processing
-    await update_detail_progress(
-        detail_status="Starte Verarbeitung",
-        detail_progress=0
-    )
+    await start_detail_progress("Starte Verarbeitung")
 
     # Process files
     total_files = len(image_files)
     for idx, file in enumerate(image_files):
         image_name = file.name.lower()
-        current_progress = int((idx / total_files) * 1000)
 
+        progress = await calc_detail_progress(idx, total_files)
         await update_detail_progress(
             detail_status=f"Verarbeite {image_name} ({idx + 1}/{total_files})",
-            detail_progress=current_progress
+            detail_progress=progress
         )
 
         try:
@@ -130,10 +128,7 @@ async def process_text_files():
             await update_detail_status(f"Fehler: {str(e)}")
 
     # Mark completion
-    await update_detail_progress(
-        detail_status="Verarbeitung abgeschlossen",
-        detail_progress=1000
-    )
+    await stop_detail_progress("Verarbeitung abgeschlossen")
 
     # Save hashes
     hashfile_name = Settings.GALLERY_HASH_FILE
@@ -179,25 +174,44 @@ async def update_local_hashes(folder_name):
     local_cache = {}
     folder_path = os.path.join(Settings.IMAGE_FILE_CACHE_DIR, folder_name)
 
-    await update_progress_text(f"📁 Verarbeite Kategorie: {folder_name}")
+    await update_progress_auto(f"📁 Verarbeite Kategorie: {folder_name}")
 
     await readimages(folder_path, local_cache)
 
     clear_folder_status_db_by_name(Settings.DB_PATH, folder_name)
 
-    for image_name, entry in local_cache.items():
+    total_entries = len(local_cache)
+    await update_progress_auto(f"💾 Speichere {total_entries} Datenbankeinträge")
+
+    await start_detail_progress(f"💾 Speichere {total_entries} Datenbankeinträge")
+
+    for idx, (image_name, entry) in enumerate(local_cache.items()):
+        progress = await calc_detail_progress(idx, total_entries)
         image_id = entry.get('image_id')
         if image_id:
-            save_folder_status_to_db(Settings.DB_PATH, image_id, folder_name)
+            try:
+                save_folder_status_to_db(Settings.DB_PATH, image_id, folder_name)
+                # Berechne den aktuellen Fortschritt
+                await update_detail_progress(
+                    detail_status=f"💾 Speichere DB Eintrag {idx}/{total_entries}",
+                    detail_progress=progress
+                )
+            except Exception as e:
+                await update_detail_progress(
+                    detail_status=f"⚠️ Fehler bei {image_name}: {e}",
+                    detail_progress=progress
+                )
+
+    await stop_detail_progress(f"✅ {total_entries} Einträge gespeichert")
 
     hash_file = Path(folder_path) / Settings.GALLERY_HASH_FILE
     local_hashes = {name: data.get('image_id', '') for name, data in local_cache.items()}
 
     try:
         await save_simple_hashes(local_hashes, hash_file)
-        await update_progress_text(f"✅ {len(local_hashes)} Hashes gespeichert für {folder_name}")
+        await update_progress_auto(f"✅ {len(local_hashes)} Hashes gespeichert für {folder_name}")
     except Exception as e:
-        await update_progress_text(f"❌ Fehler beim Speichern der Hashes für {folder_name}: {e}")
+        await update_progress_auto(f"❌ Fehler beim Speichern der Hashes für {folder_name}: {e}")
 
 
 async def update_all_local_hashes():
@@ -244,30 +258,21 @@ async def process_files_with_progress(
         files: list,
         extension,
         status_prefix: str = "") -> dict:
-    """
-    Verarbeitet eine Liste von Dateien mit Fortschrittsanzeige.
-
-    Args:
-        files: Liste der zu verarbeitenden Dateien
-        status_prefix: Prefix für die Statusmeldung
-
-    Returns:
-        Dict mit verarbeiteten Dateien
-    """
     gdrive_hashes = {}
     total_files = len(files)
-    files_processed = 0
+    counter = 0
+
+    if total_files == 0:
+        return gdrive_hashes
 
     # Initialize progress
-    await update_detail_progress(
-        detail_status=f"{status_prefix}Starte Verarbeitung...",
-        detail_progress=0
-    )
+    await start_detail_progress(f"{status_prefix}Starte Verarbeitung...")
 
     for item in files:
         name = sanitize_filename(item.get('name', ''))
         fext = any(name.endswith(ext) for ext in extension)
 
+        progress = await calc_detail_progress(counter, total_files)
         if name and fext:
             md5_checksum = item.get('md5Checksum')
             file_id = item.get('id')
@@ -276,20 +281,16 @@ async def process_files_with_progress(
                     "md5": md5_checksum,
                     "id": file_id
                 }
-                files_processed += 1
+                counter += 1
 
                 # Update progress
-                progress = int((files_processed / total_files) * 1000)
                 await update_detail_progress(
-                    detail_status=f"{status_prefix}Verarbeite {name} ({files_processed}/{total_files})",
+                    detail_status=f"{status_prefix}Verarbeite Bild \"{name}\"",
                     detail_progress=progress
                 )
 
     # Final progress update
-    await update_detail_progress(
-        detail_status=f"{status_prefix}Verarbeitung abgeschlossen: {files_processed} Dateien",
-        detail_progress=1000
-    )
+    await stop_detail_progress(f"{status_prefix}Verarbeitung abgeschlossen: {counter} Dateien")
 
     return gdrive_hashes
 
@@ -297,12 +298,9 @@ async def process_files_with_progress(
 async def update_gdrive_hashes(
         service,
         folder_name: Optional[str] = None,
-        extension=Settings.IMAGE_EXTENSIONS,
-        base_dir=Path(Settings.IMAGE_FILE_CACHE_DIR)):
-    """Liest Dateien aus Google Drive und aktualisiert die hashes.json Dateien."""
-    await update_progress_text(f"🔄 Aktualisiere GDrive Hashes{' für ' + folder_name if folder_name else ''}")
-    await init_progress_state()
-    progress_state["running"] = True
+        extension: Tuple[str, ...] = Settings.IMAGE_EXTENSIONS,
+        base_dir: Path = Path(Settings.IMAGE_FILE_CACHE_DIR)):
+    await update_progress_auto(f"🔄 Aktualisiere GDrive Hashes{' für ' + folder_name if folder_name else ''}")
 
     try:
         folders_to_process = [base_dir / folder_name] if folder_name else [p for p in base_dir.iterdir() if p.is_dir()]
@@ -313,18 +311,16 @@ async def update_gdrive_hashes(
             folder_id = folder_id_by_name(current_folder)
 
             if not folder_id:
-                await update_progress_text(f"⚠️ Keine Folder-ID gefunden für: {current_folder}")
+                await update_progress_auto(f"⚠️ Keine Folder-ID gefunden für: {current_folder}")
                 continue
 
-            await update_progress_text(f"📂 Verarbeite {current_folder} ({folder_idx}/{total_folders})")
+            await update_progress_auto(f"📂 Verarbeite {current_folder} ({folder_idx}/{total_folders})")
 
             gdrive_hashes: Dict[str, Dict[str, str]] = {}
             page_token = None
 
-            w = 1
             while True:
-                await update_progress(f"Lesen von {page_token}", w)
-                w += 2
+                await update_progress_auto(f"Lesen von {'GDrive' if page_token is None else page_token}")
                 try:
                     results = service.files().list(
                         q=f"'{folder_id}' in parents and trashed=false",
@@ -345,59 +341,52 @@ async def update_gdrive_hashes(
                         break
 
                 except Exception as e:
-                    await update_progress_text(f"❌ Fehler beim Lesen von {current_folder}: {e}")
+                    await update_progress_auto(f"❌ Fehler beim Lesen von {current_folder}: {e}")
                     break
 
             if not gdrive_hashes:
                 gdrive_hashes = {}
             try:
                 hash_file_path = folder_path / Settings.GDRIVE_HASH_FILE
+                if not hash_file_path.exists():
+                    hash_file_path = folder_path.parent / Settings.GDRIVE_HASH_FILE
                 await save_structured_hashes(gdrive_hashes, hash_file_path)
-                await update_progress_text(f"✅ {current_folder}: {len(gdrive_hashes)} Einträge gespeichert")
-            except Exception as e:
-                await update_progress_text(f"❌ Fehler beim Speichern für {current_folder}: {e}")
+                await update_progress_auto(
+                    f"✅ {current_folder}: {len(gdrive_hashes)} Einträge gespeichert")
 
-        await update_progress_text("✅ GDrive Hash-Aktualisierung abgeschlossen")
+            except Exception as e:
+                await update_progress_auto(f"❌ Fehler beim Speichern für {current_folder}: {e}")
+
+        await update_progress_auto("✅ GDrive Hash-Aktualisierung abgeschlossen")
 
     except Exception as e:
-        await update_progress_text(f"❌ Fehler bei Hash-Aktualisierung: {e}")
-    finally:
-        await hold_progress()
+        await update_progress_auto(f"❌ Fehler bei Hash-Aktualisierung: {e}")
 
 
 async def reloadcache_progress(service, folder_key: Optional[str] = None):
-    """
-    Reloads the cache for folders based on the folder_key parameter.
-
-    Args:
-        folder_key: Optional folder key.
-                   If None, processes all categories.
-                   If in CHECKBOX_CATEGORIES, processes only that folder.
-                   If "textfiles", processes text files.
-    """
     try:
         await init_progress_state()
         progress_state["running"] = True
-        await update_progress_text(f"🔄 Starte reloadcache_progress für Ordner: {folder_key}")
+        await update_progress_auto(f"🔄 Starte reloadcache_progress für Ordner: {folder_key}")
         Settings.folders_loaded = 0
 
         if folder_key == Settings.TEXTFILES_FOLDERNAME:
-            await update_progress_text("🗃️ Modus: Textverarbeitung")
+            await update_progress_auto("🗃️ Modus: Textverarbeitung")
             await update_gdrive_hashes(
                 service,
-                folder_key,
+                Settings.TEXTFILES_FOLDERNAME,
                 Settings.TEXT_EXTENSIONS,
                 Path(Settings.TEXT_FILE_CACHE_DIR).parent)
             await process_text_files()
 
         elif folder_key in Settings.CHECKBOX_CATEGORIES:
-            await update_progress_text(f"📂 Modus: Einzelne Kategorie ({folder_key})")
-            await update_gdrive_hashes(service, folder_key)
+            await update_progress_auto(f"📂 Modus: Einzelne Kategorie ({folder_key})")
             await update_local_hashes(folder_key)
+            await update_gdrive_hashes(service, folder_key)
             Settings.folders_loaded += 1
 
         else:
-            await update_progress_text("📂 Modus: Alle Kategorien")
+            await update_progress_auto("📂 Modus: Alle Kategorien")
             pair_cache = Settings.CACHE.get("pair_cache")
             pair_cache.clear()
 
@@ -407,71 +396,22 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
                 await update_local_hashes(folder_key)
                 Settings.folders_loaded += 1
 
-            await update_progress_text("🗃️ Modus: Textverarbeitung")
+            await update_progress_auto("🗃️ Modus: Textverarbeitung")
             await update_gdrive_hashes(
                 service,
-                folder_key,
+                Settings.TEXTFILES_FOLDERNAME,
                 Settings.TEXT_EXTENSIONS,
-                Settings.TEXT_FILE_CACHE_DIR.parent)
+                Path(Settings.TEXT_FILE_CACHE_DIR).parent)
             await process_text_files()
 
-            await process_image_folders_gdrive_progress(service, folder_key)
-            await update_progress_text(f"[✓] Hash-Datei aktualisiert für {folder_key}")
+            await update_progress_auto(f"[✓] Hash-Datei aktualisiert für {folder_key}")
 
     except Exception as e:
-        await update_progress_text(f"❌ Fehler beim Reload-Cache: {e}")
+        await update_progress_auto(f"❌ Fehler beim Reload-Cache: {e}")
         raise
     finally:
-        await update_progress_text("✅ reloadcache_progress abgeschlossen")
+        await update_progress_auto("✅ reloadcache_progress abgeschlossen")
         await stop_progress()
-
-
-async def process_image_folders_gdrive_progress(service, folder_name: str):
-    folder_id = folder_id_by_name(folder_name)
-    if not folder_id:
-        raise ValueError(f"Keine Folder-ID gefunden für: {folder_name}")
-
-    await update_progress_text(f"Lade Dateien aus {folder_name}...")
-    files = []
-    page_token = None
-
-    while True:
-        response = service.files().list(
-            q=f"'{folder_id}' in parents and trashed = false",
-            spaces='drive',
-            fields="nextPageToken, files(id, name, md5Checksum)",
-            pageSize=Settings.PAGESIZE,
-            pageToken=page_token
-        ).execute()
-
-        batch = [f for f in response.get('files', [])
-                 if is_valid_image(f.get('name', ''))]
-        files.extend(batch)
-        await update_progress_text(f"Geladen: {len(files)} Dateien...")
-
-        page_token = response.get('nextPageToken')
-        if not page_token:
-            break
-
-    gdrive_hashes = {}
-    for file in files:
-        try:
-            name = sanitize_filename(file['name'])
-            if is_valid_image(name):
-                md5_drive = file.get("md5Checksum")
-                if md5_drive:
-                    gdrive_hashes[name] = {
-                        "md5": md5_drive,
-                        "id": file['id']
-                    }
-        except Exception as e:
-            await update_progress_text(f"[Fehler] {file['name']}: {e}")
-
-    hashfile_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / Settings.GDRIVE_HASH_FILE
-    hashfile_path.parent.mkdir(parents=True, exist_ok=True)
-    with hashfile_path.open("w", encoding="utf-8") as f:
-        json.dump(gdrive_hashes, f, indent=2)
-    await update_progress_text(f"Hash-Datei gespeichert für {folder_name}")
 
 
 async def _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path):
@@ -631,16 +571,11 @@ async def verify_file_cache_consistency(base_dir, folder_name: Optional[str] = N
     return result
 
 
-async def delete_duplicates_in_gdrive_folder(service, folder_id: str) -> None:
-    """
-    Löscht doppelte Dateien (basierend auf MD5 Hash) in einem Google Drive Ordner.
+async def delete_duplicates_in_gdrive_folder(service, folder_name: str) -> None:
+    folder_id = folder_id_by_name(folder_name)
 
-    Args:
-        service: Google Drive Service Objekt
-        folder_id: ID des zu prüfenden Ordners
-    """
     try:
-        await update_progress_text("🔍 Suche nach Dateien im Ordner...")
+        await update_progress_auto("🔍 Suche nach Dateien im Ordner...")
 
         # Alle Dateien im Ordner abrufen
         files = []
@@ -1311,7 +1246,7 @@ def p7():
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
-    asyncio.run(reloadcache_progress(service, Settings.TEXTFILES_FOLDERNAME))
+    asyncio.run(reloadcache_progress(service, "textfiles"))
 
 
 if __name__ == "__main__":

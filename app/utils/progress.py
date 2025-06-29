@@ -1,12 +1,11 @@
 import asyncio
 import json
 import os
-import sqlite3
 from pathlib import Path
 from typing import Dict
 
-from app.config import Settings, score_type_map
-from app.config_gdrive import folder_name_by_id, calculate_md5
+from app.config import Settings
+from app.config_gdrive import folder_name_by_id
 from app.utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -18,6 +17,12 @@ progress_state = {
     "running": False
 }
 
+async def getlast() -> int:
+    """
+
+    :rtype: int
+    """
+    return int(progress_state["progress"])
 
 async def update_progress(status: str, progress: int, ctime=0.01, showlog=True):
     if isinstance(status, str) and len(status) > 0:
@@ -27,6 +32,15 @@ async def update_progress(status: str, progress: int, ctime=0.01, showlog=True):
         logger.info(f"{status} : {progress}")
     await asyncio.sleep(ctime)
 
+
+async def update_progress_auto(status: str, ctime=0.01, showlog=True):
+    progress = await getlast() + 1
+    if isinstance(status, str) and len(status) > 0:
+        progress_state["status"] = status
+    progress_state["progress"] = progress
+    if showlog:
+        logger.info(f"{status} : {progress}")
+    await asyncio.sleep(ctime)
 
 async def update_progress_text(status: str, ctime=0.01, showlog=True):
     if isinstance(status, str) and len(status) > 0:

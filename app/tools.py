@@ -10,8 +10,8 @@ from PIL import Image
 from app.config import Settings
 from app.config_gdrive import calculate_md5, SettingsGdrive
 from app.utils.logger_config import setup_logger
-from app.utils.progress import update_progress_text
-from app.utils.progress_detail import update_detail_progress
+from app.utils.progress_detail import update_detail_progress, stop_detail_progress, start_detail_progress, \
+    calc_detail_progress
 
 logger = setup_logger(__name__)
 
@@ -277,22 +277,16 @@ async def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
 
     # Zuerst die Gesamtzahl der Dateien ermitteln
     total_files = sum(1 for file_path in folder.iterdir()
-                     if file_path.is_file() and file_path.suffix.lower() in Settings.IMAGE_EXTENSIONS)
+                      if file_path.is_file() and file_path.suffix.lower() in Settings.IMAGE_EXTENSIONS)
 
     if total_files == 0:
-        await update_detail_progress(
-            detail_status="⚠️ Keine Bilddateien gefunden",
-            detail_progress=1000
-        )
+        await stop_detail_progress("⚠️ Keine Bilddateien gefunden")
         return
 
     counter = 0
     errors = 0
 
-    await update_detail_progress(
-        detail_status=f"🔍 Gefunden: {total_files} Bilder",
-        detail_progress=0
-    )
+    await start_detail_progress(f"🔍 Gefunden: {total_files} Bilder")
 
     # Iteriere über alle Dateien im Ordner
     for file_path in folder.iterdir():
@@ -302,13 +296,12 @@ async def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
         image_name = file_path.name.lower()
         counter += 1
 
+        progress = await calc_detail_progress(counter, total_files)
         try:
-            # Berechne Fortschritt in Prozent
-            progress = int((counter / total_files) * 100)
 
             # Update Fortschrittsanzeige
             await update_detail_progress(
-                detail_status=f"🖼️ [{counter}/{total_files}] Verarbeite {image_name}",
+                detail_status=f"🖼️ [{progress}] Verarbeite Lesen Bild: \"{image_name}\"",
                 detail_progress=progress
             )
 
@@ -346,10 +339,8 @@ async def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
     for bild in bilder_daten:
         pair_cache[bild['name']] = bild['data']
 
-    await update_detail_progress(
-        detail_status=status,
-        detail_progress=1000
-    )
+    await stop_detail_progress(status)
+
 
 def p5():
     Settings.DB_PATH = '../gallery_local.db'

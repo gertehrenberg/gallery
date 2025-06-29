@@ -65,12 +65,12 @@ def get_all_subfolders(service, parent_id: str) -> List[str]:
     return folders
 
 
-def save_dict(data, file: path):
+def save_dict(data, file: Path):
     with open(file, "wb") as f:
         pickle.dump(data, f)
 
 
-def load_dict(file: path):
+def load_dict(file: Path):
     if file.exists():
         with open(file, "rb") as f:
             return pickle.load(f)

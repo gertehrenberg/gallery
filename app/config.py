@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 
 score_type_map = {
     "q1": 1,
@@ -36,7 +36,7 @@ class Settings:
     GESICHTER_FILE_CACHE_DIR = '/data/facefiles'
     CACHE_DATEI_NAME = DATA_DIR / "geo_cache.json"
 
-    IMAGE_EXTENSIONS = (".bmp", ".gif", ".jpg", ".jpeg", ".png")
+    IMAGE_EXTENSIONS: Tuple[str, ...] = (".bmp", ".gif", ".jpg", ".jpeg", ".png")
     IMAGE_FILE_CACHE_DIR = '/data/imagefiles'
 
     TEXT_EXTENSIONS = {".txt"}

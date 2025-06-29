@@ -14,6 +14,16 @@ detail_state = {
     }
 }
 
+async def calc_detail_progress(current_progress: int, total_progress: int) -> Optional[int]:
+    if current_progress ==0:
+        return int(0)
+    return int(((current_progress * 100) / (total_progress - 1)))
+
+async def start_detail_progress(detail_status: str):
+    await update_detail_progress(detail_status, 0)
+
+async def stop_detail_progress(detail_status: str):
+    await update_detail_progress(detail_status, 1000)
 
 async def update_detail_progress(
         detail_status: Optional[str] = None,
@@ -24,7 +34,7 @@ async def update_detail_progress(
 
     Args:
         detail_status: Detail-Status-Text
-        detail_progress: Detail-Fortschritt (0-100)
+        detail_progress: Detail-Fortschritt (0-1000)
         ctime: Wartezeit zwischen Updates
     """
     if detail_status is not None:
@@ -32,7 +42,6 @@ async def update_detail_progress(
     if detail_progress is not None:
         detail_state["progress"] = detail_progress
 
-    logger.info(f"Detail: {detail_status or '-'} : {detail_progress or 0}%")
     await asyncio.sleep(ctime)
 
 

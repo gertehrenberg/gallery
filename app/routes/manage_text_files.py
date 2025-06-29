@@ -1,18 +1,18 @@
 import json
-import sqlite3
 from pathlib import Path
 from typing import Set, Dict, Any, Tuple, List
 
-from app.config import Settings, score_type_map
-from app.config_gdrive import folder_id_by_name, calculate_md5
+from app.config import Settings
+from app.config_gdrive import folder_id_by_name
 from app.routes.hashes import upload_file_to_gdrive, update_gdrive_hashes, delete_duplicates_in_gdrive_folder
 from app.utils.progress import (
     init_progress_state,
     progress_state,
     update_progress,
-    update_progress_text, save_simple_hashes,
+    update_progress_text, update_progress_auto,
 )
-from app.utils.progress_detail import update_detail_status, update_detail_progress
+from app.utils.progress_detail import update_detail_status, update_detail_progress, stop_detail_progress, \
+    start_detail_progress, calc_detail_progress
 
 
 async def gdrive_textfiles_files_by_local(service, folder_name: str) -> None:
@@ -36,10 +36,7 @@ async def gdrive_textfiles_files_by_local(service, folder_name: str) -> None:
         ]
 
         if not text_files:
-            await update_detail_progress(
-                detail_status="⚠️ Keine Textdateien gefunden",
-                detail_progress=1000
-            )
+            await stop_detail_progress("⚠️ Keine Textdateien gefunden")
             return
 
         # Lade GDrive Hashes
@@ -56,14 +53,18 @@ async def gdrive_textfiles_files_by_local(service, folder_name: str) -> None:
 
         # Update GDrive Hashes wenn nötig
         if moved > 0 or uploaded > 0:
-            await update_gdrive_hashes_after_changes(service, folder_name)
+            await update_gdrive_hashes_after_changes(
+                service,
+                folder_name,
+                Path(Settings.TEXT_FILE_CACHE_DIR),
+                Settings.TEXT_EXTENSIONS)
 
         await update_progress_text(
             f"✅ Synchronisation abgeschlossen. {moved} Dateien verschoben, {uploaded} Dateien hochgeladen"
         )
 
         # Prüfe GDrive Dateien
-        moved_gdrive = await check_and_move_gdrive_files(service, folder_name, cache_dir)
+        moved_gdrive = await check_and_move_gdrive_files(service, folder_name, cache_dir, Settings.TEXT_EXTENSIONS)
         if moved_gdrive > 0:
             await update_progress_text(
                 f"✅ Zusätzlich wurden {moved_gdrive} GDrive Dateien in ihre korrekten Ordner verschoben"
@@ -116,12 +117,10 @@ async def process_files(
     total_files = len(text_files)
     gdrive_folder_names: Set[str] = set()
 
-    await update_detail_progress(
-        detail_status=f"🔍 Gefunden: {total_files} Textdateien",
-        detail_progress=0
-    )
+    await start_detail_progress(f"🔍 Gefunden: {total_files} Textdateien")
 
     for idx, file in enumerate(text_files):
+        progress = await calc_detail_progress(idx, total_files)
         was_moved, was_uploaded = await process_text_file(
             service=service,
             filename=file.name,
@@ -134,10 +133,9 @@ async def process_files(
         moved += int(was_moved)
         uploaded += int(was_uploaded)
 
-        progress = int((idx + 1) / total_files * 1000)
-        await update_progress(f"🔄 Verarbeite Dateien ({idx + 1}/{total_files})", progress)
-        await update_detail_progress(detail_progress=progress)
+        await update_detail_progress(f"🔄 Verarbeite Dateien ({idx + 1}/{total_files})", progress)
 
+    await stop_detail_progress(f"✅ {total_files} Einträge gespeichert")
     return moved, uploaded
 
 
@@ -270,37 +268,25 @@ async def move_file(
         return False, False
 
 
-async def update_gdrive_hashes_after_changes(service, folder_name: str) -> None:
-    """Aktualisiert die Google Drive Hashes nach Änderungen."""
-    await update_progress_text(f"🔄 Aktualisiere GDrive Hashes für {folder_name}...")
+async def update_gdrive_hashes_after_changes(service, folder_name: str, base_dir: Path,
+                                             extension: Tuple[str, ...]) -> None:
+    await update_progress_auto(f"🔄 Aktualisiere GDrive Hashes für {folder_name}...")
     await delete_duplicates_in_gdrive_folder(service, folder_name)
-    await update_gdrive_hashes(service, folder_name)
+    await update_gdrive_hashes(service, folder_name, extension, base_dir)
 
 
 async def check_and_move_gdrive_files(
         service,
         folder_name: str,
-        cache_dir: Path
+        cache_dir: Path,
+        extension
 ) -> int:
-    """
-    Überprüft GDrive-Dateien im angegebenen Ordner und verschiebt sie in die korrekten lokalen Ordner.
-
-    Args:
-        service: Google Drive Service-Objekt
-        folder_name: Name des zu überprüfenden Ordners
-        cache_dir: Pfad zum Cache-Verzeichnis
-
-    Returns:
-        int: Anzahl der verschobenen Dateien
-    """
     try:
         gdrive_hashes = await load_folder_hashes(folder_name, cache_dir)
         if not gdrive_hashes:
             return 0
 
-        return await process_gdrive_files(
-            service, folder_name, gdrive_hashes, cache_dir
-        )
+        return await process_gdrive_files(service, folder_name, gdrive_hashes, cache_dir, extension)
 
     except Exception as e:
         error_msg = f"ℹ️ Keine GDrive Hashes für {folder_name}: {e}"
@@ -312,6 +298,9 @@ async def check_and_move_gdrive_files(
 async def load_folder_hashes(folder_name: str, cache_dir: Path) -> Dict[str, Any]:
     """Lädt die Hash-Datei für einen bestimmten Ordner."""
     gdrive_hash_file = cache_dir / folder_name / Settings.GDRIVE_HASH_FILE
+    if not gdrive_hash_file.exists():
+        gdrive_hash_file = cache_dir.parent / Settings.GDRIVE_HASH_FILE
+
     try:
         with gdrive_hash_file.open("r", encoding="utf-8") as f:
             return json.load(f)
@@ -323,7 +312,8 @@ async def process_gdrive_files(
         service,
         folder_name: str,
         all_gdrive_hashes: Dict[str, Any],
-        cache_dir: Path
+        cache_dir: Path,
+        extension
 ) -> int:
     """Verarbeitet die Google Drive Dateien und verschiebt sie bei Bedarf."""
     moved = 0
@@ -333,32 +323,26 @@ async def process_gdrive_files(
     await update_progress_text(
         f"🔄 Prüfe {total_files} GDrive Dateien auf korrekte Ordnerzuordnung..."
     )
-    await update_detail_progress(
-        detail_status="Starte Überprüfung...",
-        detail_progress=0
-    )
+    await start_detail_progress("Starte Überprüfung...")
 
     for filename, gdrive_entry in all_gdrive_hashes.items():
+        progress = await calc_detail_progress(processed, total_files)
         if isinstance(gdrive_entry, dict):
             moved += await process_gdrive_file(
                 service, filename, gdrive_entry, folder_name, cache_dir
             )
 
         processed += 1
-        progress = int((processed / total_files) * 1000)
         await update_progress(f"🔄 Prüfe GDrive Dateien", progress)
         await update_detail_progress(detail_progress=progress)
 
     if moved > 0:
-        await update_gdrive_hashes_after_changes(service, folder_name)
+        await update_gdrive_hashes_after_changes(service, folder_name, cache_dir, extension)
 
     await update_progress_text(
         f"✅ GDrive Dateiüberprüfung abgeschlossen. {moved} Dateien verschoben"
     )
-    await update_detail_progress(
-        detail_status="✅ Fertig",
-        detail_progress=1000
-    )
+    await stop_detail_progress("✅ Fertig")
 
     return moved
 
@@ -413,4 +397,3 @@ def move_file_to_folder(
 
     except Exception as e:
         return False
-
