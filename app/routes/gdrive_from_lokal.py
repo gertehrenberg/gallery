@@ -11,7 +11,7 @@ from tqdm import tqdm
 from app.config import Settings
 from app.config_gdrive import sanitize_filename, folder_id_by_name, get_all_subfolders, SettingsGdrive, calculate_md5
 from app.routes.auth import load_drive_service_token
-from app.tools import find_image_name_by_id
+from app.tools import find_image_name_by_id, fillcache_local
 from app.utils.db_utils import load_folder_status_from_db
 from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, save_simple_hashes, \
@@ -683,7 +683,7 @@ def p2():
     logger.info(f"Anzahl Ordner gesamt: {len(hash_cache)}")
 
     process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR,
-                                 ["textfiles"])
+                                 [Settings.TEXTFILES_FOLDERNAME])
 
 
 if __name__ == "__main__":

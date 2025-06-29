@@ -22,6 +22,9 @@ class Settings:
 
     Diese Klasse definiert alle Konstanten und Einstellungen, die für die Anwendung benötigt werden.
     """
+
+    TEXTFILES_FOLDERNAME = "textfiles"
+
     app_ready = False
     DATA_DIR = Path('/data')
 
@@ -37,7 +40,7 @@ class Settings:
     IMAGE_FILE_CACHE_DIR = '/data/imagefiles'
 
     TEXT_EXTENSIONS = {".txt"}
-    TEXT_FILE_CACHE_DIR = DATA_DIR / 'textfiles'
+    TEXT_FILE_CACHE_DIR = DATA_DIR / TEXTFILES_FOLDERNAME
 
     GDRIVE_HASH_FILE = "hashes.json"
     GALLERY_HASH_FILE = "gallery202505_hashes.json"

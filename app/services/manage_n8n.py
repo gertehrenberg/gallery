@@ -125,7 +125,7 @@ async def insert_task(file_md5: str, task_type: str, file_name: str, status: str
 async def move_file_to_textfiles(service, file_id: str, file_name: str, task_type: str) -> bool:
     """Verschiebt eine Datei in den textfiles-Ordner"""
     try:
-        textfiles_folder_id = folder_id_by_name("textfiles")
+        textfiles_folder_id = folder_id_by_name(Settings.TEXTFILES_FOLDERNAME)
 
         # Datei in textfiles-Ordner verschieben
         service.files().update(
@@ -528,7 +528,7 @@ async def process_save_folder_pairs(service, image_text_pairs) -> None:
 
                 save_folder_id = folder_id_by_name("save")
                 recheck_folder_id = folder_id_by_name("recheck")
-                textfiles_folder_id = folder_id_by_name("textfiles")
+                textfiles_folder_id = folder_id_by_name(Settings.TEXTFILES_FOLDERNAME)
 
                 # Verschiebe Dateien in Google Drive
                 try:

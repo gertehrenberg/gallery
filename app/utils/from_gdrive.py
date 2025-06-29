@@ -132,7 +132,7 @@ logger = setup_logger(__name__)
 
 def find_and_download_missing_text_files(service, textfiles_folder_id: str) -> None:
     """
-    Findet alle .txt Dateien im 'textfiles' Ordner von Google Drive und lädt sie herunter,
+    Findet alle .txt Dateien im "textfiles" Ordner von Google Drive und lädt sie herunter,
     falls sie noch nicht im TEXT_FILE_CACHE_DIR existieren oder verändert wurden.
 
     Args:
@@ -231,7 +231,7 @@ def p5():
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
     # find_and_download_missing_images(service, "recheck")
-    find_and_download_missing_text_files(service, folder_id_by_name("textfiles"))
+    find_and_download_missing_text_files(service, folder_id_by_name(Settings.TEXTFILES_FOLDERNAME))
 
 
 if __name__ == "__main__":

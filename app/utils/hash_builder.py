@@ -118,7 +118,7 @@ def images(service):
 def text(service):
     delete_all_hashfiles(Settings.TEXT_FILE_CACHE_DIR, False)
     process_image_folders(service, Settings.TEXT_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR,
-                          [folder_id_by_name("textfiles")], False)
+                          [folder_id_by_name(Settings.TEXTFILES_FOLDERNAME)], False)
     write_local_hashes(Settings.TEXT_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR, False)
 
 

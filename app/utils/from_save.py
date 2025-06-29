@@ -222,9 +222,9 @@ if __name__ == "__main__":
     service = load_drive_service()
 
     # Erst normalize beide Ordner
-    # normalize_filenames_in_drive_folder(service, "textfiles", "temp")
+    # normalize_filenames_in_drive_folder(service, Settings.TEXTFILES, "temp")
     # normalize_filenames_in_drive_folder(service, "real", "temp")
     # normalize_filenames_in_drive_folder(service, "save", "temp")
 
-    sync_txt_files(service, "save", "textfiles")
+    sync_txt_files(service, "save", Settings.TEXTFILES_FOLDERNAME)
     sync_image_files(service, "save", "real")

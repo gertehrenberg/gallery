@@ -8,7 +8,7 @@ import sqlite3
 import time
 from datetime import datetime, date, timedelta
 from pathlib import Path
-from typing import Dict, List, Set
+from typing import Dict
 
 from fastapi import APIRouter, Request
 from fastapi import Form
@@ -23,8 +23,9 @@ from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
 from app.routes.cost_openai_api import load_openai_costs_from_dir
 from app.routes.cost_runpod import load_runpod_costs_from_dir
-from app.routes.hashes import update_gdrive_hashes, is_valid_image, reloadcache_progress, \
-    delete_duplicates_in_gdrive_folder, download_file, upload_file_to_gdrive
+from app.routes.hashes import reloadcache_progress, \
+    download_file
+from app.routes.manage_image_files import move_gdrive_files_by_local
 from app.scores.comfyUI import reload_comfyui
 from app.scores.faces import reload_faces
 from app.scores.nsfw import reload_nsfw
@@ -36,6 +37,7 @@ from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
     update_progress_text
 from app.utils.progress import list_files
+from app.utils.progress_detail import detail_state
 
 router = APIRouter()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
@@ -49,9 +51,14 @@ router.include_router(what.router)
 
 @router.get("/dashboard/progress")
 async def get_multi_progress():
+    """Gibt den aktuellen Fortschrittszustand zurück."""
     return JSONResponse({
         "progress": progress_state["progress"],
-        "status": progress_state["status"]
+        "status": progress_state["status"],
+        "details": {
+            "status": detail_state["status"],
+            "progress": detail_state["progress"]
+        }
     })
 
 
@@ -406,7 +413,7 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
 
     # Prüfe ob der Ordner gültig ist
     kategorientabelle = {k["key"]: k for k in Settings.kategorien}
-    if folder not in kategorientabelle:
+    if folder != Settings.TEXTFILES_FOLDERNAME and folder not in kategorientabelle:
         return JSONResponse(
             content={"error": f"Ungültiger Ordner: {folder}"},
             status_code=400
@@ -470,151 +477,6 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
     )
 
 
-async def move_gdrive_files_by_local(service, folder_name: str):
-    # await update_progress_text("🗑️ Lösche alte Hash-Dateien...")
-    # await delete_all_hashfiles_async(Settings.IMAGE_FILE_CACHE_DIR)
-    # await update_all_local_hashes()
-    # await update_all_gdrive_hashes(service)
-
-    await update_progress_text(f"🔄 Starte GDrive Synchronisation für Ordner: {folder_name}")
-    await init_progress_state()
-    progress_state["running"] = True
-
-    # Lade alle lokalen Hash-Dateien
-    cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
-    folder_path = cache_dir / folder_name
-
-    # Lade lokale Hashes des aktuellen Ordners
-    try:
-        with (folder_path / Settings.GALLERY_HASH_FILE).open("r", encoding="utf-8") as f:
-            local_hashes = json.load(f)
-    except Exception as e:
-        await update_progress_text(f"⚠️ Fehler beim Lesen lokaler Hashes für {folder_name}: {e}")
-        return
-
-    # Lade alle GDrive Hashes (aus allen Ordnern)
-    all_gdrive_hashes = {}
-    for kategorie in Settings.kategorien:
-        gdrive_hash_file = cache_dir / kategorie["key"] / Settings.GDRIVE_HASH_FILE
-        try:
-            with gdrive_hash_file.open("r", encoding="utf-8") as f:
-                folder_hashes = json.load(f)
-                all_gdrive_hashes.update(folder_hashes)
-        except Exception as e:
-            await update_progress_text(f"ℹ️ Keine GDrive Hashes für {kategorie['key']}: {e}")
-
-    moved = 0
-    uploaded = 0
-    total_files = len(local_hashes)
-
-    # Verarbeite jede lokale Datei
-    for filename, local_md5 in local_hashes.items():
-        found = False
-        # Suche nach der Datei in allen GDrive Hashes
-        for gdrive_name, entry in all_gdrive_hashes.items():
-            if isinstance(entry, dict) and entry.get('md5') == local_md5:
-                found = True
-                # Wenn Datei in falschem Ordner ist, verschieben
-                if entry.get('folder') != folder_name:
-                    try:
-                        target_folder_id = folder_id_by_name(folder_name)
-                        if target_folder_id:
-                            await update_progress_text(f"🔄 Verschiebe {filename} nach {folder_name}")
-                            move_file_to_folder(service, entry['id'], target_folder_id)
-                            moved += 1
-                            await update_progress_text(f"✅ {filename} wurde verschoben")
-                    except Exception as e:
-                        await update_progress_text(f"❌ Fehler beim Verschieben von {filename}: {e}")
-                break
-
-        # Wenn Datei nirgends im GDrive gefunden wurde, hochladen
-        if not found:
-            try:
-                file_path = folder_path / filename
-                if file_path.exists():
-                    await update_progress_text(f"⬆️ Lade {filename} nach {folder_name} hoch")
-                    target_folder_id = folder_id_by_name(folder_name)
-                    if target_folder_id:
-                        await upload_file_to_gdrive(service, file_path, target_folder_id)
-                        uploaded += 1
-                        await update_progress_text(f"✅ {filename} wurde hochgeladen")
-            except Exception as e:
-                await update_progress_text(f"❌ Fehler beim Hochladen von {filename}: {e}")
-
-        await update_progress(f"🔄 Verarbeite {filename}", int(((moved + uploaded) / total_files) * 100))
-
-    # Update GDrive hashes wenn Änderungen vorgenommen wurden
-    if moved > 0 or uploaded > 0:
-        await delete_duplicates_in_gdrive_folder(service, folder_name)
-        await update_progress_text(f"🔄 Aktualisiere GDrive Hashes für {folder_name}...")
-        await update_gdrive_hashes(service, folder_name)
-
-    await update_progress_text(
-        f"✅ Synchronisation abgeschlossen. {moved} Dateien verschoben, {uploaded} Dateien hochgeladen"
-    )
-
-
-async def sync2(service, folder_name: str, gdrive_hashes: Dict,
-                local_hashes: Dict, hashfiles: List[Path]) -> Set[str]:
-    affected_folders = {folder_name}
-
-    logger.info("Prüfe zusätzliche Dateien in Google Drive...")
-    entries_to_process = [
-        (name, gdrive_entry)
-        for name, gdrive_entry in gdrive_hashes.items()
-        if name not in local_hashes and is_valid_image(name)
-    ]
-
-    total = len(entries_to_process)
-    count = 0
-
-    for name, gdrive_entry in entries_to_process:
-        count += 1
-        await update_progress(f"Verarbeite Datei {count}/{total}",
-                              int((count / total) * 100))
-
-        gdrive_md5 = gdrive_entry.get("md5") if isinstance(gdrive_entry, dict) else gdrive_entry
-        file_id = gdrive_entry.get("id") if isinstance(gdrive_entry, dict) else None
-
-        if not gdrive_md5 or not file_id or not is_valid_image(name):
-            continue
-
-        found_in_folder = None
-        for check_hashfile in hashfiles:
-            check_folder = check_hashfile.parent.name
-            if check_folder == folder_name:
-                continue
-
-            try:
-                with check_hashfile.open("r", encoding="utf-8") as f:
-                    check_hashes = json.load(f)
-                    for check_name, check_md5 in check_hashes.items():
-                        if check_md5 == gdrive_md5 and is_valid_image(check_name):
-                            found_in_folder = check_folder
-                            await update_progress_text(
-                                f"[✓] Datei {name} (MD5: {gdrive_md5}) gefunden in Ordner {found_in_folder}")
-                            break
-                    if found_in_folder:
-                        break
-            except Exception as e:
-                logger.error(f"[Fehler beim Lesen von {check_hashfile}]: {e}")
-                continue
-
-        if found_in_folder:
-            target_folder_id = folder_id_by_name(found_in_folder)
-            if target_folder_id:
-                try:
-                    await update_progress_text(f"[→] Verschiebe {name} nach {found_in_folder} in Google Drive")
-                    move_file_to_folder(service, file_id, target_folder_id)
-                    affected_folders.add(found_in_folder)
-                except Exception as e:
-                    logger.error(f"[Fehler beim Verschieben von {name}]: {e}")
-        else:
-            await update_progress_text(f"[!] Keine lokale Entsprechung für {name} (MD5: {gdrive_md5}) gefunden")
-
-    return affected_folders
-
-
 def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict[str, str]]:
     global_hashes = {}
     hashfiles = list(cache_dir.rglob("hashes.json"))
@@ -632,29 +494,6 @@ def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict[str, str]]:
         except Exception as e:
             logger.info(f"[Fehler] {hashfile}: {e}")
     return global_hashes
-
-
-def move_file_to_folder(service, file_id: str, target_folder_id: str) -> bool:
-    try:
-        # Get current parents
-        file = service.files().get(fileId=file_id, fields="parents").execute()
-        previous_parents = ",".join(file.get("parents", []))
-
-        # Move file
-        result = service.files().update(
-            fileId=file_id,
-            addParents=target_folder_id,
-            removeParents=previous_parents,
-            fields="id, parents"
-        ).execute()
-
-        # Check if target folder is in new parents
-        new_parents = result.get('parents', [])
-        return target_folder_id in new_parents
-
-    except Exception as e:
-        logger.error(f"Fehler beim Verschieben von {file_id}: {e}")
-        return False
 
 
 def move_file_to_folder_new(service, file_id, old_parents, new_parent):
@@ -908,7 +747,7 @@ async def manage_save_progress(service: None):
 
     from_files = await list_files(from_folder_id, service, "=")
     if len(from_files) > 0:
-        to_folder_id = folder_id_by_name("textfiles")
+        to_folder_id = folder_id_by_name(Settings.TEXTFILES_FOLDERNAME)
         to_files = await list_files(to_folder_id, service, "=")
 
         existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
@@ -1328,7 +1167,7 @@ def p5():
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    asyncio.run(move_gdrive_files_by_local(service, "recheck"))
+    asyncio.run(move_gdrive_files_by_local(service, "textfiles"))
 
 
 if __name__ == "__main__":

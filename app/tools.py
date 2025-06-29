@@ -11,6 +11,7 @@ from app.config import Settings
 from app.config_gdrive import calculate_md5, SettingsGdrive
 from app.utils.logger_config import setup_logger
 from app.utils.progress import update_progress_text
+from app.utils.progress_detail import update_detail_progress
 
 logger = setup_logger(__name__)
 
@@ -274,40 +275,81 @@ async def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
     folder = Path(folder_path)
     bilder_daten: List[Dict[str, Any]] = []
 
-    counter = 0
+    # Zuerst die Gesamtzahl der Dateien ermitteln
+    total_files = sum(1 for file_path in folder.iterdir()
+                     if file_path.is_file() and file_path.suffix.lower() in Settings.IMAGE_EXTENSIONS)
 
+    if total_files == 0:
+        await update_detail_progress(
+            detail_status="⚠️ Keine Bilddateien gefunden",
+            detail_progress=1000
+        )
+        return
+
+    counter = 0
+    errors = 0
+
+    await update_detail_progress(
+        detail_status=f"🔍 Gefunden: {total_files} Bilder",
+        detail_progress=0
+    )
+
+    # Iteriere über alle Dateien im Ordner
     for file_path in folder.iterdir():
         if not (file_path.is_file() and file_path.suffix.lower() in Settings.IMAGE_EXTENSIONS):
             continue
 
         image_name = file_path.name.lower()
-        md5_hash = calculate_md5(file_path)
-        endung = file_path.suffix.lower()[1:]
-
-        # Update progress text only every 50th file
-        if counter % Settings.PAGESIZE == 0:
-            await update_progress_text(f"File: {image_name} ({counter})")
         counter += 1
 
-        # Datum ermitteln und txt-Datei aktualisieren
-        aufnahmedatum, german_date = get_image_date(file_path)
-        txt_file_path = Path(Settings.TEXT_FILE_CACHE_DIR) / f"{md5_hash}.{endung}.txt"
-        update_date_in_txt_file(txt_file_path, german_date)
+        try:
+            # Berechne Fortschritt in Prozent
+            progress = int((counter / total_files) * 100)
 
-        # Bilddaten sammeln
-        bilder_daten.append({
-            'name': image_name,
-            'data': {
-                "image_id": md5_hash,
-                "folder": str(file_path.parent.name),
-                "aufnahmedatum": aufnahmedatum.isoformat()
-            }
-        })
+            # Update Fortschrittsanzeige
+            await update_detail_progress(
+                detail_status=f"🖼️ [{counter}/{total_files}] Verarbeite {image_name}",
+                detail_progress=progress
+            )
+
+            # Hauptverarbeitung
+            md5_hash = calculate_md5(file_path)
+            endung = file_path.suffix.lower()[1:]
+
+            # Datum ermitteln und txt-Datei aktualisieren
+            aufnahmedatum, german_date = get_image_date(file_path)
+            txt_file_path = Path(Settings.TEXT_FILE_CACHE_DIR) / f"{md5_hash}.{endung}.txt"
+            update_date_in_txt_file(txt_file_path, german_date)
+
+            # Bilddaten sammeln
+            bilder_daten.append({
+                'name': image_name,
+                'data': {
+                    "image_id": md5_hash,
+                    "folder": str(file_path.parent.name),
+                    "aufnahmedatum": aufnahmedatum.isoformat()
+                }
+            })
+
+        except Exception as e:
+            errors += 1
+            logger.error(f"Fehler bei {image_name}: {str(e)}")
+            continue
+
+    # Abschlussmeldung
+    status = f"✅ Verarbeitet: {counter} Bilder"
+    if errors > 0:
+        status += f" | ⚠️ {errors} Fehler"
 
     # Nach Datum sortieren und Cache aktualisieren
     bilder_daten.sort(key=lambda x: x['data']['aufnahmedatum'], reverse=True)
     for bild in bilder_daten:
         pair_cache[bild['name']] = bild['data']
+
+    await update_detail_progress(
+        detail_status=status,
+        detail_progress=1000
+    )
 
 def p5():
     Settings.DB_PATH = '../gallery_local.db'

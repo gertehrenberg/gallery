@@ -2,20 +2,146 @@ import asyncio
 import hashlib
 import json
 import os
+import sqlite3
 from pathlib import Path
 from typing import Dict, List, Any
 from typing import Optional
 
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 
-from app.config import Settings
-from app.config_gdrive import sanitize_filename, folder_id_by_name, SettingsGdrive, collect_all_folders
+from app.config import Settings, score_type_map
+from app.config_gdrive import sanitize_filename, folder_id_by_name, SettingsGdrive, collect_all_folders, calculate_md5
+from app.database import clear_folder_status_db_by_name
 from app.routes.auth import load_drive_service_token
 from app.routes.gdrive_from_lokal import save_structured_hashes
 from app.tools import readimages
 from app.utils.db_utils import save_folder_status_to_db, load_folder_status_from_db
 from app.utils.progress import init_progress_state, progress_state, update_progress, update_progress_text, \
-    save_simple_hashes, hold_progress, stop_progress, write_local_hashes_progress
+    save_simple_hashes, hold_progress, stop_progress
+from app.utils.progress_detail import update_detail_status, update_detail_progress
+
+
+async def process_text_files():
+    file_folder_dir = Settings.TEXT_FILE_CACHE_DIR
+    await update_progress_text("🧮 Verarbeite Textdateien")
+
+    # Initialize progress state
+    await init_progress_state()
+    progress_state["running"] = True
+
+    if Settings.TEXT_FILE_CACHE_DIR == file_folder_dir:
+        text_cache = Settings.CACHE["text_cache"]
+        text_cache.clear()
+        await update_progress_text("Cache geleert")
+
+    # Update database entries
+    await update_progress_text("🔄 Aktualisiere Datenbankeinträge")
+    try:
+        with sqlite3.connect(Settings.DB_PATH) as conn:
+            query = """
+                    UPDATE image_quality_scores
+                    SET image_name = SUBSTR(image_name, 1, LENGTH(image_name) - 4)
+                    WHERE score_type = ?
+                      AND LOWER(image_name) LIKE '%.txt'
+                    """
+            conn.execute(query, (score_type_map['text'],))
+            conn.commit()
+        await update_progress_text("✅ Datenbankeinträge aktualisiert")
+    except Exception as e:
+        await update_progress_text(f"❌ Fehler bei Datenbankaktualisierung: {e}")
+
+    # Collect files
+    subdir = Path(file_folder_dir)
+    local_hashes: Dict[str, str] = {}
+    image_files = [f for f in subdir.iterdir() if f.is_file() and f.suffix.lower() in Settings.TEXT_EXTENSIONS]
+
+    total_files = len(image_files)
+    if total_files == 0:
+        await update_progress_text("ℹ️ Keine Textdateien gefunden")
+        return
+
+    await update_progress_text(f"🔄 Verarbeite {total_files} Textdateien")
+
+    # Initialize progress for file processing
+    await update_detail_progress(
+        detail_status="Starte Verarbeitung",
+        detail_progress=0
+    )
+
+    # Process files
+    total_files = len(image_files)
+    for idx, file in enumerate(image_files):
+        image_name = file.name.lower()
+        current_progress = int((idx / total_files) * 1000)
+
+        await update_detail_progress(
+            detail_status=f"Verarbeite {image_name} ({idx + 1}/{total_files})",
+            detail_progress=current_progress
+        )
+
+        try:
+            md5_local = calculate_md5(file)
+            local_hashes[image_name] = md5_local
+
+            # Search for PNG files
+            from app.services.image_processing import find_png_file
+            image_name_bild = image_name[:-4]
+            matching_files = find_png_file(image_name_bild)
+
+            if matching_files:
+                found_file = matching_files[0]
+                found_file_str = str(found_file.name)
+
+                # Database check and processing...
+                with sqlite3.connect(Settings.DB_PATH) as conn:
+                    cursor = conn.execute("""
+                                          SELECT score
+                                          FROM image_quality_scores
+                                          WHERE image_name = ?
+                                            AND score_type = ?
+                                          """, (found_file_str, score_type_map['text']))
+                    db_result = cursor.fetchone()
+
+                if db_result and db_result[0]:
+                    await update_detail_status(
+                        f"DB Eintrag gefunden: {db_result[0]} Zeichen"
+                    )
+                else:
+                    # Process new file...
+                    from app.services.image_processing import download_text_file
+                    content = download_text_file(
+                        folder_name=found_file.parent.name,
+                        image_name=found_file.name,
+                        cache_dir=Settings.TEXT_FILE_CACHE_DIR
+                    )
+
+                    if content:
+                        with sqlite3.connect(Settings.DB_PATH) as conn:
+                            conn.execute("""
+                                INSERT OR REPLACE INTO image_quality_scores 
+                                (image_name, score_type, score)
+                                VALUES (?, ?, ?)
+                            """, (found_file_str, score_type_map['text'], len(content)))
+                            await update_detail_status(
+                                f"Neuer Eintrag: {len(content)} Zeichen"
+                            )
+
+        except Exception as e:
+            await update_detail_status(f"Fehler: {str(e)}")
+
+    # Mark completion
+    await update_detail_progress(
+        detail_status="Verarbeitung abgeschlossen",
+        detail_progress=1000
+    )
+
+    # Save hashes
+    hashfile_name = Settings.GALLERY_HASH_FILE
+    hash_path = subdir / hashfile_name
+    await update_progress_text(f"💾 Speichere {len(local_hashes)} Hashes")
+    await save_simple_hashes(local_hashes, hash_path)
+
+    await update_progress_text(f"✅ Verarbeitung abgeschlossen: {total_files} Dateien")
 
 
 def is_valid_image(filename: str) -> bool:
@@ -56,6 +182,8 @@ async def update_local_hashes(folder_name):
     await update_progress_text(f"📁 Verarbeite Kategorie: {folder_name}")
 
     await readimages(folder_path, local_cache)
+
+    clear_folder_status_db_by_name(Settings.DB_PATH, folder_name)
 
     for image_name, entry in local_cache.items():
         image_id = entry.get('image_id')
@@ -112,14 +240,71 @@ async def update_all_gdrive_hashes(service) -> None:
         await update_gdrive_hashes(service, folder_name)
 
 
-async def update_gdrive_hashes(service, folder_name: Optional[str] = None):
+async def process_files_with_progress(
+        files: list,
+        extension,
+        status_prefix: str = "") -> dict:
+    """
+    Verarbeitet eine Liste von Dateien mit Fortschrittsanzeige.
+
+    Args:
+        files: Liste der zu verarbeitenden Dateien
+        status_prefix: Prefix für die Statusmeldung
+
+    Returns:
+        Dict mit verarbeiteten Dateien
+    """
+    gdrive_hashes = {}
+    total_files = len(files)
+    files_processed = 0
+
+    # Initialize progress
+    await update_detail_progress(
+        detail_status=f"{status_prefix}Starte Verarbeitung...",
+        detail_progress=0
+    )
+
+    for item in files:
+        name = sanitize_filename(item.get('name', ''))
+        fext = any(name.endswith(ext) for ext in extension)
+
+        if name and fext:
+            md5_checksum = item.get('md5Checksum')
+            file_id = item.get('id')
+            if md5_checksum and file_id:
+                gdrive_hashes[name] = {
+                    "md5": md5_checksum,
+                    "id": file_id
+                }
+                files_processed += 1
+
+                # Update progress
+                progress = int((files_processed / total_files) * 1000)
+                await update_detail_progress(
+                    detail_status=f"{status_prefix}Verarbeite {name} ({files_processed}/{total_files})",
+                    detail_progress=progress
+                )
+
+    # Final progress update
+    await update_detail_progress(
+        detail_status=f"{status_prefix}Verarbeitung abgeschlossen: {files_processed} Dateien",
+        detail_progress=1000
+    )
+
+    return gdrive_hashes
+
+
+async def update_gdrive_hashes(
+        service,
+        folder_name: Optional[str] = None,
+        extension=Settings.IMAGE_EXTENSIONS,
+        base_dir=Path(Settings.IMAGE_FILE_CACHE_DIR)):
     """Liest Dateien aus Google Drive und aktualisiert die hashes.json Dateien."""
     await update_progress_text(f"🔄 Aktualisiere GDrive Hashes{' für ' + folder_name if folder_name else ''}")
     await init_progress_state()
     progress_state["running"] = True
 
     try:
-        base_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
         folders_to_process = [base_dir / folder_name] if folder_name else [p for p in base_dir.iterdir() if p.is_dir()]
         total_folders = len(folders_to_process)
 
@@ -135,9 +320,11 @@ async def update_gdrive_hashes(service, folder_name: Optional[str] = None):
 
             gdrive_hashes: Dict[str, Dict[str, str]] = {}
             page_token = None
-            files_processed = 0
 
+            w = 1
             while True:
+                await update_progress(f"Lesen von {page_token}", w)
+                w += 2
                 try:
                     results = service.files().list(
                         q=f"'{folder_id}' in parents and trashed=false",
@@ -147,23 +334,11 @@ async def update_gdrive_hashes(service, folder_name: Optional[str] = None):
                         pageToken=page_token
                     ).execute()
 
-                    for item in results.get('files', []):
-                        name = sanitize_filename(item.get('name', ''))
-                        if name and is_valid_image(name):
-                            md5_checksum = item.get('md5Checksum')
-                            file_id = item.get('id')
-                            if md5_checksum and file_id:
-                                gdrive_hashes[name] = {
-                                    "md5": md5_checksum,
-                                    "id": file_id
-                                }
-                                files_processed += 1
-
-                        if files_processed % 100 == 0:
-                            await update_progress(
-                                f"⚡ Dateien in {current_folder}: {files_processed}",
-                                int((files_processed / (files_processed + 1)) * 100)
-                            )
+                    gdrive_hashes = await process_files_with_progress(
+                        results.get('files', []),
+                        extension,
+                        status_prefix="🔄 "
+                    )
 
                     page_token = results.get('nextPageToken')
                     if not page_token:
@@ -206,15 +381,19 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
         await update_progress_text(f"🔄 Starte reloadcache_progress für Ordner: {folder_key}")
         Settings.folders_loaded = 0
 
-        if folder_key == "textfiles":
+        if folder_key == Settings.TEXTFILES_FOLDERNAME:
             await update_progress_text("🗃️ Modus: Textverarbeitung")
+            await update_gdrive_hashes(
+                service,
+                folder_key,
+                Settings.TEXT_EXTENSIONS,
+                Path(Settings.TEXT_FILE_CACHE_DIR).parent)
             await process_text_files()
 
         elif folder_key in Settings.CHECKBOX_CATEGORIES:
             await update_progress_text(f"📂 Modus: Einzelne Kategorie ({folder_key})")
-            folder_name = folder_key
-            await update_gdrive_hashes(service, folder_name)
-            await update_local_hashes(folder_name)
+            await update_gdrive_hashes(service, folder_key)
+            await update_local_hashes(folder_key)
             Settings.folders_loaded += 1
 
         else:
@@ -223,12 +402,17 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
             pair_cache.clear()
 
             for kategorie in Settings.kategorien:
-                folder_name = kategorie["key"]
-                await update_gdrive_hashes(service, folder_name)
-                await update_local_hashes(folder_name)
+                folder_key = kategorie["key"]
+                await update_gdrive_hashes(service, folder_key)
+                await update_local_hashes(folder_key)
                 Settings.folders_loaded += 1
 
             await update_progress_text("🗃️ Modus: Textverarbeitung")
+            await update_gdrive_hashes(
+                service,
+                folder_key,
+                Settings.TEXT_EXTENSIONS,
+                Settings.TEXT_FILE_CACHE_DIR.parent)
             await process_text_files()
 
             await process_image_folders_gdrive_progress(service, folder_key)
@@ -240,16 +424,6 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
     finally:
         await update_progress_text("✅ reloadcache_progress abgeschlossen")
         await stop_progress()
-
-
-async def process_text_files():
-    """Processes text files in the text directory."""
-    await update_progress_text("🧮 Schreibe lokale Hashes (Texte)")
-    await write_local_hashes_progress(
-        Settings.TEXT_EXTENSIONS,
-        Settings.TEXT_FILE_CACHE_DIR,
-        False
-    )
 
 
 async def process_image_folders_gdrive_progress(service, folder_name: str):
@@ -1087,7 +1261,8 @@ def p5():
             print(f"Cache-Einträge: {result['statistics']['cached_files']}")
             print(f"Inkonsistente Ordner: {len(result['inconsistencies'])}")
 
-    result = asyncio.run(verify_file_cache_consistency(Path(Settings.TEXT_FILE_CACHE_DIR).parent, "textfiles"))
+    result = asyncio.run(
+        verify_file_cache_consistency(Path(Settings.TEXT_FILE_CACHE_DIR).parent, Settings.TEXTFILES_FOLDERNAME))
     if len(result['inconsistencies']) > 0:
         # Die Ergebnisse auswerten
         print(f"Geprüfte Dateien: {result['statistics']['total_files']}")
@@ -1136,8 +1311,8 @@ def p7():
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
-    asyncio.run(reloadcache_progress(service, "recheck"))
+    asyncio.run(reloadcache_progress(service, Settings.TEXTFILES_FOLDERNAME))
 
 
 if __name__ == "__main__":
-    p6()
+    p7()
