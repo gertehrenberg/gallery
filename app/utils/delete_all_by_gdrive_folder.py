@@ -124,7 +124,7 @@ async def delete_files_in_folder(service, folder_id: str = "1q1b1DpBAVDfkvAOMBQ-
         await update_progress_text(
             f"🔄 Starte Cache-Rebuild für Ordner: {folder_key}"
         )
-        await update_gdrive_hashes(service, folder_key)
+        await update_gdrive_hashes(service, folder_key, Settings.IMAGE_EXTENSIONS, Path(Settings.IMAGE_FILE_CACHE_DIR))
         await update_local_hashes(folder_key)
 
     return affected_folders

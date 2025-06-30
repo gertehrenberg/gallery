@@ -251,7 +251,7 @@ async def update_all_gdrive_hashes(service) -> None:
             continue
 
         await update_progress(f"Verarbeite {folder_name}", int((idx / total_kategorien) * 100))
-        await update_gdrive_hashes(service, folder_name)
+        await update_gdrive_hashes(service, folder_name, Settings.IMAGE_EXTENSIONS, Path(Settings.IMAGE_FILE_CACHE_DIR))
 
 
 async def process_files_with_progress(
@@ -297,9 +297,9 @@ async def process_files_with_progress(
 
 async def update_gdrive_hashes(
         service,
-        folder_name: Optional[str] = None,
-        extension: Tuple[str, ...] = Settings.IMAGE_EXTENSIONS,
-        base_dir: Path = Path(Settings.IMAGE_FILE_CACHE_DIR)):
+        folder_name: Optional[str],
+        extension: Tuple[str, ...],
+        base_dir: Path):
     await update_progress_auto(f"🔄 Aktualisiere GDrive Hashes{' für ' + folder_name if folder_name else ''}")
 
     try:
@@ -330,11 +330,11 @@ async def update_gdrive_hashes(
                         pageToken=page_token
                     ).execute()
 
-                    gdrive_hashes = await process_files_with_progress(
+                    gdrive_hashes.update(await process_files_with_progress(
                         results.get('files', []),
                         extension,
                         status_prefix="🔄 "
-                    )
+                    ))
 
                     page_token = results.get('nextPageToken')
                     if not page_token:
@@ -386,7 +386,8 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
         elif folder_key in Settings.CHECKBOX_CATEGORIES:
             await update_progress_auto(f"📂 Modus: Einzelne Kategorie ({folder_key})")
             await update_local_hashes(folder_key)
-            await update_gdrive_hashes(service, folder_key)
+            await update_gdrive_hashes(service, folder_key, Settings.IMAGE_EXTENSIONS,
+                                       Path(Settings.IMAGE_FILE_CACHE_DIR))
             Settings.folders_loaded += 1
 
         else:
@@ -396,7 +397,8 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
 
             for kategorie in Settings.kategorien:
                 folder_key = kategorie["key"]
-                await update_gdrive_hashes(service, folder_key)
+                await update_gdrive_hashes(service, folder_key, Settings.IMAGE_EXTENSIONS,
+                                           Path(Settings.IMAGE_FILE_CACHE_DIR))
                 await update_local_hashes(folder_key)
                 Settings.folders_loaded += 1
 

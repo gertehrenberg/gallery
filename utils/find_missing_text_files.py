@@ -1,91 +1,113 @@
 import json
 import shutil
 from pathlib import Path
+from typing import List, Tuple, Dict
 
 from tqdm import tqdm
 
 from app.config_gdrive import sanitize_filename
-from config import IMAGE_EXTENSIONS, TEMP_FILE_DIR
-from config import IMAGE_FILE_CACHE_DIR, TEXT_FILE_CACHE_DIR
+from app.utils.logger_config import setup_logger
+from config import IMAGE_EXTENSIONS, TEMP_FILE_DIR, IMAGE_FILE_CACHE_DIR, TEXT_FILE_CACHE_DIR
+
+logger = setup_logger(__name__)
 
 
-def find_missing_text_files(image_cache_dir: Path, text_dir: Path):
+def load_hash_files(image_cache_dir: Path) -> List[Path]:
+    """Return all hash JSON files in the image cache directory."""
+    return list(image_cache_dir.rglob("gallery202505_hashes.json"))
+
+
+def read_hashfile(hashfile: Path) -> Dict:
+    """Read and parse a JSON hashfile. Returns empty dict on error."""
+    try:
+        return json.loads(hashfile.read_text(encoding="utf-8"))
+    except Exception as e:
+        logger.error("Failed to read %s: %s", hashfile, e)
+        return {}
+
+
+def collect_missing_entries(hash_files: List[Path], text_dir: Path) -> List[Tuple[str, Path]]:
+    """Collect names and image paths for entries missing a corresponding .txt file."""
     missing = []
-    hashfiles = list(image_cache_dir.rglob("gallery202505_hashes.json"))
+    for hashfile in tqdm(hash_files, desc="Prüfe auf fehlende .txt-Dateien", unit="Ordner"):
+        folder = hashfile.parent
+        data = read_hashfile(hashfile)
+        for name in data:
+            if not (text_dir / (sanitize_filename(name) + ".txt")).exists():
+                missing.append((name, folder / name))
+    return missing
 
-    with tqdm(total=len(hashfiles), desc="Prüfe auf fehlende .txt-Dateien", unit="Ordner") as bar:
-        for hashfile in hashfiles:
-            folder = hashfile.parent
-            try:
-                with hashfile.open("r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except Exception as e:
-                print(f"[Fehler] {hashfile}: {e}")
-                bar.update(1)
-                continue
 
-            for name in data:
-                txt_name = sanitize_filename(name) + ".txt"
-                txt_path = text_dir / txt_name
-                if not txt_path.exists():
-                    missing.append((name, folder / name))
+def move_missing_images(missing: List[Tuple[str, Path]], recheck_dir: Path) -> None:
+    """Move missing image files to the recheck directory."""
+    recheck_dir.mkdir(parents=True, exist_ok=True)
+    for _, img_path in missing:
+        if img_path.exists():
+            _move_file(img_path, recheck_dir)
 
-            bar.update(1)
+
+def _move_file(src: Path, dest_dir: Path) -> None:
+    """Helper to move a single file if not already present at destination."""
+    target = dest_dir / src.name
+    if target.exists():
+        logger.info("Skipped existing: %s", target)
+        return
+    try:
+        shutil.move(str(src), str(target))
+        logger.info("Moved: %s → %s", src, target)
+    except Exception as e:
+        logger.error("Error moving %s: %s", src, e)
+
+
+def calculate_size_threshold(txt_files: List[Path], percentile: float = 0.2, max_bytes: int = 100) -> int:
+    """Calculate size the threshold based on percentile, capped by max_bytes."""
+    sizes = sorted(f.stat().st_size for f in txt_files)
+    if not sizes:
+        return 0
+    idx = int(len(sizes) * percentile)
+    return min(sizes[idx], max_bytes)
+
+
+def handle_text_file(txt_file: Path, threshold: int, image_cache_dir: Path,
+                     recheck_dir: Path, temp_dir: Path) -> None:
+    """Process a single text file: move if too small or orphaned."""
+    size = txt_file.stat().st_size
+    name = txt_file.stem
+    sanitized = sanitize_filename(name)
+    images = list(Path(image_cache_dir).glob(f"**/{sanitized}"))
+    orphan = not any(img.suffix.lower() in IMAGE_EXTENSIONS for img in images)
+
+    if size < threshold or orphan:
+        reason = "no image" if orphan else f"size {size} bytes"
+        logger.info("Handling %s: %s", txt_file.name, reason)
+        for img in images:
+            if img.suffix.lower() in IMAGE_EXTENSIONS:
+                _move_file(img, recheck_dir)
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        _move_file(txt_file, temp_dir)
+
+
+def detect_and_handle_small_texts(text_dir: Path, image_cache_dir: Path,
+                                  recheck_dir: Path, temp_dir: Path) -> None:
+    """Identify and handle very small or orphan text files."""
+    txt_files = list(text_dir.glob("*.txt"))
+    threshold = calculate_size_threshold(txt_files)
+    if threshold <= 0:
+        return
+    for txt in txt_files:
+        handle_text_file(txt, threshold, image_cache_dir, recheck_dir, temp_dir)
+
+
+def find_missing_text_files(image_cache_dir: Path, text_dir: Path) -> None:
+    """Main entry point: find and handle missing text and image files."""
+    hash_files = load_hash_files(image_cache_dir)
+    missing_entries = collect_missing_entries(hash_files, text_dir)
 
     recheck_dir = Path(IMAGE_FILE_CACHE_DIR) / "recheck"
-    recheck_dir.mkdir(parents=True, exist_ok=True)
-
-    for name, img_path in missing:
-        if img_path.exists():
-            target_path = recheck_dir / img_path.name
-            if not target_path.exists():  # Nur verschieben, wenn Zieldatei nicht bereits existiert
-                try:
-                    shutil.move(str(img_path), str(target_path))
-                    print(f"[→] Verschoben: {img_path} → {target_path}")
-                except Exception as e:
-                    print(f"[Fehler beim Verschieben] {img_path}: {e}")
-            else:
-                print(f"[Übersprungen] Zieldatei existiert bereits: {target_path}")
-
-    # Zusatzfunktion: sehr kleine .txt-Dateien erkennen und Bild verschieben
-    txt_files = list(text_dir.glob("*.txt"))
-    sizes = sorted([f.stat().st_size for f in txt_files])
-    if not sizes:
-        return
-    threshold_index = int(len(sizes) * 0.20)
-    threshold = sizes[threshold_index]
-    threshold = min(threshold, 100)  # Maximal 100 Bytes Schwelle
-
     temp_dir = Path(TEMP_FILE_DIR)
-    temp_dir.mkdir(parents=True, exist_ok=True)
 
-    for txt_file in txt_files:
-        size = txt_file.stat().st_size
-        original_name = txt_file.name[:-4]  # ".txt" entfernen
-        sanitized_name = sanitize_filename(original_name)
-        possible_images = list(Path(IMAGE_FILE_CACHE_DIR).glob(f"**/{sanitized_name}"))
-        has_image = any(img_file.suffix.lower() in IMAGE_EXTENSIONS for img_file in possible_images)
-
-        if size < threshold or not has_image:
-            if not has_image:
-                print(f"[→] Keine Bilddatei gefunden zu: {txt_file.name}, wird verschoben")
-            else:
-                print(f"[→] .txt-Datei zu klein: {txt_file.name}, wird verschoben")
-            for img_file in possible_images:
-                if img_file.suffix.lower() in IMAGE_EXTENSIONS:
-                    target_img = recheck_dir / img_file.name
-                    if not target_img.exists():
-                        try:
-                            shutil.move(str(img_file), str(target_img))
-                            print(f"[→] Bild verschoben: {img_file} → {target_img}")
-                        except Exception as e:
-                            print(f"[Fehler beim Verschieben] {img_file}: {e}")
-            try:
-                temp_txt = temp_dir / txt_file.name
-                shutil.move(str(txt_file), str(temp_txt))
-                print(f"[→] .txt-Datei verschoben: {txt_file} → {temp_txt}")
-            except Exception as e:
-                print(f"[Fehler beim Verschieben der .txt-Datei] {txt_file}: {e}")
+    move_missing_images(missing_entries, recheck_dir)
+    detect_and_handle_small_texts(text_dir, image_cache_dir, recheck_dir, temp_dir)
 
 
 if __name__ == "__main__":

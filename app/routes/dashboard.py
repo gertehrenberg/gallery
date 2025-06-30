@@ -23,8 +23,7 @@ from app.routes import what
 from app.routes.auth import load_drive_service, load_drive_service_token
 from app.routes.cost_openai_api import load_openai_costs_from_dir
 from app.routes.cost_runpod import load_runpod_costs_from_dir
-from app.routes.hashes import reloadcache_progress, \
-    download_file
+from app.routes.hashes import reloadcache_progress, download_file, update_gdrive_hashes
 from app.routes.manage_image_files import move_gdrive_files_by_local
 from app.scores.comfyUI import reload_comfyui
 from app.scores.faces import reload_faces
@@ -1180,7 +1179,7 @@ def p5():
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    asyncio.run(move_gdrive_files_by_local(service, "bad"))
+    asyncio.run(update_gdrive_hashes(service, "ki", Settings.IMAGE_EXTENSIONS, Path(Settings.IMAGE_FILE_CACHE_DIR)))
 
 
 if __name__ == "__main__":
