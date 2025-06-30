@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 from urllib.parse import unquote
 
+import httpx
 from fastapi import APIRouter, Depends, Request, Query, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -240,10 +241,21 @@ def show_images_gallery(
             if not isinstance(quality_scores, dict):
                 quality_scores = {}
 
+            civitai = None
+            url = f"https://civitai.com/images/{image_name.split('.')[0]}"
+            try:
+                with httpx.Client() as client:
+                    response = client.head(url, timeout=2.0, follow_redirects=True)
+                    if response.status_code == 200:
+                        civitai = url
+            except:
+                pass
+
             rendered_html = templates.get_template("image_entry_local.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
                 text_content=text_content,
                 image_name=image_name,
+                civitai=civitai,
                 folder_name=folder_name,
                 image_id=image_id,
                 status={},

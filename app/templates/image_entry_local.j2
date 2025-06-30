@@ -5,7 +5,12 @@
                 <span style="cursor:pointer; margin-left:10px;" onclick="saveAndGoName('{{ image_name }}')">
                     🔍
                 </span>
-                {{ image_name }} <a href="https://civitai.com/images/{{ image_name.split('.')[0] }}" target="_blank"><i class="fas fa-robot"></i></a>
+                {{ image_name }}
+                {% if civitai %}
+                    <span style="cursor:pointer; margin-left:10px;" onclick="window.open('{{ civitai }}', '_blank')">
+                        🤖
+                    </span>
+                {% endif %}
             </td>
         </tr>
         <tr>
@@ -65,35 +70,35 @@
                                        type="checkbox"
                                        data-group="{{ image_id }}_group"
                                        onchange="handleCheckboxChange(this)"
-                                       {{ 'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label }}
+                                        {{ 'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label }}
                             </label>
                         {% endfor %}
                     </form>
                 </div>
                 <script>
-                function handleCheckboxChange(checkbox) {
-                    const group = checkbox.dataset.group;
-                    const checkboxes = document.querySelectorAll(`input[data-group="${group}"]`);
+                    function handleCheckboxChange(checkbox) {
+                        const group = checkbox.dataset.group;
+                        const checkboxes = document.querySelectorAll(`input[data-group="${group}"]`);
 
-                    if (checkbox.checked) {
+                        if (checkbox.checked) {
+                            checkboxes.forEach(cb => {
+                                if (cb !== checkbox) {
+                                    cb.checked = false;
+                                }
+                            });
+                        }
+
+                        const formData = new FormData();
+                        formData.append('image_id', checkbox.name.split('_')[0]);
                         checkboxes.forEach(cb => {
-                            if (cb !== checkbox) {
-                                cb.checked = false;
-                            }
+                            formData.append(cb.name, cb.checked);
+                        });
+
+                        fetch('/gallery/save', {
+                            method: 'POST',
+                            body: formData
                         });
                     }
-
-                    const formData = new FormData();
-                    formData.append('image_id', checkbox.name.split('_')[0]);
-                    checkboxes.forEach(cb => {
-                        formData.append(cb.name, cb.checked);
-                    });
-
-                    fetch('/gallery/save', {
-                        method: 'POST',
-                        body: formData
-                    });
-                }
                 </script>
             </td>
         </tr>
