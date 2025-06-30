@@ -415,7 +415,7 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
 
 
 async def _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path):
-    folder_name = label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
+    folder_name = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
     total = len(image_files)
     for index, image_file in enumerate(image_files):
         await update_progress(f"Kategorie: {folder_name} : {total} Dateien ({image_file})",
@@ -456,15 +456,6 @@ async def _load_file_parents_cache_from_db(db_path: str, file_parents_cache: dic
 
 
 async def verify_file_cache_consistency(base_dir, folder_name: Optional[str] = None) -> dict:
-    """
-    Überprüft die Konsistenz zwischen dem lokalen Cache und den tatsächlichen Dateien im Ordner.
-
-    Args:
-        folder_name: Optional - Spezifischer Ordner zum Überprüfen. Wenn None, werden alle Ordner überprüft.
-
-    Returns:
-        Dict mit Statistiken und Inkonsistenzen
-    """
     await init_progress_state()
     await update_progress_text("🔍 Starte lokale Cache-Konsistenzprüfung...")
 
@@ -490,7 +481,6 @@ async def verify_file_cache_consistency(base_dir, folder_name: Optional[str] = N
             await update_progress_text(f"📁 Prüfe Ordner: {folder_path} ({folder_idx}/{total_folders})")
 
             # Sammle alle Dateien im Ordner
-            folder_files = set()
             try:
                 folder_files = {
                     f.name.lower() for f in folder_path.iterdir()
@@ -773,7 +763,7 @@ async def upload_file_to_gdrive(service, mimetype, file_path: Path, target_folde
         # MediaFileUpload Objekt erstellen
         media = MediaFileUpload(
             str(file_path),
-            mimetype={mimetype},
+            mimetype=mimetype,
             resumable=True
         )
 
@@ -895,7 +885,7 @@ async def dd(
         for md5 in gdrive_only_hashes:
             gdrive_files = md5_groups_gdrive[md5]
             for file_info in gdrive_files:
-                name = file_info.get('name');
+                name = file_info.get('name')
                 await update_progress_text(f"[{folder_name}] ☁️ Nur GDrive: {name}")
                 try:
                     file_id = file_info.get('id')
@@ -1003,7 +993,6 @@ async def move_duplicates_to_temp(
                     moved_count += 1
                     current_count += 1
 
-                    # Update nur alle 5% oder bei jedem 10ten File
                     if current_count % 10 == 0 or (current_count / total_duplicates) * 100 % 5 == 0:
                         progress = int((current_count / total_duplicates) * 100)
                         await update_progress(
@@ -1022,14 +1011,10 @@ async def move_duplicates_to_temp(
 
 
 async def move_duplicates_in_gdrive_folder(service, folder_id: str, extensions) -> dict[Any, Any]:
-    """
-    Verschiebt doppelte Bilddateien in einem Google Drive Ordner und seinen Unterordnern
-    in einen 'temp' Ordner.
-    """
     md5_groups = {}
+    folder_name = service.files().get(fileId=folder_id, fields="name").execute().get("name", "Unbekannt")
 
     try:
-        folder_name = service.files().get(fileId=folder_id, fields="name").execute().get("name", "Unbekannt")
         await update_progress_text(f"[{folder_name}] 🔍 Initialisiere Suche nach Duplikaten...")
 
         # Hole temp Ordner ID
@@ -1166,18 +1151,6 @@ async def update_local_hash(directory: Path, file_name: str, file_md5: str, addo
 
 
 async def delete_files_by_mimetype(service, folder_id: str, mime_type: str) -> int:
-    """
-    Löscht alle Dateien mit einem bestimmten MIME-Typ in einem Google Drive Ordner.
-    Unterstützt Paging für große Ordner und zeigt detaillierten Fortschritt.
-
-    Args:
-        service: Google Drive Service-Objekt
-        folder_id: ID des Google Drive Ordners
-        mime_type: MIME-Typ der zu löschenden Dateien (z.B. 'image/jpeg', 'image/*')
-
-    Returns:
-        int: Anzahl der gelöschten Dateien
-    """
     try:
         await update_progress_text(f"🔍 Suche Dateien vom Typ {mime_type}")
         await init_progress_state()

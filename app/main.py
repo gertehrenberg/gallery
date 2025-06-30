@@ -1,4 +1,3 @@
-import asyncio
 import os
 import threading
 
@@ -18,7 +17,6 @@ from app.routes import auth, gallery, static, admin, login, dashboard
 from app.routes.auth import SCOPES, TOKEN_FILE
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
-from app.services.manage_n8n import manage_gemini_process
 from app.tools import fillcache_local
 from app.utils.logger_config import setup_logger
 
@@ -78,9 +76,9 @@ app.include_router(admin.router)
 app.include_router(dashboard.router)
 
 
-@app.on_event("startup")
-async def startup_event():
-    asyncio.create_task(manage_gemini_process(None))
+# @app.on_event("startup")
+# async def startup_event():
+#     asyncio.create_task(manage_gemini_process(None))
 
 
 def local():

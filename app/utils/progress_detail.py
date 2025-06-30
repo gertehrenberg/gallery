@@ -42,6 +42,7 @@ async def update_detail_progress(
     if detail_progress is not None:
         detail_state["progress"] = detail_progress
 
+    logger.info(f"Detail: {detail_status} ({detail_progress})")
     await asyncio.sleep(ctime)
 
 

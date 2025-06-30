@@ -210,7 +210,7 @@ def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
                                           SELECT COUNT(*)
                                           FROM image_quality_scores
                                           WHERE score_type = ?
-                                          """, ((score_type_map['text'],)))  # Doppelte Klammern für ein einzelnes Tuple
+                                          """, (score_type_map['text'],))  # Doppelte Klammern für ein einzelnes Tuple
                     count_result = cursor.fetchone()
                     if count_result:
                         db_count = count_result[0]
@@ -435,8 +435,6 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
         )
 
     async def runner():
-        """Background task für die Synchronisation"""
-        service = None
         await init_progress_state()
 
         try:
@@ -461,7 +459,7 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
             await stop_progress()
 
     # Task erstellen und im Hintergrund ausführen
-    task = asyncio.create_task(runner())
+    asyncio.create_task(runner())
 
     # Task-ID generieren und speichern
     task_id = f"{folder}_{direction}_{int(time.time())}"
@@ -728,10 +726,17 @@ async def manage_save_progress(service: None):
 
         existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
 
-        downloaded = await perform_local_sync(service, from_files, Path(Settings.IMAGE_FILE_CACHE_DIR) / to_folder_name,
-                                              existing_hashes)
-        moved, deleted = await perform_gdrive_sync(service, from_files, to_files, existing_hashes, to_folder_id,
-                                                   from_folder_id)
+        downloaded = await perform_local_sync(
+            service,
+            from_files,
+            Path(Settings.IMAGE_FILE_CACHE_DIR) / to_folder_name,
+            existing_hashes)
+        moved, deleted = await perform_gdrive_sync(
+            service,
+            from_files,
+            to_files,
+            existing_hashes,
+            to_folder_id)
 
         await fill_pair_cache_folder(
             to_folder_name,
@@ -752,10 +757,18 @@ async def manage_save_progress(service: None):
 
         existing_hashes = {f['md5Checksum'] for f in to_files if 'md5Checksum' in f}
 
-        downloaded = await perform_local_sync(service, from_files, Settings.TEXT_FILE_CACHE_DIR, existing_hashes)
+        downloaded = await perform_local_sync(
+            service,
+            from_files,
+            Settings.TEXT_FILE_CACHE_DIR,
+            existing_hashes)
 
-        moved, deleted = await perform_gdrive_sync(service, from_files, to_files, existing_hashes, to_folder_id,
-                                                   from_folder_id)
+        moved, deleted = await perform_gdrive_sync(
+            service,
+            from_files,
+            to_files,
+            existing_hashes,
+            to_folder_id)
 
         logger.info("Zusammenfassung Text:")
         logger.info(f"🔢 Zu verarbeiten: {len(from_files)}")
@@ -766,7 +779,7 @@ async def manage_save_progress(service: None):
     await stop_progress()
 
 
-async def perform_gdrive_sync(service, save_files, _files, existing_hashes, to_folder_id, from_folder_id):
+async def perform_gdrive_sync(service, save_files, _files, existing_hashes, to_folder_id):
     moved = 0
     deleted = 0
     total = len(save_files)
@@ -1167,7 +1180,7 @@ def p5():
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    asyncio.run(move_gdrive_files_by_local(service, "textfiles"))
+    asyncio.run(move_gdrive_files_by_local(service, "bad"))
 
 
 if __name__ == "__main__":
