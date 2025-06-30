@@ -1,13 +1,14 @@
 import shutil
 import sqlite3
-from datetime import time
+import time
 from pathlib import Path
+from typing import Optional
 
 from app.config import Settings
 from app.config_gdrive import calculate_md5
 from app.routes.dashboard import fill_pair_cache_folder
 from app.routes.hashes import update_local_hash
-from app.tools import fillcache_local
+from app.tools import newpaircache
 from app.utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -18,18 +19,20 @@ async def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -
 
     with sqlite3.connect(Settings.DB_PATH) as conn:
         cursor = conn.cursor()
-        cursor.execute("""
-                       SELECT image_name
-                       FROM checkbox_status
-                       WHERE checked = 1
-                         AND checkbox = ?
-                       """, (new_folder,))
+        cursor.execute(
+            """
+            SELECT image_name
+            FROM checkbox_status
+            WHERE checked = 1
+              AND checkbox = ?
+            """,
+            (new_folder,)
+        )
         rows = cursor.fetchall()
 
         logger.info(f"🔍 {len(rows)} markierte Bilder gefunden für '{new_folder}'")
 
         anzahl_verschoben = 0
-
         for (image_name,) in rows:
             if not image_name:
                 logger.warning("⚠️  Leerer image_name – überspringe.")
@@ -39,12 +42,15 @@ async def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -
             success = await move_file_db(conn, image_name, current_folder, new_folder)
             if success:
                 try:
-                    conn.execute("""
-                                 DELETE
-                                 FROM checkbox_status
-                                 WHERE image_name = ?
-                                   AND checkbox = ?
-                                 """, (image_name, new_folder))
+                    conn.execute(
+                        """
+                        DELETE
+                        FROM checkbox_status
+                        WHERE image_name = ?
+                          AND checkbox = ?
+                        """,
+                        (image_name, new_folder),
+                    )
 
                     src = Path(Settings.IMAGE_FILE_CACHE_DIR) / current_folder / image_name
                     dst = Path(Settings.IMAGE_FILE_CACHE_DIR) / new_folder / image_name
@@ -70,128 +76,129 @@ def get_checkbox_count(checkbox: str):
         logger.warning("⚠️ Ungültige Checkbox-Kategorie")
         return {"count": 0}
     with sqlite3.connect(Settings.DB_PATH) as conn:
-        count = conn.execute("""
-                             SELECT COUNT(*)
-                             FROM checkbox_status
-                             WHERE checked = 1
-                               AND checkbox = ?
-                             """, (checkbox,)).fetchone()[0]
+        count = conn.execute(
+            """
+            SELECT COUNT(*)
+            FROM checkbox_status
+            WHERE checked = 1
+              AND checkbox = ?
+            """,
+            (checkbox,),
+        ).fetchone()[0]
     logger.info(f"🔢 Anzahl markierter Bilder in '{checkbox}': {count}")
     return {"count": count}
 
 
-async def move_file_db(conn: sqlite3.Connection, image_name: str, old_folder_id: str, new_folder_id: str,
-                       retries: int = 5) -> bool:
+async def move_file_db(
+        conn: sqlite3.Connection,
+        image_name: str,
+        old_folder_id: str,
+        new_folder_id: str,
+        retries: int = 5
+) -> bool:
     """
-    Verschiebt ein Bild in der Datenbank von einem Ordner in einen anderen und aktualisiert die Caches.
-
-    Args:
-        conn: Datenbankverbindung
-        image_name: Name des Bildes
-        old_folder_id: Quell-Ordner ID
-        new_folder_id: Ziel-Ordner ID
-        retries: Anzahl der Wiederholversuche bei gesperrter DB
-
-    Returns:
-        bool: True wenn erfolgreich, False sonst
+    Verschiebt eine Bilddatei inklusive Datenbankeintrag, Cache- und Hash-Aktualisierung.
     """
     logger.info(f"[move_file_db] 🔁 Verschiebe {image_name} von {old_folder_id} → {new_folder_id}")
 
-    # Normalisiere Bildnamen
     image_name = image_name.lower()
+    image_id = _get_image_id(image_name)
+    if not image_id:
+        logger.error(f"⚠️ Kein Cache-Eintrag für: {image_name}")
+        return False
 
-    # Hole und validiere Cache-Eintrag
-    pair_cache = Settings.CACHE.get("pair_cache", {})
-    pair = pair_cache.get(image_name)
+    if not _update_db_with_retries(conn, image_id, old_folder_id, new_folder_id, retries):
+        return False
 
-    # Wenn kein Cache-Eintrag gefunden wurde, versuche Cache neu zu laden
-    if not pair:
-        logger.warning(f"[move_file_db] ⚠️ Kein Cache-Eintrag für: {image_name}")
-        try:
-            logger.info("[move_file_db] 🔄 Lade Cache neu...")
-            fillcache_local(
-                str(Settings.PAIR_CACHE_PATH),
-                Settings.IMAGE_FILE_CACHE_DIR
-            )
+    await _refresh_pair_caches(old_folder_id, new_folder_id)
+    return await _move_file_and_update_hash(old_folder_id, new_folder_id, image_name)
 
-            # Prüfe erneut nach Cache-Aktualisierung
-            pair_cache = Settings.CACHE.get("pair_cache", {})
+
+def _get_image_id(image_name: str) -> Optional[int]:
+    """Liest den Image-ID-Wert aus den konfigurierten Kategorien aus dem Cache."""
+    try:
+        for kategorie in Settings.kategorien:
+            key = kategorie["key"]
+            logger.info(f"✅ Cache-Aktualisierung: {key}")
+            pair_cache = newpaircache(key)
+            Settings.CACHE["pair_cache"].update(pair_cache)
+
             pair = pair_cache.get(image_name)
+            if isinstance(pair, dict) and pair.get("image_id"):
+                return pair["image_id"]
+    except Exception as e:
+        logger.error(f"❌ Fehler beim Lesen des Hash: {e}")
+    return None
 
-            if not pair:
-                logger.error(f"[move_file_db] ❌ Bild nicht gefunden nach Cache-Reload: {image_name}")
-                return False
 
-            logger.info(f"[move_file_db] ✅ Bild nach Cache-Reload gefunden: {image_name}")
-
-        except Exception as e:
-            logger.error(f"[move_file_db] ❌ Cache-Reload fehlgeschlagen: {str(e)}")
-            return False
-
-    # Extrahiere image_id
-    image_id = pair["image_id"]
-
-    # Versuche DB-Update mit Wiederholungen
-    for attempt in range(retries):
+def _update_db_with_retries(
+        conn: sqlite3.Connection,
+        image_id: int,
+        old_folder_id: str,
+        new_folder_id: str,
+        retries: int
+) -> bool:
+    """Versucht das DB-Update mit Wiederholungen bei Locked-Errors."""
+    sql = (
+        "UPDATE image_folder_status "
+        "SET folder_id = ? "
+        "WHERE image_id = ? AND folder_id = ?"
+    )
+    for attempt in range(1, retries + 1):
         try:
-            # Führe DB-Update durch
-            conn.execute("""
-                         UPDATE image_folder_status
-                         SET folder_id = ?
-                         WHERE image_id = ?
-                           AND folder_id = ?
-                         """, (new_folder_id, image_id, old_folder_id))
-
+            conn.execute(sql, (new_folder_id, image_id, old_folder_id))
             conn.commit()
-            logger.info(f"[move_file_db] ✅ DB-Update erfolgreich für: {image_name}")
-
-            try:
-                # 1. Aktualisiere pair_cache für beide Ordner
-                await fill_pair_cache_folder(old_folder_id, Settings.IMAGE_FILE_CACHE_DIR,
-                                             Settings.CACHE["pair_cache"], Settings.PAIR_CACHE_PATH)
-                await fill_pair_cache_folder(new_folder_id, Settings.IMAGE_FILE_CACHE_DIR,
-                                             Settings.CACHE["pair_cache"], Settings.PAIR_CACHE_PATH)
-
-                # 2. Aktualisiere Hash-Dateien
-                old_dir = Path(Settings.IMAGE_FILE_CACHE_DIR) / old_folder_id
-                new_dir = Path(Settings.IMAGE_FILE_CACHE_DIR) / new_folder_id
-
-                # Berechne MD5 der Datei vom alten Pfad
-                old_file_path = old_dir / image_name
-                if old_file_path.exists():
-                    file_md5 = calculate_md5(old_file_path)
-
-                    # Zuerst Hash aus altem Verzeichnis entfernen
-                    await update_local_hash(old_dir, image_name, file_md5, False)
-
-                    # Dann physische Datei verschieben
-                    new_dir.mkdir(parents=True, exist_ok=True)
-                    shutil.move(str(old_file_path), str(new_dir / image_name))
-
-                    # Zuletzt Hash im neuen Verzeichnis hinzufügen
-                    await update_local_hash(new_dir, image_name, file_md5, True)
-
-                    logger.info(f"[move_file_db] ✅ Alle Caches und Hashes aktualisiert für: {image_name}")
-                else:
-                    logger.error(f"[move_file_db] ⚠️ Quelldatei nicht gefunden: {old_file_path}")
-
-            except Exception as cache_error:
-                logger.error(f"[move_file_db] ⚠️ Cache/Hash-Aktualisierung fehlgeschlagen: {str(cache_error)}")
-
+            logger.info(f"[move_file_db] ✅ DB-Update erfolgreich für image_id={image_id}")
             return True
-
         except sqlite3.OperationalError as e:
             if "locked" in str(e).lower():
-                wait_time = 0.3 * (attempt + 1)
-                logger.warning(f"[move_file_db] 🔒 DB gesperrt, Versuch {attempt + 1}/{retries}, "
-                               f"warte {wait_time:.1f}s")
-                time.sleep(wait_time)
-            else:
-                logger.error(f"[move_file_db] ❌ DB-Fehler für {image_name}: {str(e)}")
-                return False
-        except Exception as e:
-            logger.error(f"[move_file_db] ❌ Unerwarteter Fehler für {image_name}: {str(e)}")
+                wait = 0.3 * attempt
+                logger.warning(f"🔒 DB gesperrt, Versuch {attempt}/{retries}, warte {wait:.1f}s")
+                time.sleep(wait)
+                continue
+            logger.error(f"❌ DB-Fehler: {e}")
             return False
-
-    logger.error(f"[move_file_db] ❌ Maximum von {retries} Versuchen erreicht für: {image_name}")
+        except Exception as e:
+            logger.error(f"❌ Unerwarteter Fehler: {e}")
+            return False
+    logger.error(f"❌ Maximum von {retries} DB-Versuchen erreicht")
     return False
+
+
+async def _refresh_pair_caches(old_folder_id: str, new_folder_id: str) -> None:
+    """Aktualisiert den Pair-Cache für die betroffenen Ordner."""
+    await fill_pair_cache_folder(
+        old_folder_id, Settings.IMAGE_FILE_CACHE_DIR,
+        Settings.CACHE["pair_cache"], Settings.PAIR_CACHE_PATH
+    )
+    await fill_pair_cache_folder(
+        new_folder_id, Settings.IMAGE_FILE_CACHE_DIR,
+        Settings.CACHE["pair_cache"], Settings.PAIR_CACHE_PATH
+    )
+
+
+async def _move_file_and_update_hash(
+        old_folder_id: str,
+        new_folder_id: str,
+        image_name: str
+) -> bool:
+    """Verschiebt die Datei physisch und aktualisiert die lokalen Hash-Dateien."""
+    old_dir = Path(Settings.IMAGE_FILE_CACHE_DIR) / old_folder_id
+    new_dir = Path(Settings.IMAGE_FILE_CACHE_DIR) / new_folder_id
+    old_file = old_dir / image_name
+
+    if not old_file.exists():
+        logger.error(f"⚠️ Quelldatei nicht gefunden: {old_file}")
+        return False
+
+    try:
+        file_md5 = calculate_md5(old_file)
+        await update_local_hash(old_dir, image_name, file_md5, False)
+        new_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(old_file), str(new_dir / image_name))
+        await update_local_hash(new_dir, image_name, file_md5, True)
+        logger.info(f"[move_file_db] ✅ Datei und Hashes aktualisiert für: {image_name}")
+        return True
+    except Exception as e:
+        logger.error(f"⚠️ Fehler beim Verschieben/Aktualisieren: {e}")
+        return False

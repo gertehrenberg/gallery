@@ -10,6 +10,7 @@ from PIL import Image
 from app.config import Settings
 from app.config_gdrive import calculate_md5, SettingsGdrive
 from app.utils.logger_config import setup_logger
+from app.utils.progress import update_progress_text
 from app.utils.progress_detail import update_detail_progress, stop_detail_progress, start_detail_progress, \
     calc_detail_progress
 
@@ -19,6 +20,28 @@ logger = setup_logger(__name__)
 class ImageCacheError(Exception):
     """Basisklasse für Exceptions im Image-Cache-Kontext."""
     pass
+
+
+def newpaircache(folder_name):
+    pair_cache = {}
+    folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name
+    if folder_path.exists():
+        gallery_hash_file = folder_path / Settings.GALLERY_HASH_FILE
+
+        try:
+            if gallery_hash_file.exists():
+                with open(gallery_hash_file, 'r') as f:
+                    local_hashes = json.load(f)
+                    # Erstelle pair_cache Einträge aus local_hashes
+                    for filename, md5_hash in local_hashes.items():
+                        pair_cache[filename] = {
+                            "image_id": md5_hash,  # Der Dateiname ist die ID
+                            "folder": folder_name
+                        }
+
+        except Exception as e:
+            asyncio.run(update_progress_text(f"❌ Fehler beim Lesen/Schreiben der Cache-Dateien: {e}"))
+    return pair_cache
 
 
 def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
@@ -40,90 +63,47 @@ def fillcache_local(pair_cache_path_local: str, image_file_cache_dir: str):
 
 
 def find_image_id_by_name(image_name: str) -> Optional[str]:
-    """
-    Findet die Image-ID für einen gegebenen Bildnamen im Cache.
-    Versucht den Cache neu zu laden falls keine ID gefunden wird.
-
-    Args:
-        image_name: Name des Bildes (case-insensitive)
-
-    Returns:
-        Optional[str]: Image-ID wenn gefunden, sonst None
-    """
+    """Return the image_id for a given image name, updating cache per-category."""
     logger.info(f"🔎 Suche ID für Bild: {image_name}")
-
-    # Normalisiere den Bildnamen (lowercase)
     image_name = image_name.lower()
-
-    # Erste Suche im Cache
-    pair_cache = Settings.CACHE.get("pair_cache", {})
-    if pair := pair_cache.get(image_name):
-        image_id = pair.get('image_id')
-        if image_id:
-            logger.info(f"✅ Gefunden: {image_id}")
-            return image_id
-
-    # Cache neu laden wenn nichts gefunden wurde
-    logger.info("🔄 Keine ID im Cache gefunden, lade Cache neu...")
     try:
-        fillcache_local(
-            str(Settings.PAIR_CACHE_PATH),
-            Settings.IMAGE_FILE_CACHE_DIR
-        )
+        for kategorie in Settings.kategorien:
+            key = kategorie["key"]
+            logger.info(f"✅ Cache-Aktualisierung: {key}")
+            pair_cache = newpaircache(key)
+            Settings.CACHE["pair_cache"].update(pair_cache)
 
-        # Erneute Suche nach der Cache-Aktualisierung
-        pair_cache = Settings.CACHE.get("pair_cache", {})
-        if pair := pair_cache.get(image_name):
-            image_id = pair.get('image_id')
-            if image_id:
-                logger.info(f"✅ Nach Cache-Aktualisierung gefunden: {image_id}")
-                return image_id
+            # Lookup
+            pair = pair_cache.get(image_name)
+            if pair and isinstance(pair, dict):
+                image_id = pair["image_id"]
+                if image_id:
+                    logger.info(f"✅ Nach Cache-Aktualisierung gefunden: {image_id}")
+                    return image_id
 
     except Exception as e:
-        logger.error(f"❌ Fehler beim Neuladen des Cache: {e}")
+        logger.error(f"❌ Fehler beim Lesen des Hash: {e}")
 
     logger.warning(f"❌ Keine ID gefunden für Bild: {image_name}")
     return None
 
 
 def find_image_name_by_id(image_id: str) -> Optional[str]:
-    """
-    Findet den Bildnamen für eine gegebene Image-ID im Cache.
-    Versucht den Cache neu zu laden falls keine ID gefunden wird.
-
-    Args:
-        image_id: ID des Bildes im Google Drive
-
-    Returns:
-        Optional[str]: Name der Bilddatei wenn gefunden, sonst None
-    """
+    """Return the image name for a given image_id, updating cache per-category."""
     logger.info(f"🔎 Suche Bildname für ID: {image_id}")
-
-    # Erster Versuch im existierenden Cache
-    pair_cache = Settings.CACHE.get("pair_cache", {})
-
-    for image_name, pair in pair_cache.items():
-        if pair.get("image_id") == image_id:
-            logger.info(f"✅ Gefunden: {image_name}")
-            return image_name
-
-    # Cache neu laden wenn nichts gefunden wurde
-    logger.info(f"🔄 Cache-Miss für ID {image_id}, lade Cache neu...")
     try:
-        fillcache_local(
-            str(Settings.PAIR_CACHE_PATH),
-            Settings.IMAGE_FILE_CACHE_DIR
-        )
+        for kategorie in Settings.kategorien:
+            key = kategorie["key"]
+            logger.info(f"✅ Cache-Aktualisierung: {key}")
+            pair_cache = newpaircache(key)
+            Settings.CACHE["pair_cache"].update(pair_cache)
 
-        # Erneute Suche im aktualisierten Cache
-        pair_cache = Settings.CACHE.get("pair_cache", {})
-        for image_name, pair in pair_cache.items():
-            if pair.get("image_id") == image_id:
-                logger.info(f"✅ Nach Cache-Aktualisierung gefunden: {image_name}")
-                return image_name
-
+            for image_name, pair in pair_cache.items():
+                if isinstance(pair, dict) and pair["image_id"] == image_id:
+                    logger.info(f"✅ Nach Cache-Aktualisierung gefunden: {image_name}")
+                    return image_name
     except Exception as e:
-        logger.error(f"❌ Fehler beim Neuladen des Cache: {e}")
+        logger.error(f"❌ Fehler beim Lesen des Hash: {e}")
 
     logger.warning(f"❌ Kein Bildname gefunden für ID: {image_id}")
     return None
@@ -246,7 +226,7 @@ def update_date_in_txt_file(txt_file_path: Path, german_date: str) -> None:
         # Datei lesen
         lines = txt_file_path.read_text(encoding='utf-8').splitlines()
 
-        # Prüfen ob Datum aktualisiert werden muss
+        # Prüfen, ob Datum aktualisiert werden muss
         soll_ueberschreiben = (not lines or
                                not lines[0].startswith("Aufgenommen") or
                                lines[0].strip() == "Aufgenommen: None")

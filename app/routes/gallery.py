@@ -18,7 +18,8 @@ from app.database import get_scores_filtered_by_expr
 from app.dependencies import require_login
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.scores.texte import search_recoll
-from app.services.image_processing import prepare_image_data, clean, newpaircache
+from app.services.image_processing import prepare_image_data, clean
+from app.tools import newpaircache
 from app.utils.logger_config import setup_logger
 from app.utils.move_utils import move_marked_images_by_checkbox, get_checkbox_count
 from app.utils.progress import update_progress, stop_progress, progress_state, update_progress_text, init_progress_state

@@ -16,7 +16,7 @@ from app.scores.faces import load_faces
 from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality
 from app.services.thumbnail import get_thumbnail_path, generate_thumbnail, thumbnail
-from app.tools import find_image_id_by_name
+from app.tools import find_image_id_by_name, newpaircache
 from app.utils.db_utils import delete_checkbox_status
 from app.utils.logger_config import setup_logger
 from app.utils.progress import update_progress_text
@@ -198,28 +198,6 @@ def download_and_save_image(folder_name: str, image_name: str, image_id: str) ->
             return None
 
     return thumbnail_path
-
-
-def newpaircache(folder_name):
-    pair_cache = {}
-    folder_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name
-    if folder_path.exists():
-        gallery_hash_file = folder_path / Settings.GALLERY_HASH_FILE
-
-        try:
-            if gallery_hash_file.exists():
-                with open(gallery_hash_file, 'r') as f:
-                    local_hashes = json.load(f)
-                    # Erstelle pair_cache Einträge aus local_hashes
-                    for filename, md5_hash in local_hashes.items():
-                        pair_cache[filename] = {
-                            "image_id": md5_hash,  # Der Dateiname ist die ID
-                            "folder": folder_name
-                        }
-
-        except Exception as e:
-            asyncio.run(update_progress_text(f"❌ Fehler beim Lesen/Schreiben der Cache-Dateien: {e}"))
-    return pair_cache
 
 
 def prepare_image_data(count: int, folder_name: str, image_name: str):
