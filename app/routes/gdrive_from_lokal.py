@@ -206,7 +206,7 @@ async def save_structured_hashes(hashes: Dict[str, Dict[str, str]], hashfile_pat
         with hashfile_path.open("w", encoding="utf-8") as f:
             json.dump(hashes, f, indent=2)
         os.chmod(hashfile_path, 0o644)
-        logger.info(f"[✓] Gespeichert: {hashfile_path}/{Settings.GDRIVE_HASH_FILE}")
+        logger.info(f"[✓] Gespeichert: {hashfile_path}")
     except Exception as e:
         logger.error(f"[Fehler] Konnte Hashes nicht in {hashfile_path} speichern: {e}")
 

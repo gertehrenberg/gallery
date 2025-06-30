@@ -22,7 +22,7 @@ from app.utils.progress_detail import update_detail_status, update_detail_progre
     stop_detail_progress, calc_detail_progress
 
 
-async def process_text_files():
+async def update_local_hashes_text():
     file_folder_dir = Settings.TEXT_FILE_CACHE_DIR
     await update_progress_text("🧮 Verarbeite Textdateien")
 
@@ -363,6 +363,14 @@ async def update_gdrive_hashes(
         await update_progress_auto(f"❌ Fehler bei Hash-Aktualisierung: {e}")
 
 
+async def update_gdrive_hashes_text(service):
+    await update_gdrive_hashes(
+        service,
+        Settings.TEXTFILES_FOLDERNAME,
+        Settings.TEXT_EXTENSIONS,
+        Path(Settings.TEXT_FILE_CACHE_DIR).parent)
+
+
 async def reloadcache_progress(service, folder_key: Optional[str] = None):
     try:
         await init_progress_state()
@@ -372,12 +380,8 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
 
         if folder_key == Settings.TEXTFILES_FOLDERNAME:
             await update_progress_auto("🗃️ Modus: Textverarbeitung")
-            await update_gdrive_hashes(
-                service,
-                Settings.TEXTFILES_FOLDERNAME,
-                Settings.TEXT_EXTENSIONS,
-                Path(Settings.TEXT_FILE_CACHE_DIR).parent)
-            await process_text_files()
+            await update_gdrive_hashes_text(service)
+            await update_local_hashes_text()
 
         elif folder_key in Settings.CHECKBOX_CATEGORIES:
             await update_progress_auto(f"📂 Modus: Einzelne Kategorie ({folder_key})")
@@ -397,12 +401,8 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
                 Settings.folders_loaded += 1
 
             await update_progress_auto("🗃️ Modus: Textverarbeitung")
-            await update_gdrive_hashes(
-                service,
-                Settings.TEXTFILES_FOLDERNAME,
-                Settings.TEXT_EXTENSIONS,
-                Path(Settings.TEXT_FILE_CACHE_DIR).parent)
-            await process_text_files()
+            await update_gdrive_hashes_text(service)
+            await update_local_hashes_text()
 
             await update_progress_auto(f"[✓] Hash-Datei aktualisiert für {folder_key}")
 
@@ -760,18 +760,7 @@ async def download_file(service, file_id, local_path):
             status, done = downloader.next_chunk()
 
 
-async def upload_file_to_gdrive(service, file_path: Path, target_folder_id: str) -> bool:
-    """
-    Lädt eine Datei in Google Drive hoch.
-
-    Args:
-        service: Google Drive Service Objekt
-        file_path: Path Objekt zur lokalen Datei
-        target_folder_id: ID des Zielordners in Google Drive
-
-    Returns:
-        bool: True wenn Upload erfolgreich, False bei Fehler
-    """
+async def upload_file_to_gdrive(service, mimetype, file_path: Path, target_folder_id: str) -> bool:
     try:
         await update_progress_text(f"⬆️ Lade {file_path.name} hoch...")
 
@@ -784,7 +773,7 @@ async def upload_file_to_gdrive(service, file_path: Path, target_folder_id: str)
         # MediaFileUpload Objekt erstellen
         media = MediaFileUpload(
             str(file_path),
-            mimetype='image/*',
+            mimetype={mimetype},
             resumable=True
         )
 
@@ -813,13 +802,9 @@ async def upload_file_to_gdrive(service, file_path: Path, target_folder_id: str)
 
 
 async def dd(
-        service: object,
+        service,
         files_by_md5: Dict[str, List[Path]] | None,
         md5_groups_gdrive: dict[Any, Any] | None) -> None:
-    """
-
-    :type service: object
-    """
     # Speichern der aktuellen Daten
     cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR).parent
     cache_dir.mkdir(exist_ok=True)
@@ -889,6 +874,7 @@ async def dd(
                     # Upload durchführen
                     success = await upload_file_to_gdrive(
                         service,
+                        'image/*',
                         file_path,
                         target_folder_id
                     )
@@ -1035,7 +1021,7 @@ async def move_duplicates_to_temp(
     return moved_count
 
 
-async def move_duplicates_in_gdrive_folder(service, folder_id: str) -> dict[Any, Any]:
+async def move_duplicates_in_gdrive_folder(service, folder_id: str, extensions) -> dict[Any, Any]:
     """
     Verschiebt doppelte Bilddateien in einem Google Drive Ordner und seinen Unterordnern
     in einen 'temp' Ordner.
@@ -1092,7 +1078,7 @@ async def move_duplicates_in_gdrive_folder(service, folder_id: str) -> dict[Any,
 
         # Zuerst alle Dateinamen überprüfen und ggf. umbenennen
         for file in files:
-            if not any(file.get('name', '').lower().endswith(ext) for ext in Settings.IMAGE_EXTENSIONS):
+            if not any(file.get('name', '').lower().endswith(ext) for ext in extensions):
                 continue
 
             original_name = file.get('name', '')
@@ -1112,7 +1098,7 @@ async def move_duplicates_in_gdrive_folder(service, folder_id: str) -> dict[Any,
 
         # Duplikate nach MD5 gruppieren
         for file in files:
-            if not any(file.get('name', '').lower().endswith(ext) for ext in Settings.IMAGE_EXTENSIONS):
+            if not any(file.get('name', '').lower().endswith(ext) for ext in extensions):
                 continue
 
             md5 = file.get('md5Checksum')
@@ -1179,6 +1165,111 @@ async def update_local_hash(directory: Path, file_name: str, file_md5: str, addo
         raise
 
 
+async def delete_files_by_mimetype(service, folder_id: str, mime_type: str) -> int:
+    """
+    Löscht alle Dateien mit einem bestimmten MIME-Typ in einem Google Drive Ordner.
+    Unterstützt Paging für große Ordner und zeigt detaillierten Fortschritt.
+
+    Args:
+        service: Google Drive Service-Objekt
+        folder_id: ID des Google Drive Ordners
+        mime_type: MIME-Typ der zu löschenden Dateien (z.B. 'image/jpeg', 'image/*')
+
+    Returns:
+        int: Anzahl der gelöschten Dateien
+    """
+    try:
+        await update_progress_text(f"🔍 Suche Dateien vom Typ {mime_type}")
+        await init_progress_state()
+        progress_state["running"] = True
+
+        deleted_count = 0
+        files_to_process = []
+        page_token = None
+        page_count = 0
+
+        # Sammle alle zu löschenden Dateien mit Paging
+        await start_detail_progress("📄 Sammle zu löschende Dateien...")
+
+        while True:
+            page_count += 1
+            await update_detail_status(f"🔍 Durchsuche Seite {page_count}...")
+
+            # Query für Dateien mit bestimmtem MIME-Typ im angegebenen Ordner
+            query = f"'{folder_id}' in parents and mimeType contains '{mime_type}' and trashed=false"
+
+            try:
+                response = service.files().list(
+                    q=query,
+                    spaces='drive',
+                    fields='nextPageToken, files(id, name, mimeType)',
+                    pageSize=1000,
+                    pageToken=page_token
+                ).execute()
+
+                current_files = response.get('files', [])
+                files_to_process.extend(current_files)
+
+                await update_detail_progress(
+                    f"📁 {len(files_to_process)} Dateien gefunden...",
+                    min(100, page_count * 10)
+                )
+
+                page_token = response.get('nextPageToken')
+                if not page_token:
+                    break
+
+            except Exception as e:
+                await update_detail_status(f"❌ Fehler beim Abrufen der Seite {page_count}: {str(e)}")
+                continue
+
+        total_files = len(files_to_process)
+        if not total_files:
+            await stop_detail_progress("⚠️ Keine zu löschenden Dateien gefunden")
+            return 0
+
+        await update_progress_text(f"🗑️ Beginne mit dem Löschen von {total_files} Dateien")
+
+        # Lösche die gefundenen Dateien
+        for idx, file in enumerate(files_to_process):
+            progress = await calc_detail_progress(idx, total_files)
+            file_name = file.get('name', 'Unbekannte Datei')
+
+            try:
+                await update_detail_status(f"🗑️ Lösche: {file_name}")
+                service.files().delete(fileId=file['id']).execute()
+                deleted_count += 1
+
+                await update_detail_progress(
+                    f"🗑️ Gelöscht: {deleted_count}/{total_files} Dateien",
+                    progress
+                )
+
+                # Update Hauptfortschritt
+                main_progress = await calc_detail_progress(deleted_count, total_files)
+                await update_progress(
+                    f"Lösche Dateien ({deleted_count}/{total_files})",
+                    main_progress
+                )
+
+            except Exception as e:
+                error_msg = f"❌ Fehler beim Löschen von {file_name}: {str(e)}"
+                await update_detail_status(error_msg)
+
+        success_msg = (f"✅ Abgeschlossen: {deleted_count} von {total_files} "
+                       f"Dateien wurden gelöscht")
+        await update_progress_text(success_msg)
+        await stop_detail_progress(success_msg)
+
+        return deleted_count
+
+    except Exception as e:
+        error_msg = f"❌ Fehler beim Abrufen/Löschen der Dateien: {str(e)}"
+        await update_progress_text(error_msg)
+        await update_detail_status(error_msg)
+        return 0
+
+
 def p5():
     Settings.DB_PATH = '../../gallery_local.db'
     Settings.TEMP_DIR_PATH = Path("../../cache/temp")
@@ -1216,7 +1307,8 @@ async def mache_alles(service):
 
     files_by_md5 = await  move_duplicates_in_folder(Settings.IMAGE_FILE_CACHE_DIR)
 
-    md5_groups_gdrive = await move_duplicates_in_gdrive_folder(service, folder_id_by_name("imagefiles"))
+    md5_groups_gdrive = await move_duplicates_in_gdrive_folder(service, folder_id_by_name("imagefiles"),
+                                                               Settings.IMAGE_EXTENSIONS)
 
     await dd(service, files_by_md5, md5_groups_gdrive)
     await update_all_local_hashes()
@@ -1246,7 +1338,7 @@ def p7():
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
-    asyncio.run(reloadcache_progress(service, "textfiles"))
+    asyncio.run(delete_files_by_mimetype(service, folder_id_by_name(Settings.TEXTFILES_FOLDERNAME), "image/*"))
 
 
 if __name__ == "__main__":

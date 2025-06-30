@@ -67,7 +67,14 @@ async def move_gdrive_files_by_local(service, folder_name: str):
     for idx, (filename, local_md5) in enumerate(local_hashes.items()):
         progress = await calc_detail_progress(idx, total_files)
         was_moved, was_uploaded = await process_single_file(
-            service, filename, local_md5, all_gdrive_hashes, folder_name, folder_path, gdrive_folder_names
+            service,
+            "image/*",
+            filename,
+            local_md5,
+            all_gdrive_hashes,
+            folder_name,
+            folder_path,
+            gdrive_folder_names
         )
         if was_moved:
             moved += 1
@@ -98,6 +105,7 @@ async def move_gdrive_files_by_local(service, folder_name: str):
 
 async def process_single_file(
         service,
+        mimetype,
         filename: str,
         local_md5: str,
         all_gdrive_hashes: dict,
@@ -139,7 +147,7 @@ async def process_single_file(
                 await update_detail_status(f"⬆️ Lade {filename} nach {folder_name} hoch")
                 target_folder_id = folder_id_by_name(folder_name)
                 if target_folder_id:
-                    await upload_file_to_gdrive(service, file_path, target_folder_id)
+                    await upload_file_to_gdrive(service, mimetype, file_path, target_folder_id)
                     uploaded = True
                     await update_detail_status(f"✅ {filename} wurde hochgeladen")
         except Exception as e:

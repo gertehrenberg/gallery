@@ -204,6 +204,7 @@ async def handle_existing_file(
 
 async def handle_new_file(
         service,
+        mimetype,
         filename: str,
         file_path: Path,
         folder_name: str
@@ -219,7 +220,7 @@ async def handle_new_file(
 
     try:
         await update_detail_status(f"⬆️ Lade {filename} nach {folder_name} hoch")
-        uploaded = await upload_file_to_gdrive(service, file_path, target_folder_id)
+        uploaded = await upload_file_to_gdrive(service, mimetype, file_path, target_folder_id)
 
         if uploaded:
             await update_detail_status(f"✅ {filename} wurde hochgeladen")

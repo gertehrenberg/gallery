@@ -5,7 +5,7 @@ from pathlib import Path
 from app.config import Settings
 from app.config_gdrive import SettingsGdrive, sanitize_filename, folder_id_by_name
 from app.routes.auth import load_drive_service_token
-from app.routes.hashes import update_gdrive_hashes, process_text_files, update_local_hashes
+from app.routes.hashes import update_gdrive_hashes, update_local_hashes_text, update_local_hashes
 from app.utils.progress import update_progress, stop_progress, \
     update_progress_text
 
@@ -119,7 +119,7 @@ async def delete_files_in_folder(service, folder_id: str = "1q1b1DpBAVDfkvAOMBQ-
                 Settings.TEXTFILES_FOLDERNAME,
                 Settings.TEXT_EXTENSIONS,
                 Path(Settings.TEXT_FILE_CACHE_DIR).parent)
-            await process_text_files()
+            await update_local_hashes_text()
             continue
         await update_progress_text(
             f"🔄 Starte Cache-Rebuild für Ordner: {folder_key}"
@@ -141,6 +141,7 @@ def p7():
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
     asyncio.run(delete_files_in_folder(service))
+
 
 if __name__ == "__main__":
     p7()
