@@ -123,19 +123,24 @@ async def dashboard(request: Request, year: int = None, month: int = None):
     gdrive_stats1 = compare_hashfile_counts_dash(Settings.IMAGE_FILE_CACHE_DIR, subfolders=True)
     gdrive_stats2 = compare_hashfile_counts_dash(Settings.TEXT_FILE_CACHE_DIR, subfolders=False)
 
+    help_links = [
+        {"label": "n8n", "url": "http://localhost", "icon": "⚙️"},
+        {"label": "openai", "url": "https://platform.openai.com/settings/organization/usage", "icon": "🧠"},
+        {"label": "runpod", "url": "https://console.runpod.io/user/billing", "icon": "☁️"}
+    ]
+
     # Tool Links Definition
     tool_links = [
-        {"label": "n8n", "url": "http://localhost", "icon": "🧩"},
         {"label": 'Sync mit "Save" (GDrive)', "url": f"{_BASE}/test?folder=save&direction=manage_save", "icon": "🔄"},
-        {"label": "Reload pair & File-hashes", "url": f"{_BASE}/test?direction=reloadcache", "icon": "🧹"},
+        {"label": "Reload pair & File-hashes", "url": f"{_BASE}/test?direction=reloadcache", "icon": "🔄"},
         {"label": "Lösche File Cache(s)", "url": f"{_BASE}/what?what=reloadfilecache", "icon": "🗑️"},
-        {"label": "Reload Gesichter", "url": f"{_BASE}/test?direction=reload_faces", "icon": "😶"},
-        {"label": "Reload Quality-Scores", "url": f"{_BASE}/test?direction=reload_quality", "icon": "⭐"},
-        {"label": "Reload NSFW-Scores", "url": f"{_BASE}/test?direction=reload_nsfw", "icon": "🚫"},
-        {"label": "Reload Texte", "url": f"{_BASE}/test?direction=reload_texte", "icon": "🚫"},
-        {"label": 'Reload ComfyUI nur in "KI"', "url": f"{_BASE}/test?direction=reload_comfyui", "icon": "🖼️"},
-        {"label": "Lösche Doppelte Bilder", "url": f"{_BASE}/test?direction=del_double_images", "icon": "👯"},
-        {"label": "Gen Pages", "url": f"{_BASE}/test?direction=gen_pages", "icon": "📘"}
+        {"label": "Reload Gesichter", "url": f"{_BASE}/test?direction=reload_faces", "icon": "👤"},
+        {"label": "Reload Quality-Scores", "url": f"{_BASE}/test?direction=reload_quality", "icon": "📊"},
+        {"label": "Reload NSFW-Scores", "url": f"{_BASE}/test?direction=reload_nsfw", "icon": "🔞"},
+        {"label": "Reload Texte", "url": f"{_BASE}/test?direction=reload_texte", "icon": "📝"},
+        {"label": 'Reload ComfyUI nur in "KI"', "url": f"{_BASE}/test?direction=reload_comfyui", "icon": "🤖"},
+        {"label": "Lösche Doppelte Bilder", "url": f"{_BASE}/test?direction=del_double_images", "icon": "🎯"},
+        {"label": "Gen Pages", "url": f"{_BASE}/test?direction=gen_pages", "icon": "📄"}
     ]
 
     cost_datasets = [
@@ -167,6 +172,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
         "info": info,
         "labels": labels,
         "cost_datasets": cost_datasets,
+        "help_links": help_links,
         "tool_links": tool_links,
         "nav": {
             "current": current.strftime("%Y-%m"),
