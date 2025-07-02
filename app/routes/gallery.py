@@ -468,11 +468,12 @@ def get_marked_images_count(checkbox: str, user: str = Depends(require_login)):
 async def _gen_pages(folder: str = Form(...), direction: str = Form(...)):
     """Startet die Generierung von Seiten für einen Ordner."""
     if not progress_state["running"]:
-        await init_progress_state()
-        progress_state["running"] = True
-        task = asyncio.create_task(gen_pages(folder))
-        # Store the task somewhere to keep it alive
-        progress_state["current_task"] = task
+        try:
+            await init_progress_state()
+            task = asyncio.create_task(gen_pages(folder))
+            progress_state["current_task"] = task
+        finally:
+            await stop_progress()
     return {"status": "ok"}
 
 

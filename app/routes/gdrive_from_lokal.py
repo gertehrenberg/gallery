@@ -60,7 +60,7 @@ async def gdrive_from_lokal(service, folder_name: str):
         folder_path = gallery_hashfile.parent
         folder = folder_path.name
         await update_progress_text(f"folder: {folder}")
-        if not (folder == folder_name):
+        if folder_name != folder:
             continue
 
         gdrive_hashfile = folder_path / Settings.GDRIVE_HASH_FILE
@@ -81,7 +81,6 @@ async def gdrive_from_lokal(service, folder_name: str):
         updated = False
 
         await init_progress_state()
-        progress_state["progress"] = 0
 
         total = len(local_hashes)
         if total > 0:
@@ -145,14 +144,14 @@ async def gdrive_from_lokal(service, folder_name: str):
             if updated:
                 save_gdrive_hashes(gdrive_hashes, gdrive_hashfile, folder)
 
+        await stop_progress()
+
     if await lokal_from_gdrive_move(service, folder_name):
         await process_image_folders_gdrive(
             service,
             Settings.IMAGE_EXTENSIONS,
             Settings.IMAGE_FILE_CACHE_DIR,
             [folder_name])
-
-    await stop_progress()
 
 
 def save_gdrive_hashes(gdrive_hashes: Dict, hashfile_path: Path, folder: str) -> None:
@@ -365,128 +364,123 @@ def move_file_in_gdrive(service, file_id: str, file_name: str, target_folder_nam
 
 
 async def lokal_from_gdrive_move(service, folder_name: str) -> bool:
-    """
-    Überprüft und verschiebt Dateien in Google Drive basierend auf lokalen Hash-Vergleichen.
-
-    Args:
-        service: Google Drive Service Objekt
-        folder_name: Name des zu überprüfenden Ordners
-    """
     logger.info(f"lokal_from_gdrive_move: {folder_name}")
     await init_progress_state()
-    progress_state["running"] = True
 
-    def find_local(md5: str, hash_cache: dict) -> str | None:
-        """
-        Sucht nach einer Datei mit gegebenem MD5-Hash in allen Galleries.
-        """
-        logger.debug(f"find_local: {md5}")
+    try:
+        def find_local(md5: str, hash_cache: dict) -> str | None:
+            """
+            Sucht nach einer Datei mit gegebenem MD5-Hash in allen Galleries.
+            """
+            logger.debug(f"find_local: {md5}")
 
-        for folder_name, hashes in hash_cache.items():
-            if md5 in hashes.values():
-                logger.debug(f"[FOUND] MD5 {md5} in {folder_name}")
-                return folder_name
-        return None
+            for folder_name, hashes in hash_cache.items():
+                if md5 in hashes.values():
+                    logger.debug(f"[FOUND] MD5 {md5} in {folder_name}")
+                    return folder_name
+            return None
 
-    # Initialization phase
-    await update_progress("Initialisiere...", 0)
-    cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
-    hashfiles = list(cache_dir.rglob("gallery202505_hashes.json"))
+        # Initialization phase
+        await update_progress("Initialisiere...", 0)
+        cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
+        hashfiles = list(cache_dir.rglob("gallery202505_hashes.json"))
 
-    # Build hash cache
-    await update_progress("Lade Hash-Cache...", 10)
-    hash_cache = {}
-    for i, gallery_hashfile in enumerate(hashfiles):
-        try:
-            with gallery_hashfile.open("r", encoding="utf-8") as f:
-                folder_name = gallery_hashfile.parent.name
-                hash_cache[folder_name] = json.load(f)
-        except Exception as e:
-            logger.error(f"[Fehler] {gallery_hashfile}: {e}")
-            continue
-        progress = int(10 + (i / len(hashfiles) * 20))  # 10-30%
-        await update_progress("Lade Hash-Cache...", progress, 0.01)
+        # Build hash cache
+        await update_progress("Lade Hash-Cache...", 10)
+        hash_cache = {}
+        for i, gallery_hashfile in enumerate(hashfiles):
+            try:
+                with gallery_hashfile.open("r", encoding="utf-8") as f:
+                    folder_name = gallery_hashfile.parent.name
+                    hash_cache[folder_name] = json.load(f)
+            except Exception as e:
+                logger.error(f"[Fehler] {gallery_hashfile}: {e}")
+                continue
+            progress = int(10 + (i / len(hashfiles) * 20))  # 10-30%
+            await update_progress("Lade Hash-Cache...", progress, 0.01)
 
-    # Build folder ID map
-    await update_progress("Lade Google Drive Ordner...", 30)
-    folder_id_map = {}
-    results = service.files().list(
-        q="mimeType='application/vnd.google-apps.folder'",
-        fields="files(id, name)"
-    ).execute()
-    for folder in results.get('files', []):
-        folder_id_map[folder['name']] = folder['id']
+        # Build folder ID map
+        await update_progress("Lade Google Drive Ordner...", 30)
+        folder_id_map = {}
+        results = service.files().list(
+            q="mimeType='application/vnd.google-apps.folder'",
+            fields="files(id, name)"
+        ).execute()
+        for folder in results.get('files', []):
+            folder_id_map[folder['name']] = folder['id']
 
-    # Count total files to process
-    await update_progress("Zähle zu verarbeitende Dateien...", 40)
-    total_files = 0
-    for gallery_hashfile in hashfiles:
-        if gallery_hashfile.parent.name == folder_name:
-            gdrive_hashfile = gallery_hashfile.parent / Settings.GDRIVE_HASH_FILE
+        # Count total files to process
+        await update_progress("Zähle zu verarbeitende Dateien...", 40)
+        total_files = 0
+        for gallery_hashfile in hashfiles:
+            if gallery_hashfile.parent.name == folder_name:
+                gdrive_hashfile = gallery_hashfile.parent / Settings.GDRIVE_HASH_FILE
+                try:
+                    with gdrive_hashfile.open("r", encoding="utf-8") as f:
+                        gdrive_hashes = json.load(f)
+                        total_files = len(gdrive_hashes)
+                        break
+                except Exception:
+                    continue
+
+        # Main processing
+        processed_files = 0
+        moved_count = 0
+        missing_count = 0
+
+        for gallery_hashfile in hashfiles:
+            folder_path = gallery_hashfile.parent
+            folder = folder_path.name
+            if folder != folder_name:
+                continue
+
+            local_hashes = hash_cache.get(folder, {})
+            gdrive_hashfile = folder_path / Settings.GDRIVE_HASH_FILE
+
             try:
                 with gdrive_hashfile.open("r", encoding="utf-8") as f:
                     gdrive_hashes = json.load(f)
-                    total_files = len(gdrive_hashes)
-                    break
             except Exception:
-                continue
+                gdrive_hashes = {}
 
-    # Main processing
-    processed_files = 0
-    moved_count = 0
-    missing_count = 0
+            logger.info(f"Prüfe Dateien in GDrive für Ordner {folder_name}...")
 
-    for gallery_hashfile in hashfiles:
-        folder_path = gallery_hashfile.parent
-        folder = folder_path.name
-        if not (folder == folder_name):
-            continue
+            for name, entry in gdrive_hashes.items():
+                gdrive_md5 = entry.get("md5") if isinstance(entry, dict) else entry
+                file_id = entry.get("id") if isinstance(entry, dict) else None
 
-        local_hashes = hash_cache.get(folder, {})
-        gdrive_hashfile = folder_path / Settings.GDRIVE_HASH_FILE
+                # Check if file exists in local hashes with same md5
+                found = False
+                for local_name, local_md5 in local_hashes.items():
+                    if local_md5 == gdrive_md5:
+                        found = True
+                        break
 
-        try:
-            with gdrive_hashfile.open("r", encoding="utf-8") as f:
-                gdrive_hashes = json.load(f)
-        except Exception:
-            gdrive_hashes = {}
+                if not found:
+                    curr_folder = find_local(gdrive_md5, hash_cache)
+                    if curr_folder and file_id:
+                        if curr_folder == folder_name:
+                            logger.info(f"[SKIP] {name} bereits in korrektem Ordner {curr_folder}")
+                            continue
+                        logger.info(f"[VERSCHIEBE] {name} nach {curr_folder}")
+                        if move_file_in_gdrive(service, file_id, name, curr_folder, folder_id_map):
+                            moved_count += 1
+                    else:
+                        logger.warning(f"[FEHLT] {name}")
+                    missing_count += 1
 
-        logger.info(f"Prüfe Dateien in GDrive für Ordner {folder_name}...")
+                processed_files += 1
+                if total_files > 0:
+                    progress = int(40 + (processed_files / total_files * 60))  # 40-100%
+                    status = (f"Verarbeite Dateien... {processed_files}/{total_files} "
+                              f"({moved_count} verschoben, {missing_count} fehlend)")
+                    await update_progress(status, progress, 0.01)
 
-        for name, entry in gdrive_hashes.items():
-            gdrive_md5 = entry.get("md5") if isinstance(entry, dict) else entry
-            file_id = entry.get("id") if isinstance(entry, dict) else None
-
-            # Check if file exists in local hashes with same md5
-            found = False
-            for local_name, local_md5 in local_hashes.items():
-                if local_md5 == gdrive_md5:
-                    found = True
-                    break
-
-            if not found:
-                curr_folder = find_local(gdrive_md5, hash_cache)
-                if curr_folder and file_id:
-                    if curr_folder == folder_name:
-                        logger.info(f"[SKIP] {name} bereits in korrektem Ordner {curr_folder}")
-                        continue
-                    logger.info(f"[VERSCHIEBE] {name} nach {curr_folder}")
-                    if move_file_in_gdrive(service, file_id, name, curr_folder, folder_id_map):
-                        moved_count += 1
-                else:
-                    logger.warning(f"[FEHLT] {name}")
-                missing_count += 1
-
-            processed_files += 1
-            if total_files > 0:
-                progress = int(40 + (processed_files / total_files * 60))  # 40-100%
-                status = (f"Verarbeite Dateien... {processed_files}/{total_files} "
-                          f"({moved_count} verschoben, {missing_count} fehlend)")
-                await update_progress(status, progress, 0.01)
-
-    logger.info(f"Zusammenfassung für {folder_name}:")
-    logger.info(f"- {missing_count} Dateien fehlen")
-    logger.info(f"- {moved_count} Dateien wurden verschoben")
+        logger.info(f"Zusammenfassung für {folder_name}:")
+        logger.info(f"- {missing_count} Dateien fehlen")
+        logger.info(f"- {moved_count} Dateien wurden verschoben")
+    finally:
+        await stop_progress()
 
     return missing_count > 0 or moved_count > 0
 

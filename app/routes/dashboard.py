@@ -674,7 +674,6 @@ def delete_file(service, file_id):
 
 async def manage_save_progress(service: None):
     await init_progress_state()
-    progress_state["running"] = True
 
     if not service:
         service = load_drive_service()
@@ -891,7 +890,6 @@ async def repair_db():
 
     try:
         await init_progress_state()
-        progress_state["running"] = True
         await update_progress_text("🔄 Starting repair DB")
         delete_all_checkbox_status()
     except Exception as e:
@@ -984,128 +982,95 @@ async def _del_double_images(folder: str = Form(...), direction: str = Form(...)
 
 async def handle_duplicates():
     logger.info("🚀 Starting duplicate handling")
-
     try:
         await init_progress_state()
-        progress_state["running"] = True
-        await update_progress_text("🔄 Starting duplicate detection")
 
-        # Create the temp directory if it doesn't exist
+        # Setup
         temp_dir = Settings.TEMP_DIR_PATH
         temp_dir.mkdir(parents=True, exist_ok=True)
-
-        # Dictionaries to store file information
         md5_map = {}
         filename_map = {}
 
-        # Process all categories
-        folderindex = 1
-        total = len(Settings.kategorien())
+        # Scan files
+        await scan_files(md5_map, filename_map)
 
-        # Single pass through all files
-        for kat in Settings.kategorien():
-            folder_name = kat["key"]
-            local_files = {}
+        # Process duplicates
+        moved_count = await handle_md5_duplicates(md5_map, temp_dir)
+        renamed_count = await handle_filename_duplicates(filename_map)
 
-            await update_progress(f"Scanning category: {folder_name} : {folderindex}/{total}",
-                                  int(folderindex / total * 100), 0.02)
-
-            # Single readimages call for both operations
-            await readimages(str(Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name), local_files)
-
-            counter = 0
-            for image_name, entry in local_files.items():
-                if counter % 50 == 0:
-                    await update_progress_text(
-                        f"Processing: {folder_name} : {folderindex}/{total} Image {image_name} ({counter})",
-                        0.01, True)
-                counter += 1
-
-                full_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
-                file_info = {
-                    "path": full_path,
-                    "image_name": image_name,
-                    "category": folder_name,
-                    "image_id": entry.get("image_id", None)
-                }
-
-                # Process MD5 duplicates
-                if "image_id" in entry:
-                    md5 = entry["image_id"]
-                    if md5 not in md5_map:
-                        md5_map[md5] = []
-                    md5_map[md5].append(file_info)
-
-                # Process filename duplicates
-                if image_name not in filename_map:
-                    filename_map[image_name] = []
-                filename_map[image_name].append(file_info)
-
-            folderindex += 1
-
-        # Handle MD5 duplicates
-        moved_count = 0
-        total_md5_duplicates = sum(1 for files in md5_map.values() if len(files) > 1)
-        await update_progress_text(f"Found {total_md5_duplicates} groups of MD5 duplicate images")
-
-        for md5, files in md5_map.items():
-            if len(files) > 1:
-                for duplicate in files[1:]:
-                    source_path = duplicate["path"]
-                    dest_path = temp_dir / f"{duplicate['category']}_{duplicate['image_name']}"
-                    try:
-                        source_path.rename(dest_path)
-                        moved_count += 1
-                        await update_progress_text(
-                            f"Moving MD5 duplicate: {duplicate['image_name']} ({moved_count}/{total_md5_duplicates})"
-                        )
-                    except Exception as e:
-                        logger.error(f"Error moving file {source_path}: {e}")
-
-        # Handle filename duplicates
-        renamed_count = 0
-        total_name_duplicates = sum(1 for files in filename_map.values() if len(files) > 1)
-        await update_progress_text(f"Found {total_name_duplicates} groups of filename duplicates")
-
-        for filename, files in filename_map.items():
-            if len(files) > 1:
-                files.sort(key=lambda x: str(x["path"]))
-                original = files[0]
-                await update_progress_text(f"Keeping original: {original['path']}")
-
-                for duplicate in files[1:]:
-                    if not duplicate["image_id"]:
-                        continue
-                    source_path = duplicate["path"]
-                    new_name = f"{duplicate['image_id']}_{duplicate['image_name']}"
-                    new_path = source_path.parent / new_name
-
-                    try:
-                        source_path.rename(new_path)
-                        renamed_count += 1
-                        await update_progress_text(
-                            f"Renamed file: {duplicate['image_name']} -> {new_name} ({renamed_count}/{total_name_duplicates})"
-                        )
-                        logger.info(f"Renamed {source_path} to {new_path}")
-                    except Exception as e:
-                        error_msg = f"Error renaming file {source_path}: {e}"
-                        logger.error(error_msg)
-                        await update_progress_text(f"❌ {error_msg}")
-
-        final_message = (
-            f"✅ Completed! Moved {moved_count} MD5 duplicates to {temp_dir} and "
-            f"renamed {renamed_count} filename duplicates"
-        )
+        # Final status
+        final_message = f"✅ Completed! Moved {moved_count} MD5 duplicates to {temp_dir} and renamed {renamed_count} filename duplicates"
         await update_progress_text(final_message)
 
     except Exception as e:
-        error_msg = f"Error in handle_duplicates: {e}"
-        logger.error(error_msg)
-        await update_progress_text(f"❌ {error_msg}")
-
+        logger.error(f"Error in handle_duplicates: {e}")
+        await update_progress_text(f"❌ Error in handle_duplicates: {e}")
     finally:
         await stop_progress()
 
+
+async def scan_files(md5_map, filename_map):
+    await update_progress_text("🔄 Starting duplicate detection")
+
+    for index, kat in enumerate(Settings.kategorien(), 1):
+        folder_name = kat["key"]
+        local_files = {}
+
+        await update_progress(f"Scanning category: {folder_name}", int(index * 100 / len(Settings.kategorien())), 0.02)
+        await readimages(str(Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name), local_files)
+
+        for image_name, entry in local_files.items():
+            full_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_name / image_name
+            file_info = {
+                "path": full_path,
+                "image_name": image_name,
+                "category": folder_name,
+                "image_id": entry.get("image_id", None)
+            }
+
+            if "image_id" in entry:
+                md5_map.setdefault(entry["image_id"], []).append(file_info)
+            filename_map.setdefault(image_name, []).append(file_info)
+
+
+async def handle_md5_duplicates(md5_map, temp_dir):
+    moved_count = 0
+    duplicates = [files for files in md5_map.values() if len(files) > 1]
+    await update_progress_text(f"Found {len(duplicates)} groups of MD5 duplicate images")
+
+    for files in duplicates:
+        for duplicate in files[1:]:
+            try:
+                source_path = duplicate["path"]
+                dest_path = temp_dir / f"{duplicate['category']}_{duplicate['image_name']}"
+                source_path.rename(dest_path)
+                moved_count += 1
+            except Exception as e:
+                logger.error(f"Error moving file {source_path}: {e}")
+
+    return moved_count
+
+
+async def handle_filename_duplicates(filename_map):
+    renamed_count = 0
+    duplicates = [files for files in filename_map.values() if len(files) > 1]
+    await update_progress_text(f"Found {len(duplicates)} groups of filename duplicates")
+
+    for files in duplicates:
+        files.sort(key=lambda x: str(x["path"]))
+        for duplicate in files[1:]:
+            if not duplicate["image_id"]:
+                continue
+            try:
+                source_path = duplicate["path"]
+                new_name = f"{duplicate['image_id']}_{duplicate['image_name']}"
+                new_path = source_path.parent / new_name
+                source_path.rename(new_path)
+                renamed_count += 1
+            except Exception as e:
+                logger.error(f"Error renaming file {source_path}: {e}")
+
+    return renamed_count
 
 def localp2():
     Settings.DB_PATH = '../../gallery_local.db'

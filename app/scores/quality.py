@@ -136,30 +136,30 @@ def delete_quality_by_type():
 
 async def reload_quality():
     await init_progress_state()
-    progress_state["running"] = True
 
-    logger.info("➡️  Quality-Score wird gelöscht...")
-    delete_quality_by_type()
-    logger.info("✅️  Quality-Score gelöscht.")
+    try:
+        logger.info("➡️  Quality-Score wird gelöscht...")
+        delete_quality_by_type()
+        logger.info("✅️  Quality-Score gelöscht.")
 
-    for eintrag in Settings.kategorien():
-        folder_key = eintrag["key"]
+        for eintrag in Settings.kategorien():
+            folder_key = eintrag["key"]
 
-        local_files = {}
+            local_files = {}
 
-        await readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
+            await readimages(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key, local_files)
 
-        all_files = []
+            all_files = []
 
-        for image_name, entry in local_files.items():
-            entry["image_name"] = image_name
-            all_files.append(entry)
+            for image_name, entry in local_files.items():
+                entry["image_name"] = image_name
+                all_files.append(entry)
 
-        label = next((k["label"] for k in Settings.kategorien() if k["key"] == folder_key), folder_key)
-        await update_progress(f"Bilder in \"{label}\"", 0)
-        for i, file_info in enumerate(all_files, 1):
-            percent = int(i / len(all_files) * 100)
-            await update_progress(f"Bilder in \"{label}\": {i}/{len(all_files)}", percent)
-            load_quality(Settings.DB_PATH, Settings.IMAGE_FILE_CACHE_DIR, folder_key, file_info["image_name"])
-
-    await stop_progress()
+            label = next((k["label"] for k in Settings.kategorien() if k["key"] == folder_key), folder_key)
+            await update_progress(f"Bilder in \"{label}\"", 0)
+            for i, file_info in enumerate(all_files, 1):
+                percent = int(i / len(all_files) * 100)
+                await update_progress(f"Bilder in \"{label}\": {i}/{len(all_files)}", percent)
+                load_quality(Settings.DB_PATH, Settings.IMAGE_FILE_CACHE_DIR, folder_key, file_info["image_name"])
+    finally:
+        await stop_progress()

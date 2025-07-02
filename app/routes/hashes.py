@@ -14,129 +14,130 @@ from app.config_gdrive import sanitize_filename, folder_id_by_name, SettingsGdri
 from app.database import clear_folder_status_db_by_name
 from app.routes.auth import load_drive_service_token
 from app.routes.gdrive_from_lokal import save_structured_hashes
+from app.services.image_processing import find_png_file
 from app.tools import readimages
 from app.utils.db_utils import save_folder_status_to_db, load_folder_status_from_db
-from app.utils.progress import init_progress_state, progress_state, update_progress, update_progress_text, \
+from app.utils.progress import init_progress_state, update_progress, update_progress_text, \
     save_simple_hashes, hold_progress, stop_progress, update_progress_auto
 from app.utils.progress_detail import update_detail_status, update_detail_progress, start_detail_progress, \
     stop_detail_progress, calc_detail_progress
 
 
 async def update_local_hashes_text():
-    file_folder_dir = Settings.TEXT_FILE_CACHE_DIR
-    await update_progress_text("🧮 Verarbeite Textdateien")
+    try:
+        # Initialize
+        await init_progress_state()
+        await update_progress_text("🧮 Verarbeite Textdateien")
 
-    # Initialize progress state
-    await init_progress_state()
-    progress_state["running"] = True
+        Settings.CACHE["text_cache"].clear()
 
-    if Settings.TEXT_FILE_CACHE_DIR == file_folder_dir:
-        text_cache = Settings.CACHE["text_cache"]
-        text_cache.clear()
-        await update_progress_text("Cache geleert")
+        # Update database and collect files
+        await _update_database()
+        text_files = _get_text_files()
 
-    # Update database entries
-    await update_progress_text("🔄 Aktualisiere Datenbankeinträge")
+        if not text_files:
+            await update_progress_text("ℹ️ Keine Textdateien gefunden")
+            return
+
+        # Process files
+        local_hashes = await _process_files(text_files)
+
+        # Save results
+        await _save_hash_file(local_hashes)
+        await update_progress_text(f"✅ Verarbeitung abgeschlossen: {len(text_files)} Dateien")
+    finally:
+        await stop_progress()
+
+
+async def _update_database():
+    """Update database entries for text files"""
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
-            query = """
-                    UPDATE image_quality_scores
-                    SET image_name = SUBSTR(image_name, 1, LENGTH(image_name) - 4)
-                    WHERE score_type = ?
-                      AND LOWER(image_name) LIKE '%.txt'
-                    """
-            conn.execute(query, (score_type_map['text'],))
-            conn.commit()
-        await update_progress_text("✅ Datenbankeinträge aktualisiert")
+            conn.execute("""
+                         UPDATE image_quality_scores
+                         SET image_name = SUBSTR(image_name, 1, LENGTH(image_name) - 4)
+                         WHERE score_type = ?
+                           AND LOWER(image_name) LIKE '%.txt'
+                         """, (score_type_map['text'],))
     except Exception as e:
-        await update_progress_text(f"❌ Fehler bei Datenbankaktualisierung: {e}")
+        await update_progress_text(f"❌ Datenbankfehler: {e}")
 
-    # Collect files
-    subdir = Path(file_folder_dir)
-    local_hashes: Dict[str, str] = {}
-    image_files = [f for f in subdir.iterdir() if f.is_file() and f.suffix.lower() in Settings.TEXT_EXTENSIONS]
 
-    total_files = len(image_files)
-    if total_files == 0:
-        await update_progress_text("ℹ️ Keine Textdateien gefunden")
-        return
+def _get_text_files():
+    """Get all text files from directory"""
+    return [f for f in Path(Settings.TEXT_FILE_CACHE_DIR).iterdir()
+            if f.is_file() and f.suffix.lower() in Settings.TEXT_EXTENSIONS]
 
-    await update_progress_text(f"🔄 Verarbeite {total_files} Textdateien")
 
-    # Initialize progress for file processing
+async def _process_files(files):
+    """Process text files and update database"""
+    local_hashes = {}
     await start_detail_progress("Starte Verarbeitung")
 
-    # Process files
-    total_files = len(image_files)
-    for idx, file in enumerate(image_files):
-        image_name = file.name.lower()
-
-        progress = calc_detail_progress(idx, total_files)
-        await update_detail_progress(
-            detail_status=f"Verarbeite {image_name} ({idx + 1}/{total_files})",
-            detail_progress=progress
-        )
-
+    for idx, file in enumerate(files):
         try:
-            md5_local = calculate_md5(file)
-            local_hashes[image_name] = md5_local
-
-            # Search for PNG files
-            from app.services.image_processing import find_png_file
-            image_name_bild = image_name[:-4]
-            matching_files = find_png_file(image_name_bild)
-
-            if matching_files:
-                found_file = matching_files[0]
-                found_file_str = str(found_file.name)
-
-                # Database check and processing...
-                with sqlite3.connect(Settings.DB_PATH) as conn:
-                    cursor = conn.execute("""
-                                          SELECT score
-                                          FROM image_quality_scores
-                                          WHERE image_name = ?
-                                            AND score_type = ?
-                                          """, (found_file_str, score_type_map['text']))
-                    db_result = cursor.fetchone()
-
-                if db_result and db_result[0]:
-                    await update_detail_status(
-                        f"DB Eintrag gefunden: {db_result[0]} Zeichen"
-                    )
-                else:
-                    # Process new file...
-                    from app.services.image_processing import download_text_file
-                    content = download_text_file(
-                        folder_name=found_file.parent.name,
-                        image_name=found_file.name,
-                        cache_dir=Settings.TEXT_FILE_CACHE_DIR
-                    )
-
-                    if content:
-                        with sqlite3.connect(Settings.DB_PATH) as conn:
-                            conn.execute("""
-                                INSERT OR REPLACE INTO image_quality_scores 
-                                (image_name, score_type, score)
-                                VALUES (?, ?, ?)
-                            """, (found_file_str, score_type_map['text'], len(content)))
-                            await update_detail_status(
-                                f"Neuer Eintrag: {len(content)} Zeichen"
-                            )
-
+            await _process_single_file(file, idx, len(files), local_hashes)
         except Exception as e:
             await update_detail_status(f"Fehler: {str(e)}")
 
-    # Mark completion
     await stop_detail_progress("Verarbeitung abgeschlossen")
+    return local_hashes
 
-    # Save hashes
-    hashfile_name = Settings.GALLERY_HASH_FILE
-    hash_path = subdir / hashfile_name
+
+async def _process_single_file(file, idx, total, local_hashes):
+    """Process a single text file"""
+    image_name = file.name.lower()
+    progress = calc_detail_progress(idx, total)
+    await update_detail_progress(f"Verarbeite {image_name} ({idx + 1}/{total})", progress)
+
+    # Calculate hash
+    local_hashes[image_name] = calculate_md5(file)
+
+    # Find and process matching PNG
+    image_name_base = image_name[:-4]
+    if png_files := find_png_file(image_name_base):
+        await _update_database_entry(png_files[0])
+
+
+async def _update_database_entry(png_file):
+    """Update database entry for PNG file"""
+    file_name = str(png_file.name)
+
+    # Check existing entry
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        result = conn.execute("""
+                              SELECT score
+                              FROM image_quality_scores
+                              WHERE image_name = ?
+                                AND score_type = ?
+                              """, (file_name, score_type_map['text'])).fetchone()
+
+    if not result or not result[0]:
+        await _create_new_entry(png_file)
+
+
+async def _create_new_entry(png_file):
+    """Create new database entry for PNG file"""
+    content = download_text_file(
+        folder_name=png_file.parent.name,
+        image_name=png_file.name,
+        cache_dir=Settings.TEXT_FILE_CACHE_DIR
+    )
+
+    if content:
+        with sqlite3.connect(Settings.DB_PATH) as conn:
+            conn.execute("""
+                INSERT OR REPLACE INTO image_quality_scores 
+                (image_name, score_type, score)
+                VALUES (?, ?, ?)
+            """, (str(png_file.name), score_type_map['text'], len(content)))
+
+
+async def _save_hash_file(local_hashes):
+    """Save hash file"""
+    hash_path = Path(Settings.TEXT_FILE_CACHE_DIR) / Settings.GALLERY_HASH_FILE
     await update_progress_text(f"💾 Speichere {len(local_hashes)} Hashes")
     await save_simple_hashes(local_hashes, hash_path)
-
-    await update_progress_text(f"✅ Verarbeitung abgeschlossen: {total_files} Dateien")
 
 
 def is_valid_image(filename: str) -> bool:
@@ -147,26 +148,28 @@ def is_valid_image(filename: str) -> bool:
 async def delete_all_hashfiles_async(file_folder_dir: str, subfolders: bool = True) -> int:
     """Löscht alle Hash-Dateien in einem Verzeichnis und optional seinen Unterverzeichnissen."""
     await init_progress_state()
-    await update_progress_text("🔄 Starte Löschvorgang der Hash-Dateien...")
+    try:
+        await update_progress_text("🔄 Starte Löschvorgang der Hash-Dateien...")
 
-    root = Path(file_folder_dir)
-    all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
-    deleted = 0
-    total_dirs = len(all_dirs)
+        root = Path(file_folder_dir)
+        all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
+        deleted = 0
+        total_dirs = len(all_dirs)
 
-    for idx, subdir in enumerate(all_dirs, 1):
-        await update_progress(f"Verarbeite Verzeichnis {subdir.name}", int((idx / total_dirs) * 100))
+        for idx, subdir in enumerate(all_dirs, 1):
+            await update_progress(f"Verarbeite Verzeichnis {subdir.name}", int((idx / total_dirs) * 100))
 
-        for file in subdir.glob(f"*{Settings.GDRIVE_HASH_FILE}"):
-            try:
-                file.unlink()
-                await update_progress_text(f"🗑️ Gelöscht: {file}")
-                deleted += 1
-            except Exception as e:
-                await update_progress_text(f"❌ Fehler beim Löschen von {file}: {e}")
+            for file in subdir.glob(f"*{Settings.GDRIVE_HASH_FILE}"):
+                try:
+                    file.unlink()
+                    await update_progress_text(f"🗑️ Gelöscht: {file}")
+                    deleted += 1
+                except Exception as e:
+                    await update_progress_text(f"❌ Fehler beim Löschen von {file}: {e}")
 
-    await update_progress_text(f"✅ Hash-Dateien gelöscht: {deleted}")
-    await hold_progress()
+        await update_progress_text(f"✅ Hash-Dateien gelöscht: {deleted}")
+    finally:
+        await hold_progress()
     return deleted
 
 
@@ -217,7 +220,6 @@ async def update_local_hashes(folder_name):
 async def update_all_local_hashes():
     """Aktualisiert die Hash-Dateien für alle Kategorien."""
     await init_progress_state()
-    progress_state["running"] = True
 
     try:
         total_kategorien = len(Settings.kategorien())
@@ -374,7 +376,6 @@ async def update_gdrive_hashes_text(service):
 async def reloadcache_progress(service, folder_key: Optional[str] = None):
     try:
         await init_progress_state()
-        progress_state["running"] = True
         await update_progress_auto(f"🔄 Starte reloadcache_progress für Ordner: {folder_key}")
         Settings.folders_loaded = 0
 
@@ -1156,7 +1157,6 @@ async def delete_files_by_mimetype(service, folder_id: str, mime_type: str) -> i
     try:
         await update_progress_text(f"🔍 Suche Dateien vom Typ {mime_type}")
         await init_progress_state()
-        progress_state["running"] = True
 
         deleted_count = 0
         files_to_process = []
@@ -1243,6 +1243,8 @@ async def delete_files_by_mimetype(service, folder_id: str, mime_type: str) -> i
         await update_progress_text(error_msg)
         await update_detail_status(error_msg)
         return 0
+    finally:
+        await stop_progress()
 
 
 def p5():
@@ -1273,7 +1275,6 @@ def p5():
 
 async def mache_alles(service):
     await init_progress_state()
-    progress_state["running"] = True
     await update_progress_text("🔄 Starting duplicate detection")
 
     await update_all_local_hashes()
@@ -1288,6 +1289,7 @@ async def mache_alles(service):
     await dd(service, files_by_md5, md5_groups_gdrive)
     await update_all_local_hashes()
     await update_all_gdrive_hashes(service)
+    await stop_progress()
 
 
 def p6():

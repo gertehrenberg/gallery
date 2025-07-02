@@ -19,9 +19,8 @@ from app.routes.manage_text_files import (
 )
 from app.utils.progress import (
     init_progress_state,
-    progress_state,
     update_progress_text,
-    update_progress_auto,
+    update_progress_auto, stop_progress,
 )
 from app.utils.progress_detail import (
     start_detail_progress,
@@ -91,6 +90,7 @@ async def process_hash_entry(
             return False, True
     return False, False
 
+
 async def move_gdrive_files_by_local(service, folder_name: str):
     """Main sync: move or upload local files to GDrive, then sync back moved files."""
     # Special handling for textfiles folder
@@ -98,65 +98,67 @@ async def move_gdrive_files_by_local(service, folder_name: str):
         await gdrive_textfiles_files_by_local(service, folder_name)
         return
 
-    # Initialize progress
-    await init_progress_state()
-    progress_state["running"] = True
-    await update_progress_auto(f"🔄 Sync GDrive für Ordner: {folder_name}")
+    try:
+        # Initialize progress
+        await init_progress_state()
+        await update_progress_auto(f"🔄 Sync GDrive für Ordner: {folder_name}")
 
-    cache = Path(Settings.IMAGE_FILE_CACHE_DIR)
-    folder_path = cache / folder_name
-    local_hashes = load_local_hashes(folder_path)
-    if "__error__" in local_hashes:
-        await update_progress_auto(
-            f"⚠️ Fehler beim Lesen lokaler Hashes: {local_hashes['__error__']}"
+        cache = Path(Settings.IMAGE_FILE_CACHE_DIR)
+        folder_path = cache / folder_name
+        local_hashes = load_local_hashes(folder_path)
+        if "__error__" in local_hashes:
+            await update_progress_auto(
+                f"⚠️ Fehler beim Lesen lokaler Hashes: {local_hashes['__error__']}"
+            )
+            return
+
+        gdrive_hashes = load_all_gdrive_hashes(cache)
+        total = len(local_hashes)
+        moved = uploaded = 0
+
+        await update_progress_auto(f"🔍 Gefunden: {total} Dateien")
+        await start_detail_progress(f"🔍 Gefunden: {total} Dateien")
+        gdrive_folders: Set[str] = set()
+
+        for idx, (filename, md5) in enumerate(local_hashes.items()):
+            status_prefix = "✓"  # Standard-Status
+
+            moved_flag, uploaded_flag = await process_hash_entry(
+                service,
+                filename,
+                md5,
+                gdrive_hashes,
+                folder_name,
+                folder_path,
+                gdrive_folders
+            )
+
+            # Status-Emoji basierend auf der Aktion
+            if moved_flag:
+                status_prefix = "→"  # Verschoben
+            elif uploaded_flag:
+                status_prefix = "⬆️"  # Hochgeladen
+
+            moved += moved_flag
+            uploaded += uploaded_flag
+            progress = calc_detail_progress(idx, total)
+
+            await update_detail_progress(
+                detail_status=f"{status_prefix} {filename} ({idx + 1}/{total})",
+                detail_progress=progress,
+            )
+        await update_progress_auto(f"🔍 Verarbeitet: {total} Dateien")
+        await stop_detail_progress(f"🔍 Verarbeitet: {total} Dateien")
+
+        await finalize_sync(service, folder_name, gdrive_folders, moved, uploaded)
+
+        moved_back = await check_and_move_gdrive_files(
+            service, folder_name, cache, Settings.IMAGE_EXTENSIONS
         )
-        return
-
-    gdrive_hashes = load_all_gdrive_hashes(cache)
-    total = len(local_hashes)
-    moved = uploaded = 0
-
-    await update_progress_auto(f"🔍 Gefunden: {total} Dateien")
-    await start_detail_progress(f"🔍 Gefunden: {total} Dateien")
-    gdrive_folders: Set[str] = set()
-
-    for idx, (filename, md5) in enumerate(local_hashes.items()):
-        status_prefix = "✓"  # Standard-Status
-
-        moved_flag, uploaded_flag = await process_hash_entry(
-            service,
-            filename,
-            md5,
-            gdrive_hashes,
-            folder_name,
-            folder_path,
-            gdrive_folders
-        )
-
-        # Status-Emoji basierend auf der Aktion
-        if moved_flag:
-            status_prefix = "→"  # Verschoben
-        elif uploaded_flag:
-            status_prefix = "⬆️"  # Hochgeladen
-
-        moved += moved_flag
-        uploaded += uploaded_flag
-        progress = calc_detail_progress(idx, total)
-
-        await update_detail_progress(
-            detail_status=f"{status_prefix} {filename} ({idx + 1}/{total})",
-            detail_progress=progress,
-        )
-    await update_progress_auto(f"🔍 Verarbeitet: {total} Dateien")
-    await stop_detail_progress(f"🔍 Verarbeitet: {total} Dateien")
-
-    await finalize_sync(service, folder_name, gdrive_folders, moved, uploaded)
-
-    moved_back = await check_and_move_gdrive_files(
-        service, folder_name, cache, Settings.IMAGE_EXTENSIONS
-    )
-    if moved_back:
-        await update_progress_text(f"✅ {moved_back} GDrive Dateien verschoben")
+        if moved_back:
+            await update_progress_text(f"✅ {moved_back} GDrive Dateien verschoben")
+    finally:
+        await stop_progress()
 
 
 async def finalize_sync(
@@ -182,7 +184,6 @@ async def finalize_sync(
     )
 
 
-
 def p7():
     Settings.DB_PATH = '../../gallery_local.db'
     Settings.TEMP_DIR_PATH = Path("../../cache/temp")
@@ -194,6 +195,7 @@ def p7():
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
     asyncio.run(move_gdrive_files_by_local(service, "ki"))
+
 
 if __name__ == "__main__":
     p7()

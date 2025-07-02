@@ -10,7 +10,7 @@ from app.utils.progress import (
     init_progress_state,
     progress_state,
     update_progress,
-    update_progress_text, update_progress_auto,
+    update_progress_text, update_progress_auto, stop_progress,
 )
 from app.utils.progress_detail import stop_detail_progress, \
     start_detail_progress
@@ -27,7 +27,6 @@ async def gdrive_textfiles_files_by_local(service, folder_name: str) -> None:
     """
     await update_progress_text(f"🔄 Starte GDrive Synchronisation für Ordner: {folder_name}")
     await init_progress_state()
-    progress_state["running"] = True
 
     try:
         # Lade lokale Textdateien
@@ -76,6 +75,8 @@ async def gdrive_textfiles_files_by_local(service, folder_name: str) -> None:
         error_msg = f"❌ Fehler bei der Synchronisation: {str(e)}"
         await update_progress_text(error_msg)
         await update_detail_status(error_msg)
+    finally:
+        await stop_progress()
 
 
 async def load_gdrive_hashes(cache_dir: Path, folder_name: str) -> Dict[str, Any]:

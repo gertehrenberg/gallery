@@ -18,11 +18,7 @@ progress_state = {
     "current_task": None
 }
 
-async def getlast() -> int:
-    """
-
-    :rtype: int
-    """
+def getlast() -> int:
     return int(progress_state["progress"])
 
 async def update_progress(status: str, progress: int, ctime=0.01, showlog=True):
@@ -35,7 +31,7 @@ async def update_progress(status: str, progress: int, ctime=0.01, showlog=True):
 
 
 async def update_progress_auto(status: str, ctime=0.01, showlog=True):
-    progress = await getlast() + 1
+    progress = getlast() + 1
     if isinstance(status, str) and len(status) > 0:
         progress_state["status"] = status
     progress_state["progress"] = progress
@@ -53,20 +49,19 @@ async def update_progress_text(status: str, ctime=0.01, showlog=True):
 
 async def init_progress_state():
     logger.info("Initializing progress state")
-    progress_state["running"] = False
-    await update_progress("Warte auf Start...", 0)
+    await update_progress("Warte auf Start...", 0, ctime=0.01, showlog=True)
+    progress_state["running"] = True
 
 
 async def stop_progress():
     logger.info("Stopping progress")
     progress_state["running"] = False
-    await update_progress("Abgeschlossen.", 100)
+    await update_progress("Abgeschlossen.", 100, ctime=0.01, showlog=True)
 
 
 async def hold_progress():
     logger.info("Hold progress")
-    progress_state["running"] = False
-    await update_progress_text("Warte ...")
+    await update_progress_text("Warte auf nächsten Schritt...")
 
 
 async def list_files(folder_id, service, sign="!="):

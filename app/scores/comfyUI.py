@@ -109,32 +109,34 @@ class ComfyUIScanner:
             int: Number of images with workflow metadata
         """
         await init_progress_state()
-        progress_state["running"] = True
+        try:
 
-        category = self.get_category_info()
-        if not category:
-            logger.warning(f"Category {COMFYUI_CATEGORY} not found in settings")
+            category = self.get_category_info()
+            if not category:
+                logger.warning(f"Category {COMFYUI_CATEGORY} not found in settings")
+                await stop_progress()
+                return 0
+
+            await readimages(os.path.join(self.image_dir, COMFYUI_CATEGORY), self.local_files)
+
+            all_files = [
+                {**entry, "image_name": image_name}
+                for image_name, entry in self.local_files.items()
+            ]
+
+            workflow_count = 0
+            label = category.get("label", COMFYUI_CATEGORY)
+
+            await update_progress(f'Images in "{label}"', 0)
+
+            for i, file_info in enumerate(all_files, 1):
+                if await self.process_image(file_info, label, len(all_files), i):
+                    workflow_count += 1
+
+            logger.info(f"Found and saved {workflow_count} workflows")
+        finally:
             await stop_progress()
-            return 0
 
-        await readimages(os.path.join(self.image_dir, COMFYUI_CATEGORY), self.local_files)
-
-        all_files = [
-            {**entry, "image_name": image_name}
-            for image_name, entry in self.local_files.items()
-        ]
-
-        workflow_count = 0
-        label = category.get("label", COMFYUI_CATEGORY)
-
-        await update_progress(f'Images in "{label}"', 0)
-
-        for i, file_info in enumerate(all_files, 1):
-            if await self.process_image(file_info, label, len(all_files), i):
-                workflow_count += 1
-
-        logger.info(f"Found and saved {workflow_count} workflows")
-        await stop_progress()
         return workflow_count
 
 
