@@ -562,7 +562,7 @@ def p1():
                 return folder_name
         return None
 
-    for eintrag in Settings.kategorien:
+    for eintrag in Settings.kategorien():
         folder_key = eintrag["key"]
 
         local_path = Path(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key) / Settings.GALLERY_HASH_FILE
@@ -642,7 +642,7 @@ def p2():
 
     hash_cache = {}
 
-    for eintrag in Settings.kategorien:
+    for eintrag in Settings.kategorien():
         folder_key = eintrag["key"]
 
         local_path = Path(Settings.IMAGE_FILE_CACHE_DIR + "/" + folder_key) / Settings.GDRIVE_HASH_FILE

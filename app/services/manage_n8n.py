@@ -506,7 +506,7 @@ async def process_save_folder_pairs(service, image_text_pairs) -> None:
 
                 # Prüfe ob Bild bereits existiert
                 image_exists = False
-                for category in Settings.kategorien:
+                for category in Settings.kategorien():
                     category_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / category["key"]
                     if category_path.exists():
                         image_name = files['image']['name']

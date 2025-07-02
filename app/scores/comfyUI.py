@@ -97,7 +97,7 @@ class ComfyUIScanner:
     def get_category_info(self) -> Optional[dict]:
         """Get ComfyUI category information from settings."""
         return next(
-            (cat for cat in Settings.kategorien if cat["key"] == COMFYUI_CATEGORY),
+            (cat for cat in Settings.kategorien() if cat["key"] == COMFYUI_CATEGORY),
             None
         )
 

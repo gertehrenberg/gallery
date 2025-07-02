@@ -142,7 +142,7 @@ async def reload_quality():
     delete_quality_by_type()
     logger.info("✅️  Quality-Score gelöscht.")
 
-    for eintrag in Settings.kategorien:
+    for eintrag in Settings.kategorien():
         folder_key = eintrag["key"]
 
         local_files = {}
@@ -155,7 +155,7 @@ async def reload_quality():
             entry["image_name"] = image_name
             all_files.append(entry)
 
-        label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
+        label = next((k["label"] for k in Settings.kategorien() if k["key"] == folder_key), folder_key)
         await update_progress(f"Bilder in \"{label}\"", 0)
         for i, file_info in enumerate(all_files, 1):
             percent = int(i / len(all_files) * 100)

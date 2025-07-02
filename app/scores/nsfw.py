@@ -89,7 +89,7 @@ def log_missing_scores_from_cache(db_path: str) -> None:
             if image_name.lower() not in available:
                 logging.info(f"[log_missing_scores_from_cache] 📂 Lesen für: {image_name}")
                 rerun = True
-                for eintrag in Settings.kategorien:
+                for eintrag in Settings.kategorien():
                     alt_key = eintrag["key"]
                     if load_nsfw(db_path, alt_key, image_name):
                         break
@@ -118,7 +118,7 @@ async def reload_nsfw():
     delete_nsfw_by_type()
     logger.info("✅️  NSFW-Score gelöscht.")
 
-    for eintrag in Settings.kategorien:
+    for eintrag in Settings.kategorien():
         folder_key = eintrag["key"]
 
         local_files = {}
@@ -131,7 +131,7 @@ async def reload_nsfw():
             entry["image_name"] = image_name
             all_files.append(entry)
 
-        label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
+        label = next((k["label"] for k in Settings.kategorien() if k["key"] == folder_key), folder_key)
         await update_progress(f"Bilder in \"{label}\"", 0)
         for i, file_info in enumerate(all_files, 1):
             percent = int(i / len(all_files) * 100)

@@ -40,7 +40,7 @@ def update_folder_cache(service):
 def log_folder_ids():
     """Logge die Folder-IDs für alle Kategorien"""
     logger.info("Start Logging Folder-IDs für alle Kategorien")
-    for kategorie in Settings.kategorien:
+    for kategorie in Settings.kategorien():
         folder_id = folder_id_by_name(kategorie["key"])
         logger.info(
             f"Kategorie: {kategorie['key']} ({kategorie['label']}) {kategorie['icon']} → Folder-ID: {folder_id}")

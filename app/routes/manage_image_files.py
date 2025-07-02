@@ -1,9 +1,12 @@
+import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Dict, Set, Tuple
 
 from app.config import Settings
-from app.config_gdrive import folder_id_by_name
+from app.config_gdrive import folder_id_by_name, SettingsGdrive
+from app.routes.auth import load_drive_service_token
 from app.routes.hashes import (
     update_gdrive_hashes,
     delete_duplicates_in_gdrive_folder,
@@ -23,7 +26,7 @@ from app.utils.progress import (
 from app.utils.progress_detail import (
     start_detail_progress,
     update_detail_progress,
-    calc_detail_progress,
+    calc_detail_progress, stop_detail_progress,
 )
 
 
@@ -39,7 +42,7 @@ def load_local_hashes(folder_path: Path) -> Dict[str, str]:
 def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict]:
     """Aggregate GDrive hashes across all categories, tagging with the source folder."""
     all_hashes: Dict[str, Dict] = {}
-    for cat in Settings.kategorien:
+    for cat in Settings.kategorien():
         path = cache_dir / cat["key"] / Settings.GDRIVE_HASH_FILE
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -53,7 +56,7 @@ def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict]:
     return all_hashes
 
 
-def process_hash_entry(
+async def process_hash_entry(
         service,
         filename: str,
         local_md5: str,
@@ -64,6 +67,11 @@ def process_hash_entry(
 ) -> Tuple[bool, bool]:
     """Process one file: move if exists in wrong folder, upload if absent."""
     entry = all_gdrive_hashes.get(filename)
+
+    # Wenn Datei existiert, MD5 übereinstimmt UND im richtigen Ordner ist -> nichts tun
+    if entry and entry.get("md5") == local_md5 and entry.get("source_folder") == folder_name:
+        return False, False
+
     # Move existing if same MD5 but wrong folder
     if entry and entry.get("md5") == local_md5 and entry.get("source_folder") != folder_name:
         target_id = folder_id_by_name(folder_name)
@@ -79,10 +87,9 @@ def process_hash_entry(
     if file_path.exists():
         target_id = folder_id_by_name(folder_name)
         if target_id:
-            upload_file_to_gdrive(service, "image/*", file_path, target_id)
+            await upload_file_to_gdrive(service, "image/*", file_path, target_id)
             return False, True
     return False, False
-
 
 async def move_gdrive_files_by_local(service, folder_name: str):
     """Main sync: move or upload local files to GDrive, then sync back moved files."""
@@ -109,20 +116,39 @@ async def move_gdrive_files_by_local(service, folder_name: str):
     total = len(local_hashes)
     moved = uploaded = 0
 
+    await update_progress_auto(f"🔍 Gefunden: {total} Dateien")
     await start_detail_progress(f"🔍 Gefunden: {total} Dateien")
     gdrive_folders: Set[str] = set()
 
     for idx, (filename, md5) in enumerate(local_hashes.items()):
-        moved_flag, uploaded_flag = process_hash_entry(
-            service, filename, md5, gdrive_hashes, folder_name, folder_path, gdrive_folders
+        status_prefix = "✓"  # Standard-Status
+
+        moved_flag, uploaded_flag = await process_hash_entry(
+            service,
+            filename,
+            md5,
+            gdrive_hashes,
+            folder_name,
+            folder_path,
+            gdrive_folders
         )
+
+        # Status-Emoji basierend auf der Aktion
+        if moved_flag:
+            status_prefix = "→"  # Verschoben
+        elif uploaded_flag:
+            status_prefix = "⬆️"  # Hochgeladen
+
         moved += moved_flag
         uploaded += uploaded_flag
         progress = calc_detail_progress(idx, total)
+
         await update_detail_progress(
-            detail_status=f"💾 DB-Eintrag {idx + 1}/{total}",
+            detail_status=f"{status_prefix} {filename} ({idx + 1}/{total})",
             detail_progress=progress,
         )
+    await update_progress_auto(f"🔍 Verarbeitet: {total} Dateien")
+    await stop_detail_progress(f"🔍 Verarbeitet: {total} Dateien")
 
     await finalize_sync(service, folder_name, gdrive_folders, moved, uploaded)
 
@@ -154,3 +180,20 @@ async def finalize_sync(
     await update_progress_text(
         f"✅ Sync abgeschlossen. {moved} verschoben, {uploaded} hochgeladen"
     )
+
+
+
+def p7():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+
+    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+
+    asyncio.run(move_gdrive_files_by_local(service, "ki"))
+
+if __name__ == "__main__":
+    p7()

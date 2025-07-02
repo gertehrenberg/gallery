@@ -31,11 +31,11 @@ async def get_imagefile(file_path: str, request: Request, user: str = Depends(re
         return FileResponse(file)
 
     # Versuche alternative Pfade durch Ersetzen des Präfix
-    for eintrag in Settings.kategorien:
+    for eintrag in Settings.kategorien():
         alt_key = eintrag["key"]
         if file_path.startswith(alt_key + "/"):
             rest = file_path[len(alt_key) + 1:]  # Restlicher Pfad ohne Präfix
-            for ersatz in [k["key"] for k in Settings.kategorien if k["key"] != alt_key]:
+            for ersatz in [k["key"] for k in Settings.kategorien() if k["key"] != alt_key]:
                 alt_file = base_path / ersatz / rest
                 if alt_file.exists() and alt_file.is_file():
                     return FileResponse(alt_file)

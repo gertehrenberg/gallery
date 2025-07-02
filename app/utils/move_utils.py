@@ -14,65 +14,69 @@ from app.utils.logger_config import setup_logger
 logger = setup_logger(__name__)
 
 
+async def move_single_image(image_name: str, current_folder: str, new_folder: str) -> bool:
+    """
+    Verschiebt ein einzelnes Bild von current_folder nach new_folder und löscht dessen checkbox_status.
+
+    Args:
+        image_name: Name der Bilddatei
+        current_folder: Aktueller Ordner
+        new_folder: Zielordner
+
+    Returns:
+        bool: True wenn erfolgreich verschoben, False sonst
+    """
+    if not image_name:
+        logger.warning("⚠️ Leerer image_name – überspringe.")
+        return False
+
+    logger.info(f"📦 Verschiebe Bild '{image_name}' von '{current_folder}' nach '{new_folder}'")
+
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        try:
+            # Versuche die Datei in der DB zu verschieben
+            success = await move_file_db(conn, image_name, current_folder, new_folder)
+            if success:
+                # Lösche checkbox_status für dieses Bild
+                conn.execute(
+                    "DELETE FROM checkbox_status WHERE image_name = ? AND checkbox = ?",
+                    (image_name, new_folder)
+                )
+                conn.commit()
+                return True
+            else:
+                logger.warning(f"⚠️ move_file_db fehlgeschlagen für {image_name}")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Fehler beim Verschieben von {image_name}: {e}")
+            return False
+
+
 async def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -> int:
-    logger.info(f"📦 Starte move_marked_images_by_checkbox() von '{current_folder}' nach '{new_folder}'")
+    """Verschiebt alle markierten Bilder zwischen Ordnern."""
+    logger.info(f"📦 Starte Massenverschiebung von '{current_folder}' nach '{new_folder}'")
 
     with sqlite3.connect(Settings.DB_PATH) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            """
-            SELECT image_name
-            FROM checkbox_status
-            WHERE checked = 1
-              AND checkbox = ?
-            """,
+            "SELECT image_name FROM checkbox_status WHERE checked = 1 AND checkbox = ?",
             (new_folder,)
         )
         rows = cursor.fetchall()
-
         logger.info(f"🔍 {len(rows)} markierte Bilder gefunden für '{new_folder}'")
 
         anzahl_verschoben = 0
         for (image_name,) in rows:
-            if not image_name:
-                logger.warning("⚠️  Leerer image_name – überspringe.")
-                continue
+            if await move_single_image(image_name, current_folder, new_folder):
+                anzahl_verschoben += 1
 
-            logger.info(f"➡️  Verarbeite Bild: {image_name}")
-            success = await move_file_db(conn, image_name, current_folder, new_folder)
-            if success:
-                try:
-                    conn.execute(
-                        """
-                        DELETE
-                        FROM checkbox_status
-                        WHERE image_name = ?
-                          AND checkbox = ?
-                        """,
-                        (image_name, new_folder),
-                    )
-
-                    src = Path(Settings.IMAGE_FILE_CACHE_DIR) / current_folder / image_name
-                    dst = Path(Settings.IMAGE_FILE_CACHE_DIR) / new_folder / image_name
-                    dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.move(src, dst)
-
-                    logger.info(f"✅ Verschoben: {image_name} → {new_folder}")
-                    anzahl_verschoben += 1
-                except Exception as e:
-                    logger.error(f"❌ Fehler beim Verschieben/Löschen von {image_name}: {e}")
-            else:
-                logger.warning(f"⚠️  move_file_db fehlgeschlagen für {image_name} – kein Verschieben")
-
-        conn.commit()
         logger.info(f"📊 Insgesamt verschoben: {anzahl_verschoben} Dateien")
-
-    return anzahl_verschoben
-
+        return anzahl_verschoben
 
 def get_checkbox_count(checkbox: str):
     logger.info(f"[get_checkbox_count] Start – checkbox={checkbox}")
-    if checkbox not in Settings.CHECKBOX_CATEGORIES:
+    if checkbox not in Settings.checkbox_categories():
         logger.warning("⚠️ Ungültige Checkbox-Kategorie")
         return {"count": 0}
     with sqlite3.connect(Settings.DB_PATH) as conn:
@@ -117,7 +121,7 @@ async def move_file_db(
 def _get_image_id(image_name: str) -> Optional[int]:
     """Liest den Image-ID-Wert aus den konfigurierten Kategorien aus dem Cache."""
     try:
-        for kategorie in Settings.kategorien:
+        for kategorie in Settings.kategorien():
             key = kategorie["key"]
             logger.info(f"✅ Cache-Aktualisierung: {key}")
             pair_cache = newpaircache(key)

@@ -14,7 +14,8 @@ logger.info("Initializing progress state")
 progress_state = {
     "progress": 0,
     "status": "Warte auf Start...",
-    "running": False
+    "running": False,
+    "current_task": None
 }
 
 async def getlast() -> int:

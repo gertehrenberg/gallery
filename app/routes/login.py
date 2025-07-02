@@ -3,6 +3,8 @@ from urllib.parse import urlencode
 from fastapi import APIRouter, Request, Form, status
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app.config import Settings, UserType
+
 router = APIRouter()
 
 
@@ -79,14 +81,25 @@ async def login_form(request: Request):
 
 @router.post("/login")
 async def login(request: Request, username: str = Form(...), password: str = Form(...)):
-    if username == "gert.ehrenberg@gmail.com" and password == "6AcpKG3N3?@4QiQc":
+    if username == "guest" and password == "*guest*":
         request.session["user"] = username
+        Settings.set_user_type(UserType.GUEST)
+        return RedirectResponse(
+            url="/gallery/?page=1&count=6&folder=real&textflag=4",
+            status_code=status.HTTP_302_FOUND)
+    elif username == "admin" and password == "*admin*":
+        request.session["user"] = username
+        Settings.set_user_type(UserType.ADMIN)
         return RedirectResponse(
             url="/gallery/?page=1&count=6&folder=real&textflag=4",
             status_code=status.HTTP_302_FOUND)
 
+    # Ungültige Anmeldedaten
     query = urlencode({"error": "Ungültige Anmeldedaten"})
-    return RedirectResponse(url=f"/gallery/login?{query}", status_code=status.HTTP_302_FOUND)
+    return RedirectResponse(
+        url=f"/gallery/login?{query}",
+        status_code=status.HTTP_302_FOUND
+    )
 
 
 @router.get("/logout")

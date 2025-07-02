@@ -62,16 +62,22 @@
             </td>
             <td style="width: 40%; vertical-align: top; padding-left: 10px">
                 <div id="checkboxes-{{ image_id }}">
-                    <form class="checkbox-container">
+                    <form class="checkbox-container" style="line-height: 0.8;">
                         <input name="image_id" type="hidden" value="{{ image_id }}"/>
                         {% for k in kategorien %}
-                            <label>
-                                <input name="{{ image_id }}_{{ k.key }}"
-                                       type="checkbox"
-                                       data-group="{{ image_id }}_group"
-                                       onchange="handleCheckboxChange(this)"
-                                        {{ 'checked' if status.get(k.key) else '' }}> {{ k.icon }} {{ k.label }}
-                            </label>
+                            <div style="display: flex; align-items: center; margin: 1px 0;">
+                <span onclick="move('{{ k.key }}', '{{ image_name }}')"
+                      style="cursor: pointer; font-size: 14px; margin-right: 6px;"
+                      title="Move to {{ k.label }}">📥</span>
+                                <label style="margin: 0; padding: 0;">
+                                    <input name="{{ image_id }}_{{ k.key }}"
+                                           type="checkbox"
+                                           data-group="{{ image_id }}_group"
+                                           onchange="handleCheckboxChange(this)"
+                                            {{ 'checked' if status.get(k.key) else '' }}>
+                                    {{ k.icon }} {{ k.label }}
+                                </label>
+                            </div>
                         {% endfor %}
                     </form>
                 </div>

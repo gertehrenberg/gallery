@@ -370,10 +370,10 @@ async def find_file_in_local_folders(filename: str, gdrive_md5: str, cache_dir: 
     await update_detail_status(f"🔍 Suche nach {filename}")
 
     # Zähle Kategorien für Fortschrittsberechnung
-    total_categories = len(Settings.kategorien)
+    total_categories = len(Settings.kategorien())
 
     # Durchsuche jeden Kategorie-Ordner
-    for idx, kategorie in enumerate(Settings.kategorien):
+    for idx, kategorie in enumerate(Settings.kategorien()):
         folder_name = kategorie["key"]
         hash_file = cache_dir / folder_name / Settings.GALLERY_HASH_FILE
 

@@ -1,3 +1,4 @@
+from enum import Enum
 from pathlib import Path
 from typing import List, Tuple
 
@@ -15,13 +16,63 @@ score_type_map = {
 }
 reverse_score_type_map = {v: k for k, v in score_type_map.items()}
 
+# Basis-Kategorien für die Bildergalerie
+_base_kategorien: List[dict] = [
+    {"key": "real", "label": "Alle Bilder", "icon": "🖼️"},
+    {"key": "top", "label": "Fast Perfekt", "icon": "💎"},
+    {"key": "delete", "label": "Löschen", "icon": "❌"},
+    {"key": "recheck", "label": "Neu", "icon": "🔄"},
+    {"key": "bad", "label": "Schlecht", "icon": "⛔"},
+    {"key": "sex", "label": "Anzüglich", "icon": "🔞"},
+    {"key": "ki", "label": "KI", "icon": "🤖"},
+    {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️"},
+    {"key": "document", "label": "Dokumente", "icon": "📄"},
+    {"key": "double", "label": "Doppelt?", "icon": "👯"},
+    {"key": "gemini", "label": "Analyse", "icon": "📊"}
+]
+
+
+class UserType(Enum):
+    ADMIN = "admin"
+    GUEST = "guest"
+
 
 class Settings:
-    """
-    Konfigurationsklasse für die FastAPI-Anwendung.
+    _user_type = UserType.GUEST  # Default is Guest
 
-    Diese Klasse definiert alle Konstanten und Einstellungen, die für die Anwendung benötigt werden.
-    """
+    @classmethod
+    def set_user_type(cls, user_type: UserType) -> None:
+        if not isinstance(user_type, UserType):
+            raise ValueError(f"user_type must be UserType enum, not {type(user_type)}")
+        cls._user_type = user_type
+        cls._kategorien = None  # Reset cache when user type changes
+        cls._checkbox_categories = None  # Reset checkbox categories cache
+
+    @classmethod
+    def get_user_type(cls) -> UserType:
+        return cls._user_type
+
+    @classmethod
+    def is_admin(cls) -> bool:
+        return cls._user_type == UserType.ADMIN
+
+    _kategorien = None  # Private class variable for caching
+    _checkbox_categories = None  # Private class variable for checkbox categories cache
+
+    @classmethod
+    def kategorien(cls) -> List[dict]:
+        if cls._kategorien is None:
+            if cls._user_type == UserType.GUEST:
+                cls._kategorien = [k for k in _base_kategorien if k["key"] != "sex"]
+            else:
+                cls._kategorien = _base_kategorien
+        return cls._kategorien
+
+    @classmethod
+    def checkbox_categories(cls) -> List[str]:
+        if cls._checkbox_categories is None:
+            cls._checkbox_categories = [k["key"] for k in cls.kategorien()]
+        return cls._checkbox_categories
 
     TEXTFILES_FOLDERNAME = "textfiles"
 
@@ -55,26 +106,7 @@ class Settings:
 
     TEMP_DIR_PATH = Path('/data/temp')
 
-    # Kategorien für die Bildergalerie
-    kategorien: List[dict] = [
-        {"key": "real", "label": "Alle Bilder", "icon": "🖼️"},
-        {"key": "top", "label": "Fast Perfekt", "icon": "💎"},
-        {"key": "delete", "label": "Löschen", "icon": "❌"},
-        {"key": "recheck", "label": "Neu", "icon": "🔄"},
-        {"key": "bad", "label": "Schlecht", "icon": "⛔"},
-        {"key": "sex", "label": "Anzüglich", "icon": "🔞"},
-        {"key": "ki", "label": "KI", "icon": "🤖"},
-        {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️"},
-        {"key": "document", "label": "Dokumente", "icon": "📄"},
-        {"key": "double", "label": "Doppelt?", "icon": "👯"},
-        {"key": "gemini", "label": "Analyse", "icon": "📊"}
-    ]
-    CHECKBOX_CATEGORIES = [k["key"] for k in kategorien]
-
     PAGESIZE = 1000
-
-    # Standardordnername
-    FOLDER_NAME = next((k["key"] for k in kategorien if k["key"] == "real"), None)
 
     # Sonstige Konstanten
     KEIN_TEXT_GEFUNDEN = "Kein Text gefunden"
@@ -94,7 +126,6 @@ class Settings:
         "score_filter_result": {}
     }
 
-    folders_total = len(kategorien)
     current_loading_folder = ""
     folders_loaded = 0
 

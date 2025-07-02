@@ -64,7 +64,7 @@ def save_status(image_id: str, data: dict):
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
             for key, value in data.items():
-                if key in Settings.CHECKBOX_CATEGORIES:
+                if key in Settings.checkbox_categories():
                     checked = 1 if str(value).lower() in ["1", "true", "on"] else 0
                     conn.execute("""
                         INSERT OR REPLACE INTO checkbox_status (image_name, checkbox, checked)

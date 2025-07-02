@@ -25,7 +25,7 @@ def local():
 if __name__ == "__main__":
     local()
 
-    for eintrag in Settings.kategorien:
+    for eintrag in Settings.kategorien():
         folder_key = eintrag["key"]
         if folder_key == "real":
             continue

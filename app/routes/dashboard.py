@@ -187,7 +187,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
 
 def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
     """Compare hash file counts across different storage locations."""
-    icon_map = {k["key"]: (k["icon"], k["label"]) for k in Settings.kategorien}
+    icon_map = {k["key"]: (k["icon"], k["label"]) for k in Settings.kategorien()}
     all_dirs = get_directories(file_folder_dir, subfolders)
     result = []
 
@@ -375,7 +375,7 @@ calls = {
     },
     "reloadcache": {
         "label": lambda folder_key: (
-            f'Reload für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" pair & File-hashes ...'
+            f'Reload für "{next((k["label"] for k in Settings.kategorien() if k["key"] == folder_key), folder_key)}" pair & File-hashes ...'
             if folder_key else 'Reload für "Alle" pair & File-hashes'
         ),
         "start_url": "/gallery/dashboard/multi/reloadcache",
@@ -383,7 +383,7 @@ calls = {
     },
     "lokal_zu_gdrive": {
         "label": lambda folder_key: (
-            f'Passe für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" lokal -> GDrive ...'
+            f'Passe für "{next((k["label"] for k in Settings.kategorien() if k["key"] == folder_key), folder_key)}" lokal -> GDrive ...'
             if folder_key else ""
         ),
         "start_url": "/gallery/dashboard/start",
@@ -391,7 +391,7 @@ calls = {
     },
     "gdrive_zu_local": {
         "label": lambda folder_key: (
-            f'Passe für "{next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)}" GDrive -> lokal ...'
+            f'Passe für "{next((k["label"] for k in Settings.kategorien() if k["key"] == folder_key), folder_key)}" GDrive -> lokal ...'
             if folder_key else "GDrive -> lokal"
         ),
         "start_url": "/gallery/dashboard/start",
@@ -426,16 +426,6 @@ async def dashboard_progress(request: Request):
 
 @router.post("/dashboard/start")
 async def start_progress(folder: str = Form(...), direction: str = Form(...)):
-    """
-    Startet einen Synchronisierungsprozess zwischen lokalem Speicher und Google Drive.
-
-    Args:
-        folder: Der zu synchronisierende Ordner
-        direction: Richtung der Synchronisation ("lokal_zu_gdrive" oder "gdrive_zu_local")
-
-    Returns:
-        JSON-Response mit Status und Task-ID
-    """
     logger.info(f"🔄 start_progress: {folder} {direction}")
 
     # Validierung der Eingabeparameter
@@ -445,9 +435,7 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
             status_code=400
         )
 
-    # Prüfe ob der Ordner gültig ist
-    kategorientabelle = {k["key"]: k for k in Settings.kategorien}
-    if folder != Settings.TEXTFILES_FOLDERNAME and folder not in kategorientabelle:
+    if folder != Settings.TEXTFILES_FOLDERNAME and folder not in Settings.checkbox_categories():
         return JSONResponse(
             content={"error": f"Ungültiger Ordner: {folder}"},
             status_code=400
@@ -468,32 +456,29 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
             status_code=409
         )
 
-    async def runner():
-        await init_progress_state()
+    await init_progress_state()
 
-        try:
-            # Google Drive Service initialisieren
-            service = load_drive_service()
-            if not service:
-                raise RuntimeError("Konnte Google Drive Service nicht initialisieren")
+    try:
+        # Google Drive Service initialisieren
+        service = load_drive_service()
+        if not service:
+            raise RuntimeError("Konnte Google Drive Service nicht initialisieren")
 
-            # Synchronisation starten
-            if direction == "lokal_zu_gdrive":
-                await move_gdrive_files_by_local(service, folder)
-            else:
-                await copy_or_move_local_by_gdrive(service, folder)
+        # Synchronisation starten
+        if direction == "lokal_zu_gdrive":
+            task = asyncio.create_task(move_gdrive_files_by_local(service, folder))
+        else:
+            task = asyncio.create_task(copy_or_move_local_by_gdrive(service, folder))
+        progress_state["current_task"] = task
 
-        except Exception as e:
-            error_msg = f"❌ Fehler bei {direction} für Ordner {folder}: {str(e)}"
-            logger.error(error_msg)
-            await update_progress_text(error_msg)
-            raise
+    except Exception as e:
+        error_msg = f"❌ Fehler bei {direction} für Ordner {folder}: {str(e)}"
+        logger.error(error_msg)
+        await update_progress_text(error_msg)
+        raise
 
-        finally:
-            await stop_progress()
-
-    # Task erstellen und im Hintergrund ausführen
-    await runner()
+    finally:
+        await stop_progress()
 
     # Task-ID generieren und speichern
     task_id = f"{folder}_{direction}_{int(time.time())}"
@@ -1015,10 +1000,10 @@ async def handle_duplicates():
 
         # Process all categories
         folderindex = 1
-        total = len(Settings.kategorien)
+        total = len(Settings.kategorien())
 
         # Single pass through all files
-        for kat in Settings.kategorien:
+        for kat in Settings.kategorien():
             folder_name = kat["key"]
             local_files = {}
 

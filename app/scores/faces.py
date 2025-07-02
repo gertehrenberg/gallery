@@ -108,7 +108,7 @@ async def reload_faces():
     await remove_items(Path(Settings.GESICHTER_FILE_CACHE_DIR), "faces")
     logger.info("✅️  Gesichter gelöscht.")
 
-    for eintrag in Settings.kategorien:
+    for eintrag in Settings.kategorien():
         folder_key = eintrag["key"]
 
         local_files = {}
@@ -122,7 +122,7 @@ async def reload_faces():
             all_files.append(entry)
 
         count = 0
-        label = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), folder_key)
+        label = next((k["label"] for k in Settings.kategorien() if k["key"] == folder_key), folder_key)
         await update_progress(f"Bilder in \"{label}\"", 0)
         for i, file_info in enumerate(all_files, 1):
             percent = int(i / len(all_files) * 100)

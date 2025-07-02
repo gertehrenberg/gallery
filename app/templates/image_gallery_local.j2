@@ -453,10 +453,12 @@
             ➖
         </button>
     </div>
+
     {% if lastcall %}
         <button onclick="window.location.href='{{ lastcall }}'" style="margin:1em;">↩️</button>
     {% endif %}
     <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
+        <span style="font-weight: bold;">{{ kategorien | selectattr("key", "eq", folder_name) | map(attribute="label") | first }} </span>
         <button style="padding: 4px 8px; font-size: 12px;"
                 onclick="saveAndGoRefresh({{ page }}, {{ count }}, '{{ folder_name }}')">
             {% if filter_text %}⚡ {% endif %} {% if search_text %}⚡ {% endif %} Seite {{ page }} von {{ total_pages }}
@@ -1004,6 +1006,30 @@
         }, duration);
 
         return msg; // Falls wir die Referenz später noch brauchen
+    }
+
+    function move(folder, image_name) {
+        // Use the global constants instead of getting from URL
+        const url = `/gallery/moveToFolder/${folder}/${image_name}?folder=${FOLDER}&count=${COUNT}&page=${PAGE}&textflag=${TEXTFLAG}`;
+
+        fetch(url, {
+            method: 'POST'
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    if (data.redirect) {
+                        window.location.href = data.redirect;
+                    }
+                } else {
+                    console.error('Error moving file:', data.message);
+                    alert('Error moving file: ' + (data.message || 'Unknown error'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Error moving file: ' + error);
+            });
     }
 
 </script>

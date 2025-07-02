@@ -21,7 +21,7 @@ from app.scores.texte import search_recoll
 from app.services.image_processing import prepare_image_data, clean
 from app.tools import newpaircache
 from app.utils.logger_config import setup_logger
-from app.utils.move_utils import move_marked_images_by_checkbox, get_checkbox_count
+from app.utils.move_utils import move_marked_images_by_checkbox, get_checkbox_count, move_single_image
 from app.utils.progress import update_progress, stop_progress, progress_state, update_progress_text, init_progress_state
 from app.utils.score_parser import parse_score_expression
 from app.utils.status_utils import set_status, save_status, load_status
@@ -126,8 +126,8 @@ def show_images_gallery(
     score_expr = None
     if score_expr_raw and score_expr_raw.lower() != "none":
         try:
-            # Versuch, Ausdruck zu parsen (wirft ValueError wenn ungültig)
-            dummy_scores = {key: 0 for key in score_type_map.keys()}
+            # Versuch, Ausdruck zu parsen (wirft ValueError als ungültig)
+            dummy_scores = dict.fromkeys(score_type_map.keys(), 0)
             parse_score_expression(score_expr_raw, dummy_scores)
             score_expr = score_expr_raw
         except Exception as e:
@@ -186,15 +186,17 @@ def show_images_gallery(
     logger.info(f"[Gallery] Gefunden: {total_images} Bilder gesamt, {len(image_keys)} auf aktueller Seite")
 
     images_html_parts = []
-    recheck_category = next((k["key"] for k in Settings.kategorien if k["key"] == "recheck"),
-                            None)  # Verwende kategorien aus Settings
+    recheck_category = next((k["key"] for k in Settings.kategorien() if k["key"] == "recheck"), None)
 
     logger.info("[Gallery] Beginne HTML-Generierung")
     for image_name in image_keys:
         pair = pair_cache[image_name]  # Verwende Caches aus Settings
         image_id = pair['image_id']
 
-        image_id_text = f"{image_id}_{textflag}"
+        if Settings.is_admin():
+            image_id_text = f"{image_id}_{textflag}"
+        else:
+            image_id_text = f"{image_id}_{textflag}_{Settings.get_user_type()}"
         if rendered_html := load_rendered_html_file(Settings.RENDERED_HTML_DIR, image_id_text):
             logger.debug(f"[Gallery] Cache-Hit für {image_id_text}")
             images_html_parts.append(rendered_html)
@@ -262,7 +264,7 @@ def show_images_gallery(
                 status={},
                 quality_scores=quality_scores,
                 nsfw_scores=image_data["nsfw_scores"],
-                kategorien=Settings.kategorien,
+                kategorien=Settings.kategorien(),
                 extra_thumbnails=image_data["extra_thumbnails"]
             )
             images_html_parts.append(rendered_html)
@@ -306,7 +308,7 @@ def show_images_gallery(
         "folder_name": folder_name,
         "count": count,
         "textflag": textflag,
-        "kategorien": Settings.kategorien,
+        "kategorien": Settings.kategorien(),
         "images_html": ''.join(images_html_parts),
         "lastcall": lastcall,
         "last_texts": SettingsFilter.FILTER_HISTORY,
@@ -354,17 +356,101 @@ async def verarbeite_checkbox(
         checkbox: str,
         count: str = Query(DEFAULT_COUNT),
         folder: str = Query(DEFAULT_FOLDER),
-        user: str = Depends(require_login)):
-    logger.info(f"📦 Starte verarbeite_checkbox() von '{folder}' nach '{checkbox}'")
-    if checkbox not in Settings.CHECKBOX_CATEGORIES:
+        user: str = Depends(require_login)
+) -> JSONResponse:
+    logger.info(f"📦 Starte Massenverschiebung von '{folder}' nach '{checkbox}'")
+
+    # Validiere Zielordner
+    if checkbox not in Settings.checkbox_categories():
+        error_msg = f"Ungültige Checkbox-Kategorie: {checkbox}"
+        logger.warning(f"❌ {error_msg}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "status": "error",
+                "message": error_msg
+            }
+        )
+
+    try:
+        # Verschieben der markierten Bilder
+        anzahl = await move_marked_images_by_checkbox(folder, checkbox)
+
+        # Generiere Redirect-URL
+        redirect_url = f"/gallery?page=1&count={count}&folder={checkbox}&done={checkbox}"
+
+        logger.info(f"✅ Erfolgreich verschoben: {anzahl} Dateien -> {redirect_url}")
+
+        return JSONResponse(content={
+            "status": "ok",
+            "redirect": redirect_url,
+            "moved": anzahl,
+            "source": folder,
+            "target": checkbox
+        })
+
+    except Exception as e:
+        error_msg = f"Fehler beim Verschieben der Bilder: {str(e)}"
+        logger.error(f"❌ {error_msg}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "message": error_msg,
+                "source": folder,
+                "target": checkbox
+            }
+        )
+
+
+from pydantic import BaseModel
+
+
+class MoveResponse(BaseModel):
+    status: str
+    redirect: str | None = None
+    moved: int | None = None
+    message: str | None = None
+
+
+@router.post("/moveToFolder/{checkbox}/{image_name}", response_model=MoveResponse)
+async def verarbeite_einzelnes_bild(
+        checkbox: str,
+        image_name: str,
+        current_folder: str = Query(..., alias="folder"),
+        count: str = Query("6"),
+        page: str = Query("1"),
+        textflag :str = Query("1"),
+        user: str = Depends(require_login)
+) -> MoveResponse:
+    folder_name = checkbox
+    logger.info(f"📦 Starte verarbeite_einzelnes_bild() für '{image_name}' von '{current_folder}' nach '{folder_name}'")
+
+    if folder_name not in Settings.checkbox_categories():
         logger.warning("❌ Ungültige Checkbox-Kategorie")
-        return JSONResponse(status_code=400, content={"status": "invalid checkbox"})
+        return MoveResponse(status="invalid checkbox")
 
-    anzahl = await move_marked_images_by_checkbox(folder, checkbox)
-    redirect_url = f"/gallery?page=1&count={count}&folder={checkbox}&done={checkbox}"
-    logger.info(f"✅ Erfolgreich verschoben: {anzahl} Dateien -> {redirect_url}")
-    return {"status": "ok", "redirect": redirect_url, "moved": anzahl}
+    success = await move_single_image(image_name, current_folder, folder_name)
 
+    redirect_url = f"/gallery/?page={page}&count={count}&folder={current_folder}&textflag={textflag}"
+
+    logger.info(f"📦 URL {redirect_url}")
+
+    if success:
+        logger.info(f"✅ Bild erfolgreich verschoben: {image_name} -> {folder_name}")
+        return MoveResponse(
+            status="ok",
+            redirect=redirect_url,
+            moved=1
+        )
+    else:
+        logger.error(f"❌ Fehler beim Verschieben von {image_name}")
+        return MoveResponse(
+            status="error",
+            message=f"Fehler beim Verschieben von {image_name}",
+            redirect=redirect_url,
+            moved=0
+        )
 
 @router.get("/verarbeite/check/{checkbox}")
 def verarbeite_check_checkbox(checkbox: str, user: str = Depends(require_login)):
@@ -384,7 +470,9 @@ async def _gen_pages(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
         await init_progress_state()
         progress_state["running"] = True
-        asyncio.create_task(gen_pages(folder))
+        task = asyncio.create_task(gen_pages(folder))
+        # Store the task somewhere to keep it alive
+        progress_state["current_task"] = task
     return {"status": "ok"}
 
 
@@ -529,7 +617,7 @@ async def gen_pages(folder_name: str):
     gen_pages.is_running = True
 
     try:
-        for kategorie in Settings.kategorien:
+        for kategorie in Settings.kategorien():
             if folder_name:
                 if folder_name != kategorie["key"]:
                     continue

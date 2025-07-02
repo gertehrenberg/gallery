@@ -220,9 +220,9 @@ async def update_all_local_hashes():
     progress_state["running"] = True
 
     try:
-        total_kategorien = len(Settings.kategorien)
+        total_kategorien = len(Settings.kategorien())
 
-        for idx, kategorie in enumerate(Settings.kategorien, 1):
+        for idx, kategorie in enumerate(Settings.kategorien(), 1):
             folder_name = kategorie["key"]
             folder_path = os.path.join(Settings.IMAGE_FILE_CACHE_DIR, folder_name)
 
@@ -241,8 +241,8 @@ async def update_all_gdrive_hashes(service) -> None:
     """Aktualisiert die Hashes für alle Google Drive Ordner."""
     await update_progress_text("🔄 Starte Google Drive Hash-Aktualisierung...")
 
-    total_kategorien = len(Settings.kategorien)
-    for idx, kategorie in enumerate(Settings.kategorien, 1):
+    total_kategorien = len(Settings.kategorien())
+    for idx, kategorie in enumerate(Settings.kategorien(), 1):
         folder_name = kategorie["key"]
         folder_id = folder_id_by_name(folder_name)
 
@@ -383,7 +383,7 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
             await update_gdrive_hashes_text(service)
             await update_local_hashes_text()
 
-        elif folder_key in Settings.CHECKBOX_CATEGORIES:
+        elif folder_key in Settings.checkbox_categories():
             await update_progress_auto(f"📂 Modus: Einzelne Kategorie ({folder_key})")
             await update_local_hashes(folder_key)
             await update_gdrive_hashes(service, folder_key, Settings.IMAGE_EXTENSIONS,
@@ -395,7 +395,7 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
             pair_cache = Settings.CACHE.get("pair_cache")
             pair_cache.clear()
 
-            for kategorie in Settings.kategorien:
+            for kategorie in Settings.kategorien():
                 folder_key = kategorie["key"]
                 await update_gdrive_hashes(service, folder_key, Settings.IMAGE_EXTENSIONS,
                                            Path(Settings.IMAGE_FILE_CACHE_DIR))
@@ -417,7 +417,7 @@ async def reloadcache_progress(service, folder_key: Optional[str] = None):
 
 
 async def _process_image_files_progress(image_files, folder_key, file_parents_cache, db_path):
-    folder_name = next((k["label"] for k in Settings.kategorien if k["key"] == folder_key), None)
+    folder_name = next((k["label"] for k in Settings.kategorien() if k["key"] == folder_key), None)
     total = len(image_files)
     for index, image_file in enumerate(image_files):
         await update_progress(f"Kategorie: {folder_name} : {total} Dateien ({image_file})",
@@ -1253,7 +1253,7 @@ def p5():
     Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
-    for idx, kat in enumerate(Settings.kategorien, 1):
+    for idx, kat in enumerate(Settings.kategorien(), 1):
         folder_name = kat["key"]
         result = asyncio.run(verify_file_cache_consistency(Path(Settings.IMAGE_FILE_CACHE_DIR), folder_name))
         if len(result['inconsistencies']) > 0:

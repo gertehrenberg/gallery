@@ -67,7 +67,7 @@ def find_image_id_by_name(image_name: str) -> Optional[str]:
     logger.info(f"🔎 Suche ID für Bild: {image_name}")
     image_name = image_name.lower()
     try:
-        for kategorie in Settings.kategorien:
+        for kategorie in Settings.kategorien():
             key = kategorie["key"]
             logger.info(f"✅ Cache-Aktualisierung: {key}")
             pair_cache = newpaircache(key)
@@ -92,7 +92,7 @@ def find_image_name_by_id(image_id: str) -> Optional[str]:
     """Return the image name for a given image_id, updating cache per-category."""
     logger.info(f"🔎 Suche Bildname für ID: {image_id}")
     try:
-        for kategorie in Settings.kategorien:
+        for kategorie in Settings.kategorien():
             key = kategorie["key"]
             logger.info(f"✅ Cache-Aktualisierung: {key}")
             pair_cache = newpaircache(key)
@@ -119,7 +119,7 @@ def process_directory(directory: Path) -> bool:
     Returns:
         bool: True wenn das Verzeichnis verarbeitet werden soll
     """
-    return any(str(directory).lower().endswith(key) for key in Settings.CHECKBOX_CATEGORIES)
+    return any(str(directory).lower().endswith(key) for key in Settings.checkbox_categories())
 
 
 def fill_pair_cache(image_file_cache_dir: str, pair_cache: Dict[str, Any], pair_cache_path_local: str) -> None:
