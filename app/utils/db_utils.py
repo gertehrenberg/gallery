@@ -107,6 +107,17 @@ def delete_checkbox_status(image_name: str):
                        """, (image_name,))
 
 
+def delete_all_checkbox_status():
+    """
+    Löscht alle Einträge aus der checkbox_status Tabelle.
+    """
+    logger.info("[delete_all_checkbox_status] Start – Lösche alle Checkbox-Status Einträge")
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM checkbox_status")
+        deleted_count = cursor.rowcount
+        logger.info(f"[delete_all_checkbox_status] ✅ {deleted_count} Einträge gelöscht")
+
 def load_scores_from_db(db_path, image_name):
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute("""

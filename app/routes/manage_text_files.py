@@ -122,7 +122,7 @@ async def process_files(
     await start_detail_progress(f"🔍 Gefunden: {total_files} Textdateien")
 
     for idx, file in enumerate(text_files):
-        progress = await calc_detail_progress(idx, total_files)
+        progress = calc_detail_progress(idx, total_files)
         was_moved, was_uploaded = await process_text_file(
             service=service,
             filename=file.name,
@@ -316,7 +316,7 @@ async def process_gdrive_files(
     await start_detail_progress("Starte Überprüfung...")
 
     for filename, gdrive_entry in all_gdrive_hashes.items():
-        progress = await calc_detail_progress(processed, total_files)
+        progress = calc_detail_progress(processed, total_files)
         if isinstance(gdrive_entry, dict):
             moved += await process_gdrive_file(
                 service, filename, gdrive_entry, folder_name, cache_dir
@@ -377,7 +377,7 @@ async def find_file_in_local_folders(filename: str, gdrive_md5: str, cache_dir: 
         folder_name = kategorie["key"]
         hash_file = cache_dir / folder_name / Settings.GALLERY_HASH_FILE
 
-        progress = await calc_detail_progress(idx, total_categories)
+        progress = calc_detail_progress(idx, total_categories)
         await update_detail_progress(f"🔍 Durchsuche Ordner {folder_name}", progress)
 
         try:

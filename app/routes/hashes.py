@@ -71,7 +71,7 @@ async def update_local_hashes_text():
     for idx, file in enumerate(image_files):
         image_name = file.name.lower()
 
-        progress = await calc_detail_progress(idx, total_files)
+        progress = calc_detail_progress(idx, total_files)
         await update_detail_progress(
             detail_status=f"Verarbeite {image_name} ({idx + 1}/{total_files})",
             detail_progress=progress
@@ -186,7 +186,7 @@ async def update_local_hashes(folder_name):
     await start_detail_progress(f"💾 Speichere {total_entries} Datenbankeinträge")
 
     for idx, (image_name, entry) in enumerate(local_cache.items()):
-        progress = await calc_detail_progress(idx, total_entries)
+        progress = calc_detail_progress(idx, total_entries)
         image_id = entry.get('image_id')
         if image_id:
             try:
@@ -272,7 +272,7 @@ async def process_files_with_progress(
         name = sanitize_filename(item.get('name', ''))
         fext = any(name.endswith(ext) for ext in extension)
 
-        progress = await calc_detail_progress(counter, total_files)
+        progress = calc_detail_progress(counter, total_files)
         if name and fext:
             md5_checksum = item.get('md5Checksum')
             file_id = item.get('id')
@@ -1207,7 +1207,7 @@ async def delete_files_by_mimetype(service, folder_id: str, mime_type: str) -> i
 
         # Lösche die gefundenen Dateien
         for idx, file in enumerate(files_to_process):
-            progress = await calc_detail_progress(idx, total_files)
+            progress = calc_detail_progress(idx, total_files)
             file_name = file.get('name', 'Unbekannte Datei')
 
             try:
@@ -1221,7 +1221,7 @@ async def delete_files_by_mimetype(service, folder_id: str, mime_type: str) -> i
                 )
 
                 # Update Hauptfortschritt
-                main_progress = await calc_detail_progress(deleted_count, total_files)
+                main_progress = calc_detail_progress(deleted_count, total_files)
                 await update_progress(
                     f"Lösche Dateien ({deleted_count}/{total_files})",
                     main_progress

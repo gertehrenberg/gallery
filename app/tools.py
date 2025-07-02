@@ -276,7 +276,7 @@ async def readimages(folder_path: str, pair_cache: Dict[str, Any]) -> None:
         image_name = file_path.name.lower()
         counter += 1
 
-        progress = await calc_detail_progress(counter, total_files)
+        progress = calc_detail_progress(counter, total_files)
         try:
 
             # Update Fortschrittsanzeige

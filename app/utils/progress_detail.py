@@ -14,10 +14,10 @@ detail_state = {
     }
 }
 
-async def calc_detail_progress(current_progress: int, total_progress: int) -> Optional[int]:
-    if current_progress ==0:
-        return int(0)
-    return int(((current_progress * 100) / (total_progress - 1)))
+def calc_detail_progress(current_progress: int, total_progress: int) -> Optional[int]:
+    if current_progress == 0 or total_progress <= 1:
+        return 0
+    return int((current_progress * 100) / total_progress)
 
 async def start_detail_progress(detail_status: str):
     await update_detail_progress(detail_status, 0)

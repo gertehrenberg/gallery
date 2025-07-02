@@ -17,6 +17,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
+# 80, 8888, 5678, 11434, 8001, 8002, 8003, 8004
+
 _current_date = None
 _cached_rate = None
 

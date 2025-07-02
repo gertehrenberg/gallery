@@ -57,7 +57,7 @@ class Settings:
 
     # Kategorien für die Bildergalerie
     kategorien: List[dict] = [
-        {"key": "real", "label": "Alle Bilder", "icon": "💾"},
+        {"key": "real", "label": "Alle Bilder", "icon": "🖼️"},
         {"key": "top", "label": "Fast Perfekt", "icon": "💎"},
         {"key": "delete", "label": "Löschen", "icon": "❌"},
         {"key": "recheck", "label": "Neu", "icon": "🔄"},
@@ -67,9 +67,8 @@ class Settings:
         {"key": "comfyui", "label": "ComfyUI", "icon": "🛠️"},
         {"key": "document", "label": "Dokumente", "icon": "📄"},
         {"key": "double", "label": "Doppelt?", "icon": "👯"},
-        {"key": "gemini", "label": "n8n Scan", "icon": "🤖"}
+        {"key": "gemini", "label": "Analyse", "icon": "📊"}
     ]
-
     CHECKBOX_CATEGORIES = [k["key"] for k in kategorien]
 
     PAGESIZE = 1000

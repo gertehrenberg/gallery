@@ -31,6 +31,7 @@ from app.scores.nsfw import reload_nsfw
 from app.scores.quality import reload_quality
 from app.scores.texte import reload_texte
 from app.tools import readimages, fill_pair_cache
+from app.utils.db_utils import delete_all_checkbox_status
 from app.utils.folder_utils import count_folder_entries
 from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
@@ -38,12 +39,12 @@ from app.utils.progress import init_progress_state, progress_state, update_progr
 from app.utils.progress import list_files
 from app.utils.progress_detail import detail_state
 
+DASHBOARD_PROGRESS = "/gallery/dashboard/progress"
+
 router = APIRouter()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
 
 logger = setup_logger(__name__)
-
-kategorientabelle = {k["key"]: k for k in Settings.kategorien}
 
 router.include_router(what.router)
 
@@ -125,6 +126,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
 
     help_links = [
         {"label": "n8n", "url": "http://localhost", "icon": "⚙️"},
+        {"label": "n8n-server", "url": "https://nw1cs857bq8z5p-5678.proxy.runpod.net/", "icon": "⚙️"},
         {"label": "openai", "url": "https://platform.openai.com/settings/organization/usage", "icon": "🧠"},
         {"label": "runpod", "url": "https://console.runpod.io/user/billing", "icon": "☁️"}
     ]
@@ -134,6 +136,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
         {"label": 'Sync mit "Save" (GDrive)', "url": f"{_BASE}/test?folder=save&direction=manage_save", "icon": "🔄"},
         {"label": "Reload pair & File-hashes", "url": f"{_BASE}/test?direction=reloadcache", "icon": "🔄"},
         {"label": "Lösche File Cache(s)", "url": f"{_BASE}/what?what=reloadfilecache", "icon": "🗑️"},
+        {"label": "Repair DB", "url": f"{_BASE}/test?direction=repair_db", "icon": "👤"},
         {"label": "Reload Gesichter", "url": f"{_BASE}/test?direction=reload_faces", "icon": "👤"},
         {"label": "Reload Quality-Scores", "url": f"{_BASE}/test?direction=reload_quality", "icon": "📊"},
         {"label": "Reload NSFW-Scores", "url": f"{_BASE}/test?direction=reload_nsfw", "icon": "🔞"},
@@ -183,76 +186,97 @@ async def dashboard(request: Request, year: int = None, month: int = None):
 
 
 def compare_hashfile_counts_dash(file_folder_dir, subfolders: bool = True):
+    """Compare hash file counts across different storage locations."""
     icon_map = {k["key"]: (k["icon"], k["label"]) for k in Settings.kategorien}
-
-    root = Path(file_folder_dir)
-    all_dirs = [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
+    all_dirs = get_directories(file_folder_dir, subfolders)
     result = []
 
     for subdir in sorted(all_dirs):
-        gdrive_path = subdir / "hashes.json"
-        local_path = subdir / Settings.GALLERY_HASH_FILE
+        hash_data = load_hash_files(subdir)
+        db_count = get_db_count(file_folder_dir, subdir.name)
+        result_entry = create_result_entry(
+            subdir,
+            hash_data,
+            db_count,
+            icon_map,
+            subfolders
+        )
+        if result_entry:
+            result.append(result_entry)
 
-        try:
-            with gdrive_path.open("r", encoding="utf-8") as f:
-                gdrive_data = json.load(f)
-                gdrive_data = gdrive_data if isinstance(gdrive_data, dict) else {}
-        except:
-            gdrive_data = {}
-
-        try:
-            with local_path.open("r", encoding="utf-8") as f:
-                local_data = json.load(f)
-                local_data = local_data if isinstance(local_data, dict) else {}
-        except:
-            local_data = {}
-
-        db_count = 0
-        if Settings.TEXT_FILE_CACHE_DIR == file_folder_dir:
-            try:
-                with sqlite3.connect(Settings.DB_PATH) as conn:
-                    cursor = conn.execute("""
-                                          SELECT COUNT(*)
-                                          FROM image_quality_scores
-                                          WHERE score_type = ?
-                                          """, (score_type_map['text'],))  # Doppelte Klammern für ein einzelnes Tuple
-                    count_result = cursor.fetchone()
-                    if count_result:
-                        db_count = count_result[0]
-            except sqlite3.Error as e:
-                logger.error(f"Database error: {e}")
-                db_count = 0
-        else:
-            db_count = count_folder_entries(Settings.DB_PATH, subdir.name)
-
-        local_count = len(local_data)
-        gdrive_count = len(gdrive_data)
-
-        entry = icon_map.get(subdir.name)
-        if entry:
-            icon, label = entry
-            result.append({
-                "icon": icon,
-                "label": label,
-                "key": subdir.name,
-                "gdrive_count": gdrive_count,
-                "local_count": local_count,
-                "db_count": db_count,
-                "has_count_mismatch": local_count != db_count,  # DB vs local mismatch
-                "has_gdrive_mismatch": gdrive_count != local_count  # GDrive vs local mismatch
-            })
-        elif not subfolders:
-            result.append({
-                "icon": "📄",
-                "label": "Textfiles",
-                "key": subdir.name,
-                "gdrive_count": gdrive_count,
-                "local_count": local_count,
-                "db_count": db_count,
-                "has_count_mismatch": local_count != db_count,  # DB vs local mismatch
-                "has_gdrive_mismatch": gdrive_count != local_count  # GDrive vs local mismatch
-            })
     return sorted(result, key=lambda x: x["local_count"], reverse=True)
+
+
+def get_directories(file_folder_dir, subfolders):
+    """Get the list of directories to process."""
+    root = Path(file_folder_dir)
+    return [root] if not subfolders else [root] + [d for d in root.iterdir() if d.is_dir()]
+
+
+def load_hash_files(directory):
+    """Load and parse hash files from the directory."""
+    gdrive_data = load_json_file(directory / "hashes.json")
+    local_data = load_json_file(directory / Settings.GALLERY_HASH_FILE)
+    return {
+        'gdrive': gdrive_data,
+        'local': local_data,
+        'gdrive_count': len(gdrive_data),
+        'local_count': len(local_data)
+    }
+
+
+def load_json_file(path):
+    """Load and parse JSON file with error handling."""
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except:
+        return {}
+
+
+def get_db_count(file_folder_dir, subdir_name):
+    """Get count from the database."""
+    if Settings.TEXT_FILE_CACHE_DIR == file_folder_dir:
+        return get_text_db_count()
+    return count_folder_entries(Settings.DB_PATH, subdir_name)
+
+
+def get_text_db_count():
+    """Get text entry count from the database."""
+    try:
+        with sqlite3.connect(Settings.DB_PATH) as conn:
+            cursor = conn.execute(
+                "SELECT COUNT(*) FROM image_quality_scores WHERE score_type = ?",
+                (score_type_map['text'],)
+            )
+            count_result = cursor.fetchone()
+            return count_result[0] if count_result else 0
+    except sqlite3.Error as e:
+        logger.error(f"Database error: {e}")
+        return 0
+
+
+def create_result_entry(subdir, hash_data, db_count, icon_map, subfolders):
+    """Create the result entry dictionary."""
+    entry = icon_map.get(subdir.name)
+    if entry:
+        icon, label = entry
+    elif not subfolders:
+        icon, label = "📄", "Textfiles"
+    else:
+        return None
+
+    return {
+        "icon": icon,
+        "label": label,
+        "key": subdir.name,
+        "gdrive_count": hash_data['gdrive_count'],
+        "local_count": hash_data['local_count'],
+        "db_count": db_count,
+        "has_count_mismatch": hash_data['local_count'] != db_count,
+        "has_gdrive_mismatch": hash_data['gdrive_count'] != hash_data['local_count']
+    }
 
 
 def get_monthly_costs(dataset: str, table: str, start: str, end: str):
@@ -307,42 +331,47 @@ calls = {
     "del_double_images": {
         "label": "Finde und Lösche doppelte Bilder ...",
         "start_url": "/gallery/dashboard/multi/del_double_images",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     },
     "gen_pages": {
         "label": "Erzeuge die internen Seiten ...",
         "start_url": "/gallery/dashboard/multi/gen_pages",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     },
     "reload_comfyui": {
         "label": "Kopiere Bilder mit Workflow in ComfyUI ...",
         "start_url": "/gallery/dashboard/multi/reload_comfyui",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     },
     "reload_quality": {
         "label": "Erstell die Quality-Scores neu ...",
         "start_url": "/gallery/dashboard/multi/reload_quality",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     },
     "reload_nsfw": {
         "label": "Erstell die NSFW-Scores neu ...",
         "start_url": "/gallery/dashboard/multi/reload_nsfw",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     },
     "reload_texte": {
         "label": "Erstell die Text-Längen neu ...",
         "start_url": "/gallery/dashboard/multi/reload_texte",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
+    },
+    "repair_db": {
+        "label": "Bereinige Datenbank ...",
+        "start_url": "/gallery/dashboard/multi/repair_db",
+        "progress_url": DASHBOARD_PROGRESS
     },
     "reload_faces": {
         "label": "Erstell die Gesichter neu ...",
         "start_url": "/gallery/dashboard/multi/reload_faces",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     },
     "manage_save": {
         "label": "Verarbeite Dateien aus Save (GDrive/lokal) ...",
         "start_url": "/gallery/dashboard/multi/manage_save",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     },
     "reloadcache": {
         "label": lambda folder_key: (
@@ -350,7 +379,7 @@ calls = {
             if folder_key else 'Reload für "Alle" pair & File-hashes'
         ),
         "start_url": "/gallery/dashboard/multi/reloadcache",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     },
     "lokal_zu_gdrive": {
         "label": lambda folder_key: (
@@ -358,7 +387,7 @@ calls = {
             if folder_key else ""
         ),
         "start_url": "/gallery/dashboard/start",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     },
     "gdrive_zu_local": {
         "label": lambda folder_key: (
@@ -366,7 +395,7 @@ calls = {
             if folder_key else "GDrive -> lokal"
         ),
         "start_url": "/gallery/dashboard/start",
-        "progress_url": "/gallery/dashboard/progress"
+        "progress_url": DASHBOARD_PROGRESS
     }
 }
 
@@ -424,7 +453,7 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
             status_code=400
         )
 
-    # Prüfe ob die Richtung gültig ist
+    # Prüfe, ob die Richtung gültig ist
     valid_directions = ("lokal_zu_gdrive", "gdrive_zu_local")
     if direction not in valid_directions:
         return JSONResponse(
@@ -432,7 +461,7 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
             status_code=400
         )
 
-    # Prüfe ob bereits ein Prozess läuft
+    # Prüfe, ob bereits ein Prozess läuft
     if progress_state.get("running"):
         return JSONResponse(
             content={"error": "Es läuft bereits ein Synchronisierungsprozess"},
@@ -464,7 +493,7 @@ async def start_progress(folder: str = Form(...), direction: str = Form(...)):
             await stop_progress()
 
     # Task erstellen und im Hintergrund ausführen
-    asyncio.create_task(runner())
+    await runner()
 
     # Task-ID generieren und speichern
     task_id = f"{folder}_{direction}_{int(time.time())}"
@@ -508,66 +537,8 @@ def move_file_to_folder_new(service, file_id, old_parents, new_parent):
     ).execute()
 
 
-async def update_gdrive_hashes_for_folder(service, folder_name: str) -> None:
-    """
-    Aktualisiert die GDrive-Hash-Datei für einen spezifischen Ordner.
-
-    Args:
-        service: Google Drive Service-Objekt
-        folder_name: Name des zu verarbeitenden Ordners
-    """
-    gdrive_hashes = {}
-    page_token = None
-    total_files = 0
-    processed_files = 0
-
-    folder_id = folder_id_by_name(folder_name)
-    if not folder_id:
-        await update_progress_text(f"❌ Kein Folder-ID gefunden für: {folder_name}")
-        return
-
-    await update_progress_text(f"🔄 Starte Hash-Update für Ordner: {folder_name}")
-
-    while True:
-        try:
-            await update_progress_text(f"📂 Lese Dateien aus {folder_name}...")
-            response = service.files().list(
-                q=f"'{folder_id}' in parents and trashed = false",
-                spaces='drive',
-                fields="nextPageToken, files(id, name, md5Checksum)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-                pageSize=Settings.PAGESIZE,
-                pageToken=page_token
-            ).execute()
-
-            batch = response.get('files', [])
-            if not total_files:
-                total_files = len(batch)
-                if total_files == 0:
-                    await update_progress_text(f"⚠️ Keine Dateien gefunden in: {folder_name}")
-                    return
-
-            for file in batch:
-                name = sanitize_filename(file['name'])
-                md5_drive = file.get("md5Checksum")
-                if md5_drive:
-                    gdrive_hashes[name] = {
-                        "md5": md5_drive,
-                        "id": file['id']
-                    }
-                processed_files += 1
-                progress = int((processed_files / total_files) * 100)
-                await update_progress(f"⚡ Verarbeite {name}", progress)
-
-            page_token = response.get('nextPageToken')
-            if not page_token:
-                break
-
-        except Exception as e:
-            await update_progress_text(f"❌ Fehler beim Lesen von GDrive: {e}", showlog=True)
-            return
-
+async def save_gdrive_hashes(folder_name: str, gdrive_hashes: dict) -> None:
+    """Save the generated hashes to a file."""
     await update_progress_text(f"💾 Speichere Hash-Datei für {folder_name}...")
     cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
     hashfile_path = cache_dir / folder_name / Settings.GDRIVE_HASH_FILE
@@ -670,7 +641,9 @@ async def copy_or_move_local_by_gdrive(service, folder_name: str):
 @router.post("/dashboard/multi/reloadcache")
 async def _reloadcache(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
-        asyncio.create_task(reloadcache_progress(load_drive_service(), folder))
+        task = asyncio.create_task(reloadcache_progress(load_drive_service(), folder))
+        # Store the task in a way that prevents garbage collection
+        asyncio.current_task().reloadcache_task = task
     return {"status": "ok"}
 
 
@@ -919,6 +892,32 @@ def delete_files_with_prefix(html_path: Path, image_id: str):
     return count
 
 
+@router.post("/dashboard/multi/repair_db")
+async def _repair_db(folder: str = Form(...), direction: str = Form(...)):
+    if not progress_state["running"]:
+        task = asyncio.create_task(repair_db())
+        # Store the task in a way that prevents garbage collection
+        asyncio.current_task().repair_db_task = task
+    return {"status": "ok"}
+
+
+async def repair_db():
+    logger.info("🚀 Starting repair DB")
+
+    try:
+        await init_progress_state()
+        progress_state["running"] = True
+        await update_progress_text("🔄 Starting repair DB")
+        delete_all_checkbox_status()
+    except Exception as e:
+        error_msg = f"Error in repair_db: {e}"
+        logger.error(error_msg)
+        await update_progress_text(f"❌ {error_msg}")
+
+    finally:
+        await stop_progress()
+
+
 @router.post("/dashboard/multi/reload_faces")
 async def _reload_faces(folder: str = Form(...), direction: str = Form(...)):
     if not progress_state["running"]:
@@ -1006,7 +1005,7 @@ async def handle_duplicates():
         progress_state["running"] = True
         await update_progress_text("🔄 Starting duplicate detection")
 
-        # Create temp directory if it doesn't exist
+        # Create the temp directory if it doesn't exist
         temp_dir = Settings.TEMP_DIR_PATH
         temp_dir.mkdir(parents=True, exist_ok=True)
 

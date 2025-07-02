@@ -118,7 +118,7 @@ async def move_gdrive_files_by_local(service, folder_name: str):
         )
         moved += moved_flag
         uploaded += uploaded_flag
-        progress = await calc_detail_progress(idx, total)
+        progress = calc_detail_progress(idx, total)
         await update_detail_progress(
             detail_status=f"💾 DB-Eintrag {idx + 1}/{total}",
             detail_progress=progress,
