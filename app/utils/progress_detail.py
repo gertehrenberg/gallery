@@ -14,29 +14,27 @@ detail_state = {
     }
 }
 
+
 def calc_detail_progress(current_progress: int, total_progress: int) -> Optional[int]:
     if current_progress == 0 or total_progress <= 1:
         return 0
     return int((current_progress * 100) / total_progress)
 
+
 async def start_detail_progress(detail_status: str):
     await update_detail_progress(detail_status, 0)
 
+
 async def stop_detail_progress(detail_status: str):
     await update_detail_progress(detail_status, 1000)
+
 
 async def update_detail_progress(
         detail_status: Optional[str] = None,
         detail_progress: Optional[int] = None,
         ctime: float = 0.01):
-    """
-    Aktualisiert den Detail-Fortschritt.
-
-    Args:
-        detail_status: Detail-Status-Text
-        detail_progress: Detail-Fortschritt (0-1000)
-        ctime: Wartezeit zwischen Updates
-    """
+    if detail_progress >= 1000:
+        detail_progress = 100
     if detail_status is not None:
         detail_state["status"] = detail_status
     if detail_progress is not None:

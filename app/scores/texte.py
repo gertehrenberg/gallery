@@ -5,6 +5,7 @@ from typing import Any
 
 from app.config import Settings
 from app.config_gdrive import SettingsGdrive
+from app.utils.find_missing_text_files import move_images_without_textfile_2_recheck
 
 # Type-Hint für IDE und Fallback-Import
 try:
@@ -16,31 +17,20 @@ except ImportError:
         def connect(*args: Any, **kwargs: Any) -> Any: ...
 
 from app.utils.logger_config import setup_logger
-from app.utils.progress import init_progress_state, progress_state, stop_progress
+from app.utils.progress import init_progress_state, stop_progress
 
 logger = setup_logger(__name__)
 
 
 async def reload_texte():
     await init_progress_state()
-
-    logger.info("➡️  Texte-Score wird gelöscht...")
-
-    await stop_progress()
+    try:
+        await move_images_without_textfile_2_recheck(Path(Settings.IMAGE_FILE_CACHE_DIR), Path(Settings.TEXT_FILE_CACHE_DIR))
+    finally:
+        await stop_progress()
 
 
 async def search_recoll(query: str) -> list:
-    """
-    Führt eine Recoll-Suche durch und gibt die Ergebnisse zurück.
-
-    Args:
-        query: Suchanfrage
-        config_dir: Pfad zum Recoll-Konfigurationsverzeichnis
-
-    Returns:
-        Liste der gefundenen Dokumente
-    """
-
     config_dir: str = Settings.RECOLL_CONFIG_DIR
 
     try:

@@ -31,7 +31,7 @@ from app.scores.nsfw import reload_nsfw
 from app.scores.quality import reload_quality
 from app.scores.texte import reload_texte
 from app.tools import readimages, fill_pair_cache
-from app.utils.db_utils import delete_all_checkbox_status
+from app.utils.db_utils import delete_all_checkbox_status, delete_all_external_tasks
 from app.utils.folder_utils import count_folder_entries
 from app.utils.logger_config import setup_logger
 from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
@@ -354,7 +354,7 @@ calls = {
         "progress_url": DASHBOARD_PROGRESS
     },
     "reload_texte": {
-        "label": "Erstell die Text-Längen neu ...",
+        "label": "Bilder ohne Text nach \"Neu\"",
         "start_url": "/gallery/dashboard/multi/reload_texte",
         "progress_url": DASHBOARD_PROGRESS
     },
@@ -890,8 +890,10 @@ async def repair_db():
 
     try:
         await init_progress_state()
-        await update_progress_text("🔄 Starting repair DB")
+        await update_progress_text("🔄 Starting delete_all_checkbox_status")
         delete_all_checkbox_status()
+        await update_progress_text("🔄 Starting delete_all_external_tasks")
+        delete_all_external_tasks()
     except Exception as e:
         error_msg = f"Error in repair_db: {e}"
         logger.error(error_msg)
@@ -1071,6 +1073,7 @@ async def handle_filename_duplicates(filename_map):
                 logger.error(f"Error renaming file {source_path}: {e}")
 
     return renamed_count
+
 
 def localp2():
     Settings.DB_PATH = '../../gallery_local.db'

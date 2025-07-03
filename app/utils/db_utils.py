@@ -118,6 +118,19 @@ def delete_all_checkbox_status():
         deleted_count = cursor.rowcount
         logger.info(f"[delete_all_checkbox_status] ✅ {deleted_count} Einträge gelöscht")
 
+
+def delete_all_external_tasks():
+    """
+    Löscht alle Einträge aus der checkbox_status Tabelle.
+    """
+    logger.info("[delete_all_checkbox_status] Start – Lösche alle External Tasks-Status Einträge")
+    with sqlite3.connect(Settings.DB_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM external_tasks")
+        deleted_count = cursor.rowcount
+        logger.info(f"[delete_all_external_tasks] ✅ {deleted_count} Einträge gelöscht")
+
+
 def load_scores_from_db(db_path, image_name):
     with sqlite3.connect(db_path) as conn:
         rows = conn.execute("""
