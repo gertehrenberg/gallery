@@ -65,7 +65,7 @@ def find_and_download_missing_images(service, recheck_folder_id: str) -> None:
                     tqdm.write(f"❌ Fehler beim Hashen von {img_path}: {e}")
 
     # Zielordner erstellen
-    target_dir = cache_dir / "recheck"
+    target_dir = cache_dir / Settings.RECHECK
     target_dir.mkdir(parents=True, exist_ok=True)
 
     # Download der fehlenden Dateien

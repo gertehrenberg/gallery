@@ -892,7 +892,7 @@ async def dd(
                 await update_progress_text(f"[{folder_name}] ☁️ Nur GDrive: {name}")
                 try:
                     file_id = file_info.get('id')
-                    local_file = Path(Settings.IMAGE_FILE_CACHE_DIR) / "recheck" / name
+                    local_file = Path(Settings.IMAGE_FILE_CACHE_DIR) / Settings.RECHECK / name
                     await download_file(service, file_id, local_file)
                     if local_file.exists():
                         await update_progress_text(f"📥 Heruntergeladen: {local_file}")

@@ -678,7 +678,7 @@ async def manage_save_progress(service: None):
     if not service:
         service = load_drive_service()
     from_folder_name = "save"
-    to_folder_name = "recheck"
+    to_folder_name = Settings.RECHECK
 
     from_folder_id = folder_id_by_name(from_folder_name)
     from_files = await list_files(from_folder_id, service, "!=")
@@ -1125,7 +1125,7 @@ def p4():
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
-    asyncio.run(copy_or_move_local_by_gdrive(service, "recheck"))
+    asyncio.run(copy_or_move_local_by_gdrive(service, Settings.RECHECK))
 
 
 def p5():

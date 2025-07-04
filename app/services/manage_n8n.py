@@ -1,5 +1,3 @@
-import subprocess
-from typing import Any
 import asyncio
 import json
 import os
@@ -13,6 +11,7 @@ from app.config_gdrive import folder_id_by_name, SettingsGdrive, calculate_md5, 
 from app.routes.auth import load_drive_service, load_drive_service_token
 from app.routes.gdrive_from_lokal import save_structured_hashes
 from app.utils.logger_config import setup_logger
+from app.utils.move_utils import move_single_image
 from app.utils.progress import list_all_files, save_simple_hashes
 
 TASK_TYPE = 'gemini'
@@ -25,11 +24,11 @@ async def get_uploaded_tasks(task_type: str = TASK_TYPE) -> list[tuple[str, str]
     try:
         with sqlite3.connect(Settings.DB_PATH) as conn:
             cursor = conn.execute("""
-                SELECT file_md5, file_name 
-                FROM external_tasks 
-                WHERE status = 'uploaded' 
-                AND task_type = ?
-            """, (task_type,))
+                                  SELECT file_md5, file_name
+                                  FROM external_tasks
+                                  WHERE status = 'uploaded'
+                                    AND task_type = ?
+                                  """, (task_type,))
             return cursor.fetchall()
     except sqlite3.Error as e:
         logger.error(f"[{task_type}] Fehler beim Abrufen der uploaded Tasks: {e}")
@@ -55,8 +54,10 @@ async def get_task_status(file_md5: str, task_type: str = TASK_TYPE) -> str | No
         with sqlite3.connect(Settings.DB_PATH) as conn:
             cursor = conn.execute(
                 """
-                SELECT status FROM external_tasks 
-                WHERE file_md5 = ? AND task_type = ?
+                SELECT status
+                FROM external_tasks
+                WHERE file_md5 = ?
+                  AND task_type = ?
                 """,
                 (file_md5, task_type)
             )
@@ -74,23 +75,23 @@ async def update_task_status(file_md5: str, status: str, task_type: str = TASK_T
             if drive_file_id:
                 conn.execute(
                     """
-                    UPDATE external_tasks 
-                    SET status = ?, 
+                    UPDATE external_tasks
+                    SET status        = ?,
                         drive_file_id = ?,
-                        updated_at = CURRENT_TIMESTAMP
-                    WHERE file_md5 = ? 
-                    AND task_type = ?
+                        updated_at    = CURRENT_TIMESTAMP
+                    WHERE file_md5 = ?
+                      AND task_type = ?
                     """,
                     (status, drive_file_id, file_md5, task_type)
                 )
             else:
                 conn.execute(
                     """
-                    UPDATE external_tasks 
-                    SET status = ?, 
+                    UPDATE external_tasks
+                    SET status     = ?,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE file_md5 = ?
-                    AND task_type = ?
+                      AND task_type = ?
                     """,
                     (status, file_md5, task_type)
                 )
@@ -107,8 +108,8 @@ async def insert_task(file_md5: str, task_type: str, file_name: str, status: str
             conn.execute(
                 """
                 INSERT INTO external_tasks (file_md5, task_type, file_name, status)
-                VALUES (?, ?, ?, ?)
-                ON CONFLICT(file_md5) DO UPDATE SET 
+                VALUES (?, ?, ?, ?) ON CONFLICT(file_md5) DO
+                UPDATE SET
                     task_type = excluded.task_type,
                     file_name = excluded.file_name,
                     status = excluded.status,
@@ -214,11 +215,11 @@ async def check_uploading_tasks(service, image_text_pairs, task_type: str = TASK
         # Hole alle uploaded Tasks
         with sqlite3.connect(Settings.DB_PATH) as conn:
             cursor = conn.execute("""
-                SELECT file_md5, file_name 
-                FROM external_tasks 
-                WHERE status = 'uploaded' 
-                AND task_type = ?
-            """, (task_type,))
+                                  SELECT file_md5, file_name
+                                  FROM external_tasks
+                                  WHERE status = 'uploaded'
+                                    AND task_type = ?
+                                  """, (task_type,))
             uploading_tasks = cursor.fetchall()
 
         if not uploading_tasks:
@@ -269,6 +270,39 @@ async def check_uploading_tasks(service, image_text_pairs, task_type: str = TASK
         logger.error(f"[{task_type}] Fehler bei der Überprüfung der uploading Tasks: {e}")
 
 
+async def check_file_in_folder(service, file_md5, file_name, folder_id: str) -> bool:
+    try:
+        # Kombinierte Query für Effizienz
+        query = (
+            f"'{folder_id}' in parents and "
+            f"trashed=false and "
+            f"(name = '{file_name}' or md5Checksum = '{file_md5}')"
+        )
+
+        files = service.files().list(
+            q=query,
+            fields="files(id, name, md5Checksum)"
+        ).execute()
+
+        # Wenn Dateien gefunden werden, ist die Suche erfolgreich
+        if files.get('files'):
+            return True
+
+        # Rekursive Suche in Unterordnern
+        subfolders = service.files().list(
+            q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder'",
+            fields="files(id)"
+        ).execute()
+
+        for subfolder in subfolders.get('files', []):
+            if await check_file_in_folder(service, file_md5, file_name, subfolder['id']):
+                return True
+
+    except Exception as e:
+        logger.error(f"Fehler bei der Dateisuche: {e}")
+
+    return False
+
 async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
     """Überwacht den Gemini-Ordner und verarbeitet Bilddateien"""
     logger.info(f"[{task_type}] Starte Überwachungsprozess")
@@ -283,19 +317,39 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
     # Initialisiere DB-Tabelle
     with sqlite3.connect(Settings.DB_PATH) as conn:
         conn.execute("""
-            CREATE TABLE IF NOT EXISTS external_tasks (
-                file_md5 TEXT PRIMARY KEY,
-                task_type TEXT NOT NULL,
-                status TEXT DEFAULT 'pending',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                file_name TEXT,
-                drive_file_id TEXT
-            )
-        """)
+                     CREATE TABLE IF NOT EXISTS external_tasks
+                     (
+                         file_md5
+                         TEXT
+                         PRIMARY
+                         KEY,
+                         task_type
+                         TEXT
+                         NOT
+                         NULL,
+                         status
+                         TEXT
+                         DEFAULT
+                         'pending',
+                         created_at
+                         TIMESTAMP
+                         DEFAULT
+                         CURRENT_TIMESTAMP,
+                         updated_at
+                         TIMESTAMP
+                         DEFAULT
+                         CURRENT_TIMESTAMP,
+                         file_name
+                         TEXT,
+                         drive_file_id
+                         TEXT
+                     )
+                     """)
 
     while True:
         try:
+            imagefolder_id = folder_id_by_name("imagefiles")
+
             await clean_filenames_in_save_folder(service)
 
             # Hole alle Dateien aus dem Save-Ordner
@@ -330,6 +384,10 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
                     # Überspringe, wenn bereits erfolgreich hochgeladen
                     if current_status:
                         logger.info(f"[{task_type}] Datei bereits verarbeitet: {file.name} (MD5: {file_md5})")
+                        continue
+
+                    if await check_file_in_folder(service, file_md5, file.name, imagefolder_id):
+                        logger.info(f"[{task_type}] Datei bereits vorhanden: {file.name} (MD5: {file_md5})")
                         continue
 
                     # Füge neuen Task hinzu oder aktualisiere Status auf 'uploading'
@@ -510,15 +568,18 @@ async def process_save_folder_pairs(service, image_text_pairs) -> None:
                     category_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / category["key"]
                     if category_path.exists():
                         image_name = files['image']['name']
-                        if (category_path / image_name).exists():
+                        image_path = category_path / image_name
+                        if image_path.exists():
                             logger.info(f"Bild {image_name} bereits in Kategorie {category['key']} vorhanden")
-                            image_exists = True
+                            if category["key"] != Settings.RECHECK:
+                                await move_single_image(image_name, category["key"], Settings.RECHECK)
+                                image_exists = True
                             break
 
                 # Bild herunterladen wenn nicht vorhanden
                 if not image_exists:
                     image_file = files['image']
-                    image_path = Path(Settings.IMAGE_FILE_CACHE_DIR)
+                    image_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / Settings.RECHECK
                     if await download_file(service, image_path, image_file['id'], image_file['name']):
                         image_md5 = calculate_md5(image_path / image_file['name'])
                         await update_hash_files(image_path, image_file['name'], image_md5, image_file['id'])
@@ -527,7 +588,7 @@ async def process_save_folder_pairs(service, image_text_pairs) -> None:
                         continue
 
                 save_folder_id = folder_id_by_name("save")
-                recheck_folder_id = folder_id_by_name("recheck")
+                recheck_folder_id = folder_id_by_name(Settings.RECHECK)
                 textfiles_folder_id = folder_id_by_name(Settings.TEXTFILES_FOLDERNAME)
 
                 # Verschiebe Dateien in Google Drive
@@ -570,9 +631,9 @@ def p4():
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
     Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
 
-    # asyncio.run(clear_gemini_tasks())
-
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+    asyncio.run(manage_gemini_process(service))
+
     asyncio.run(clean_filenames_in_save_folder(service))
     save_folder_id = folder_id_by_name("save")
     save_files = asyncio.run(list_all_files(save_folder_id, service))

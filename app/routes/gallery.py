@@ -186,7 +186,6 @@ def show_images_gallery(
     logger.info(f"[Gallery] Gefunden: {total_images} Bilder gesamt, {len(image_keys)} auf aktueller Seite")
 
     images_html_parts = []
-    recheck_category = next((k["key"] for k in Settings.kategorien() if k["key"] == "recheck"), None)
 
     logger.info("[Gallery] Beginne HTML-Generierung")
     for image_name in image_keys:
@@ -212,13 +211,13 @@ def show_images_gallery(
                                                                     Settings.KEIN_TEXT_GEFUNDEN)
                     if Settings.KEIN_TEXT_GEFUNDEN == text_content:
                         logger.warning(f"[Gallery] Kein Text gefunden für Bild {image_name}")
-                        set_status(image_name, recheck_category)
+                        set_status(image_name, Settings.RECHECK)
                 case '3':
                     text_content = Settings.CACHE["text_cache"].get(image_name,
                                                                     Settings.KEIN_TEXT_GEFUNDEN)
                     if Settings.KEIN_TEXT_GEFUNDEN == text_content:
                         logger.warning(f"[Gallery] Kein Text gefunden für Bild {image_name}")
-                        set_status(image_name, recheck_category)
+                        set_status(image_name, Settings.RECHECK)
 
                     if isinstance(text_content, str):
                         lines = text_content.splitlines()
@@ -230,7 +229,7 @@ def show_images_gallery(
                                                                     Settings.KEIN_TEXT_GEFUNDEN)
                     if Settings.KEIN_TEXT_GEFUNDEN == text_content:
                         logger.warning(f"[Gallery] Kein Text gefunden für Bild {image_name}")
-                        set_status(image_name, recheck_category)
+                        set_status(image_name, Settings.RECHECK)
 
                     if isinstance(text_content, str):
                         index1 = text_content.find("\n\nThe")
@@ -275,7 +274,7 @@ def show_images_gallery(
         value = Settings.CACHE["text_cache"].get(image_name, "")  # Verwende Caches aus Settings
         if isinstance(value, str):
             if "Error 2" in value:
-                status["recheck"] = True
+                status[Settings.RECHECK] = True
 
         status_json = json.dumps({f"{image_id}_{key}": value for key, value in status.items()})
 

@@ -108,6 +108,8 @@ class Settings:
 
     PAGESIZE = 1000
 
+    RECHECK = "recheck"
+
     # Sonstige Konstanten
     KEIN_TEXT_GEFUNDEN = "Kein Text gefunden"
     CONTAINER = "gallery"

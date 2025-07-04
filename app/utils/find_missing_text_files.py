@@ -36,7 +36,7 @@ async def collect_missing_entries(hash_files, text_dir) -> list[Any]:
     await update_progress_auto("Prüfe auf fehlende .txt-Dateien")
     await start_detail_progress("Prüfe auf fehlende .txt-Dateien")
 
-    ignore = ["recheck", "delete", "gemini"]
+    ignore = [Settings.RECHECK, "delete", "gemini"]
 
     for index, hashfile in enumerate(hash_files, 1):
 
@@ -148,8 +148,7 @@ async def move_images_without_textfile_2_recheck(image_cache_dir: Path, text_dir
     """Main entry point: find and handle missing text and image files."""
     hash_files = await load_hash_files(image_cache_dir)
     missing_entries = await collect_missing_entries(hash_files, text_dir)
-    recheck_dir = Path(Settings.IMAGE_FILE_CACHE_DIR) / next(
-        (k["key"] for k in Settings.kategorien() if k["key"] == "recheck"), None)
+    recheck_dir = Path(Settings.IMAGE_FILE_CACHE_DIR) / Settings.RECHECK
     await move_missing_files(missing_entries, recheck_dir)
 
     temp_dir = Path(Settings.TEMP_DIR_PATH)
