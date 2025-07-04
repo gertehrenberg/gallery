@@ -5,3 +5,4 @@ from . import gallery
 from . import login
 from . import static
 from . import what
+from . import n8nlock

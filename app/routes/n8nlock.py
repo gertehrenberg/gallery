@@ -1,34 +1,15 @@
-#!/usr/bin/env python3
-"""
-Kleine FastAPI-Applikation zum Lock-Management für n8n-Workflows.
-
-Dateiname: n8nlock.py
-
-Endpoints:
-  POST /lock             → Abfrage, ob der Lock aktiv ist (JSON { locked: bool })
-  GET  /lock?value=True   → Lock setzen
-  GET  /lock?value=False  → Lock löschen
-
-Konfiguration über Umgebungsvariablen:
-  LOCK_FILE (Pfad zur Lock-Datei, Default: /data/workflow.lock)
-  LOCK_TTL  (TTL in Sekunden, Default: 3600)
-
-Installation:
-  pip install fastapi uvicorn
-
-Starten:
-  uvicorn n8nlock:app --host 0.0.0.0 --port 8001
-"""
-import os
 import json
-from pathlib import Path
+import os
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, APIRouter
 from pydantic import BaseModel
 
+router = APIRouter()
+
 # Konfigurierbare Parameter über ENV
-LOCK_FILE = Path(os.getenv("LOCK_FILE", "../workflow.lock"))
+LOCK_FILE = Path(os.getenv("LOCK_FILE", "/data/workflow.lock"))
 LOCK_TTL = int(os.getenv("LOCK_TTL", "3600"))  # in Sekunden
 
 app = FastAPI(
@@ -37,6 +18,7 @@ app = FastAPI(
     description="Service zum Setzen, Prüfen und Entfernen eines einfachen Dateilocks mit TTL."
 )
 
+
 class LockResponse(BaseModel):
     locked: bool
 
@@ -44,7 +26,8 @@ class LockResponse(BaseModel):
 def _is_stale(timestamp: datetime) -> bool:
     return datetime.now(timezone.utc) - timestamp > timedelta(seconds=LOCK_TTL)
 
-@app.post("/lock", response_model=LockResponse)
+
+@router.post("/lock", response_model=LockResponse)
 def check_lock():
     """Prüft, ob der Lock existiert und noch gültig ist."""
     if LOCK_FILE.exists():
@@ -64,7 +47,8 @@ def check_lock():
         return LockResponse(locked=True)
     return LockResponse(locked=False)
 
-@app.get("/lock")
+
+@router.get("/lock")
 def set_or_remove_lock(value: bool = Query(..., description="True=Setzen, False=Entfernen")):
     """Setzt oder löscht den Lock basierend auf dem Query-Parameter 'value'."""
     if value:
@@ -79,6 +63,8 @@ def set_or_remove_lock(value: bool = Query(..., description="True=Setzen, False=
         LOCK_FILE.unlink(missing_ok=True)
         return {"status": "lock removed"}
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run("n8nlock:app", host="0.0.0.0", port=8001)

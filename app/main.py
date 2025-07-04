@@ -13,7 +13,7 @@ from app.config import Settings
 # Importiere die Datenbankfunktionen aus app/database.py
 from app.database import init_db
 # Importiere die Routen
-from app.routes import auth, gallery, static, admin, login, dashboard
+from app.routes import auth, gallery, static, admin, login, dashboard, n8nlock
 from app.routes.auth import SCOPES, TOKEN_FILE
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from app.services.google_drive import verify_folders_exist
@@ -74,6 +74,7 @@ app.include_router(gallery.router)
 app.include_router(static.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
+app.include_router(n8nlock.router)
 
 
 # Add this at the top level of the file, after the other imports
