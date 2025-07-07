@@ -467,8 +467,7 @@ def move_file_to_folder(
 
         # Check if the target folder is in new parents
         new_parents = result.get('parents', [])
-        if gdrive_folder_names:
-            gdrive_folder_names.add(previous_parents)
+        gdrive_folder_names.add(previous_parents)
         return target_folder_id in new_parents
 
     except Exception:

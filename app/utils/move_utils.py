@@ -1,3 +1,5 @@
+import json
+import os
 import shutil
 import sqlite3
 import time
@@ -6,9 +8,8 @@ from typing import Optional
 
 from app.config import Settings
 from app.config_gdrive import calculate_md5
-from app.routes.dashboard import fill_pair_cache_folder
 from app.routes.hashes import update_local_hash
-from app.tools import newpaircache
+from app.tools import newpaircache, readimages
 from app.utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -73,6 +74,7 @@ async def move_marked_images_by_checkbox(current_folder: str, new_folder: str) -
 
         logger.info(f"📊 Insgesamt verschoben: {anzahl_verschoben} Dateien")
         return anzahl_verschoben
+
 
 def get_checkbox_count(checkbox: str):
     logger.info(f"[get_checkbox_count] Start – checkbox={checkbox}")
@@ -206,3 +208,32 @@ async def _move_file_and_update_hash(
     except Exception as e:
         logger.error(f"⚠️ Fehler beim Verschieben/Aktualisieren: {e}")
         return False
+
+
+async def fill_pair_cache_folder(folder_name: str, image_file_cache_dir, pair_cache, pair_cache_path_local):
+    folder_path = os.path.join(image_file_cache_dir, folder_name)
+
+    if not os.path.isdir(folder_path):
+        logger.warning(f"[fill_pair_cache] Kein gültiger Ordner: {folder_path}")
+        return
+
+    logger.info(f"[fill_pair_cache] Aktualisiere Cache für Ordner: {folder_name}")
+
+    # Entferne nur die Paare aus dem angegebenen Ordner
+    keys_to_delete = [k for k in pair_cache if k.startswith(f"{folder_name}/") or f"/{folder_name}/" in k]
+    for k in keys_to_delete:
+        del pair_cache[k]
+
+    for name in os.listdir(folder_path):
+        subpath = os.path.join(folder_path, name)
+        if os.path.isfile(subpath):
+            if any(subpath.lower().endswith(key) for key in [folder_name]):
+                await readimages(folder_path, pair_cache)
+    try:
+        with open(pair_cache_path_local, 'w') as f:
+            json.dump(pair_cache, f)
+        logger.info(f"[fill_pair_cache] Pair-Cache gespeichert: {len(pair_cache)} Paare")
+    except Exception as e:
+        logger.error(f"[fill_pair_cache] Fehler beim Speichern von pair_cache.json: {e}")
+
+    logger.info(f"[fill_pair_cache] Cache für {folder_name} aktualisiert.")

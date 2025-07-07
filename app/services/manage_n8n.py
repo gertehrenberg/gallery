@@ -632,7 +632,6 @@ def p4():
     Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    asyncio.run(manage_gemini_process(service))
 
     asyncio.run(clean_filenames_in_save_folder(service))
     save_folder_id = folder_id_by_name("save")

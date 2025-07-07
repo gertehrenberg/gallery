@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Set, Tuple
 
 from app.config import Settings
-from app.config_gdrive import folder_id_by_name, SettingsGdrive
+from app.config_gdrive import folder_id_by_name, SettingsGdrive, _cached_folder_dict
 from app.routes.auth import load_drive_service_token
 from app.routes.hashes import (
     update_gdrive_hashes,
@@ -17,6 +17,7 @@ from app.routes.manage_text_files import (
     check_and_move_gdrive_files,
     move_file_to_folder,
 )
+from app.services.manage_n8n import check_file_in_folder
 from app.utils.progress import (
     init_progress_state,
     update_progress_text,
@@ -64,8 +65,47 @@ async def process_hash_entry(
         folder_path: Path,
         gdrive_folder_names: Set[str],
 ) -> Tuple[bool, bool]:
-    """Process one file: move if exists in wrong folder, upload if absent."""
-    entry = all_gdrive_hashes.get(filename)
+    entry = None
+    imagefiles_folder_id = folder_id_by_name("imagefiles")
+    if imagefiles_folder_id:
+        file_exists_elsewhere = await check_file_in_folder(
+            service, local_md5, filename, imagefiles_folder_id
+        )
+
+        # If file exists elsewhere, update the entry
+        if file_exists_elsewhere:
+            # Fetch the file details
+            query = (
+                f"'{imagefiles_folder_id}' in parents and "
+                f"trashed=false and "
+                f"(name = '{filename}' or md5Checksum = '{local_md5}')"
+            )
+            files = service.files().list(
+                q=query,
+                fields="files(id, name, md5Checksum, parents)"
+            ).execute()
+
+            if files.get('files'):
+                found_file = files['files'][0]
+                # Update entry with actual file details
+                entry = {
+                    "id": found_file['id'],
+                    "md5": found_file.get('md5Checksum'),
+                    "source_folder": next(
+                        (folder_name for folder_name, folder_id in _cached_folder_dict.get("name_to_id", {}).items()
+                         if folder_id in found_file.get('parents', [])),
+                        None
+                    )
+                }
+
+    entryhash = all_gdrive_hashes.get(filename)
+    if entryhash:
+        if entry:
+            if entryhash.get("source_folder") != entry.get("source_folder"):
+                gdrive_folder_names.add(entryhash.get("source_folder"))
+                gdrive_folder_names.add(entry.get("source_folder"))
+        else:
+            gdrive_folder_names.add(entryhash.get("source_folder"))
 
     # Wenn Datei existiert, MD5 übereinstimmt UND im richtigen Ordner ist -> nichts tun
     if entry and entry.get("md5") == local_md5 and entry.get("source_folder") == folder_name:
@@ -116,8 +156,8 @@ async def move_gdrive_files_by_local(service, folder_name: str):
         total = len(local_hashes)
         moved = uploaded = 0
 
-        await update_progress_auto(f"🔍 Gefunden: {total} Dateien")
-        await start_detail_progress(f"🔍 Gefunden: {total} Dateien")
+        await update_progress_auto(f"🔍 Gefunden local: {total} Dateien")
+        await start_detail_progress(f"🔍 Gefunden lokal: {total} Dateien")
         gdrive_folders: Set[str] = set()
 
         for idx, (filename, md5) in enumerate(local_hashes.items()):
