@@ -1119,8 +1119,7 @@ def p_lokal_zu_gdrive():
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    asyncio.run(move_gdrive_files_by_local(service, "gemini"))
-
+    asyncio.run(move_gdrive_files_by_local(service, "delete"))
 
 if __name__ == "__main__":
     p_lokal_zu_gdrive()

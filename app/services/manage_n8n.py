@@ -273,20 +273,17 @@ async def check_uploading_tasks(service, image_text_pairs, task_type: str = TASK
 async def check_file_in_folder(service, file_md5, file_name, folder_id: str) -> bool:
     try:
         # Kombinierte Query für Effizienz
-        query = (
-            f"'{folder_id}' in parents and "
-            f"trashed=false and "
-            f"(name = '{file_name}' or md5Checksum = '{file_md5}')"
-        )
+        query = f"'{folder_id}' in parents and trashed=false"
 
         files = service.files().list(
             q=query,
             fields="files(id, name, md5Checksum)"
         ).execute()
 
-        # Wenn Dateien gefunden werden, ist die Suche erfolgreich
         if files.get('files'):
-            return True
+            for file in files.get('files', []):
+                if file.get('md5Checksum') == file_md5 or file.get('name') == file_name:
+                    return True
 
         # Rekursive Suche in Unterordnern
         subfolders = service.files().list(

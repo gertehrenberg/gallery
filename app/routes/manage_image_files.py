@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Dict, Set, Tuple
 
 from app.config import Settings
-from app.config_gdrive import folder_id_by_name, SettingsGdrive, _cached_folder_dict
+from app.config_gdrive import folder_id_by_name, SettingsGdrive
 from app.routes.auth import load_drive_service_token
 from app.routes.hashes import (
     update_gdrive_hashes,
@@ -17,7 +17,7 @@ from app.routes.manage_text_files import (
     check_and_move_gdrive_files,
     move_file_to_folder,
 )
-from app.services.manage_n8n import check_file_in_folder
+from app.utils.logger_config import setup_logger
 from app.utils.progress import (
     init_progress_state,
     update_progress_text,
@@ -28,6 +28,8 @@ from app.utils.progress_detail import (
     update_detail_progress,
     calc_detail_progress, stop_detail_progress,
 )
+
+logger = setup_logger(__name__)
 
 
 def load_local_hashes(folder_path: Path) -> Dict[str, str]:
@@ -56,6 +58,57 @@ def load_all_gdrive_hashes(cache_dir: Path) -> Dict[str, Dict]:
     return all_hashes
 
 
+async def fetch_files_in_folder(
+        service,
+        cached_folder_files,
+        folder_id,
+        folder_name,
+        local_md5=None,
+        filename=None):
+
+    if folder_id in cached_folder_files:
+        files = cached_folder_files[folder_id]
+    else:
+        files = None
+
+    if not files:
+        page_token = None
+        while True:
+            try:
+                response = service.files().list(
+                    q=f"'{folder_id}' in parents and trashed=false",
+                    fields="nextPageToken, files(id, name, md5Checksum, parents)",
+                    pageSize=Settings.PAGESIZE,
+                    pageToken=page_token
+                ).execute()
+
+                if files:
+                    files.extend(response.get('files', []))
+                else:
+                    files = response.get('files', [])
+
+                # Hole nächste Seite oder beende
+                page_token = response.get('nextPageToken')
+                if not page_token:
+                    cached_folder_files[folder_id] = files
+                    break
+
+            except Exception as e:
+                logger.error(f"Fehler beim Durchsuchen von Ordner {folder_name}: {e}")
+                break
+
+    for file in files:
+        if ((local_md5 and file.get('md5Checksum') == local_md5) or
+                (filename and file.get('name') == filename)):
+            return {
+                "id": file['id'],
+                "md5": file.get('md5Checksum'),
+                "source_folder": folder_name
+            }
+
+    return None  # Nichts gefunden
+
+
 async def process_hash_entry(
         service,
         filename: str,
@@ -64,39 +117,22 @@ async def process_hash_entry(
         folder_name: str,
         folder_path: Path,
         gdrive_folder_names: Set[str],
+        cached_folder_files
 ) -> Tuple[bool, bool]:
     entry = None
-    imagefiles_folder_id = folder_id_by_name("imagefiles")
-    if imagefiles_folder_id:
-        file_exists_elsewhere = await check_file_in_folder(
-            service, local_md5, filename, imagefiles_folder_id
-        )
-
-        # If file exists elsewhere, update the entry
-        if file_exists_elsewhere:
-            # Fetch the file details
-            query = (
-                f"'{imagefiles_folder_id}' in parents and "
-                f"trashed=false and "
-                f"(name = '{filename}' or md5Checksum = '{local_md5}')"
-            )
-            files = service.files().list(
-                q=query,
-                fields="files(id, name, md5Checksum, parents)"
-            ).execute()
-
-            if files.get('files'):
-                found_file = files['files'][0]
-                # Update entry with actual file details
-                entry = {
-                    "id": found_file['id'],
-                    "md5": found_file.get('md5Checksum'),
-                    "source_folder": next(
-                        (folder_name for folder_name, folder_id in _cached_folder_dict.get("name_to_id", {}).items()
-                         if folder_id in found_file.get('parents', [])),
-                        None
-                    )
-                }
+    for cat in Settings.kategorien():
+        # Fetch the file details
+        folder_name_cat = cat["key"]
+        folder_id_cat = folder_id_by_name(folder_name_cat)
+        entry = await fetch_files_in_folder(
+            service, 
+            cached_folder_files, 
+            folder_id_cat, 
+            folder_name_cat, 
+            local_md5, 
+            filename)
+        if entry:
+            break
 
     entryhash = all_gdrive_hashes.get(filename)
     if entryhash:
@@ -160,6 +196,8 @@ async def move_gdrive_files_by_local(service, folder_name: str):
         await start_detail_progress(f"🔍 Gefunden lokal: {total} Dateien")
         gdrive_folders: Set[str] = set()
 
+        cached_folder_files = {}
+
         for idx, (filename, md5) in enumerate(local_hashes.items()):
             status_prefix = "✓"  # Standard-Status
 
@@ -170,7 +208,8 @@ async def move_gdrive_files_by_local(service, folder_name: str):
                 gdrive_hashes,
                 folder_name,
                 folder_path,
-                gdrive_folders
+                gdrive_folders,
+                cached_folder_files
             )
 
             # Status-Emoji basierend auf der Aktion
@@ -187,6 +226,9 @@ async def move_gdrive_files_by_local(service, folder_name: str):
                 detail_status=f"{status_prefix} {filename} ({idx + 1}/{total})",
                 detail_progress=progress,
             )
+
+        del cached_folder_files
+
         await update_progress_auto(f"🔍 Verarbeitet: {total} Dateien")
         await stop_detail_progress(f"🔍 Verarbeitet: {total} Dateien")
 

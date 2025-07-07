@@ -1086,14 +1086,17 @@ async def move_duplicates_in_gdrive_folder(service, folder_id: str, extensions) 
 
         # Duplikate nach MD5 gruppieren
         for file in files:
-            if not any(file.get('name', '').lower().endswith(ext) for ext in extensions):
+            if not any(file.get('name', '').lower().endswith(ext) for ext in Settings.IMAGE_EXTENSIONS):
                 continue
+                
 
             md5 = file.get('md5Checksum')
             if md5:
                 if md5 not in md5_groups:
                     md5_groups[md5] = []
-                md5_groups[md5].append(file)
+                    md5_groups[md5].append(file)
+                else: 
+                    md5_groups[md5].append(file)
 
         # Verschiebe Duplikate
         moved_count = await move_duplicates_to_temp(
@@ -1317,6 +1320,18 @@ def p7():
 
     asyncio.run(delete_files_by_mimetype(service, folder_id_by_name(Settings.TEXTFILES_FOLDERNAME), "image/*"))
 
+def p8():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+
+    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+
+    asyncio.run(move_duplicates_in_gdrive_folder(service, folder_id_by_name("delete"), "image/*"))
+
 
 if __name__ == "__main__":
-    p7()
+    p8()
