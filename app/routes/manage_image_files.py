@@ -26,7 +26,7 @@ from app.utils.progress import (
 from app.utils.progress_detail import (
     start_detail_progress,
     update_detail_progress,
-    calc_detail_progress, stop_detail_progress,
+    calc_detail_progress, stop_detail_progress, update_detail_status,
 )
 
 logger = setup_logger(__name__)
@@ -75,6 +75,7 @@ async def fetch_files_in_folder(
         page_token = None
         while True:
             try:
+                await update_detail_status(f"Lese {folder_name} ...")
                 response = service.files().list(
                     q=f"'{folder_id}' in parents and trashed=false",
                     fields="nextPageToken, files(id, name, md5Checksum, parents)",
@@ -86,6 +87,8 @@ async def fetch_files_in_folder(
                     files.extend(response.get('files', []))
                 else:
                     files = response.get('files', [])
+
+                await update_detail_status(f"Gelesen {folder_name} : {len(files)}")
 
                 # Hole nächste Seite oder beende
                 page_token = response.get('nextPageToken')
@@ -100,6 +103,7 @@ async def fetch_files_in_folder(
     for file in files:
         if ((local_md5 and file.get('md5Checksum') == local_md5) or
                 (filename and file.get('name') == filename)):
+            await update_detail_status(f"Gefunden {filename} in {folder_name}")
             return {
                 "id": file['id'],
                 "md5": file.get('md5Checksum'),
