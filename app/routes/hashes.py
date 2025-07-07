@@ -1330,7 +1330,9 @@ def p8():
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
-    asyncio.run(move_duplicates_in_gdrive_folder(service, folder_id_by_name("delete"), "image/*"))
+    for cat in Settings.kategorien():
+        asyncio.run(move_duplicates_in_gdrive_folder(service, folder_id_by_name(cat["key"]), "image/*"))
+    asyncio.run(move_duplicates_in_gdrive_folder(service, folder_id_by_name("save"), "image/*"))
 
 
 if __name__ == "__main__":
