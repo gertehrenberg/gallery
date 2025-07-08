@@ -13,6 +13,7 @@ from app.routes.gdrive_from_lokal import save_structured_hashes
 from app.utils.logger_config import setup_logger
 from app.utils.move_utils import move_single_image
 from app.utils.progress import list_all_files, save_simple_hashes
+from app.utils.progress_detail import update_detail_status
 
 TASK_TYPE = 'gemini'
 
@@ -270,35 +271,49 @@ async def check_uploading_tasks(service, image_text_pairs, task_type: str = TASK
         logger.error(f"[{task_type}] Fehler bei der Überprüfung der uploading Tasks: {e}")
 
 
-async def check_file_in_folder(service, file_md5, file_name, folder_id: str) -> bool:
+async def check_file_in_folder(
+        service,
+        cached_folder_files,
+        file_md5,
+        file_name) -> dict:
+    result = {}  # Initialize result dictionary
     try:
-        # Kombinierte Query für Effizienz
-        query = f"'{folder_id}' in parents and trashed=false"
+        for cat in Settings.kategorien():
+            folder_name_cat = cat["key"]
+            folder_id_cat = folder_id_by_name(folder_name_cat)
+            result[folder_id_cat] = []  # Initialize list for each category
 
-        files = service.files().list(
-            q=query,
-            fields="files(id, name, md5Checksum)"
-        ).execute()
+            # Get files from cache or fetch if not cached
+            if folder_id_cat not in cached_folder_files:
+                page_token = None
+                files = []
 
-        if files.get('files'):
-            for file in files.get('files', []):
+                while True:
+                    response = service.files().list(
+                        q=f"'{folder_id_cat}' in parents and trashed=false",
+                        fields="nextPageToken, files(id, name, md5Checksum, parents)",
+                        pageSize=Settings.PAGESIZE,
+                        pageToken=page_token
+                    ).execute()
+
+                    files.extend(response.get('files', []))
+                    await update_detail_status(f"Gelesen {folder_name_cat} : {len(files)}")
+
+                    page_token = response.get('nextPageToken')
+                    if not page_token:
+                        cached_folder_files[folder_id_cat] = files  # Cache the files
+                        break
+
+            # Use files from cache
+            cached_files = cached_folder_files[folder_id_cat]
+            for file in cached_files:
                 if file.get('md5Checksum') == file_md5 or file.get('name') == file_name:
-                    return True
-
-        # Rekursive Suche in Unterordnern
-        subfolders = service.files().list(
-            q=f"'{folder_id}' in parents and mimeType='application/vnd.google-apps.folder'",
-            fields="files(id)"
-        ).execute()
-
-        for subfolder in subfolders.get('files', []):
-            if await check_file_in_folder(service, file_md5, file_name, subfolder['id']):
-                return True
+                    result[folder_id_cat].append(file['id'])
 
     except Exception as e:
         logger.error(f"Fehler bei der Dateisuche: {e}")
 
-    return False
+    return result
 
 async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
     """Überwacht den Gemini-Ordner und verarbeitet Bilddateien"""
@@ -343,10 +358,10 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
                      )
                      """)
 
+    gemini_folder_id = folder_id_by_name("gemini")
+
     while True:
         try:
-            imagefolder_id = folder_id_by_name("imagefiles")
-
             await clean_filenames_in_save_folder(service)
 
             # Hole alle Dateien aus dem Save-Ordner
@@ -370,6 +385,8 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
                 await asyncio.sleep(60)
                 continue
 
+            cached_folder_files = {}
+
             # Verarbeite Dateien
             moved = 0
             for file in local_files:
@@ -383,8 +400,27 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
                         logger.info(f"[{task_type}] Datei bereits verarbeitet: {file.name} (MD5: {file_md5})")
                         continue
 
-                    if await check_file_in_folder(service, file_md5, file.name, imagefolder_id):
-                        logger.info(f"[{task_type}] Datei bereits vorhanden: {file.name} (MD5: {file_md5})")
+                    found_folders_dict = await check_file_in_folder(service, cached_folder_files, file_md5, file.name)
+                    found_folders = [folder for folder, files in found_folders_dict.items() if files]
+                    found_file_ids = [file_id for folder_files in found_folders_dict.values() for file_id in
+                                      folder_files]
+
+                    if len(found_folders) == 1 and len(found_file_ids) == 1:
+                        if found_folders[0] != gemini_folder_id:
+                            service.files().update(
+                                fileId=found_file_ids[0],
+                                addParents=gemini_folder_id,
+                                removeParents=found_folders[0],
+                                fields='id, parents'
+                            ).execute()
+                            logger.info(
+                                f"[{task_type}] Datei verschoben: {file.name} (MD5: {file_md5}) in Gemini-Ordner")
+                        else:
+                            logger.info(f"[{task_type}] Datei bereits vorhanden: {file.name} (MD5: {file_md5})")
+                        continue
+                    else:
+                        logger.error(
+                            f"[{task_type}] Datei in {len(found_folders)} Ordnern mit {len(found_file_ids)} Dateien: {file.name} (MD5: {file_md5})")
                         continue
 
                     # Füge neuen Task hinzu oder aktualisiere Status auf 'uploading'
@@ -413,6 +449,8 @@ async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
 
             if moved > 0:
                 logger.info(f"[{task_type}] Verarbeitung abgeschlossen: {moved} neue Bilddateien hochgeladen")
+
+            del cached_folder_files
 
             await asyncio.sleep(60)
 
@@ -639,6 +677,20 @@ def p4():
     image_text_pairs = asyncio.run(get_pairs(save_files_dict))
     asyncio.run(process_save_folder_pairs(service, image_text_pairs))
 
+def p5():
+    """Konfiguration und Start des Gemini-Prozesses"""
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+    Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
+
+    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+
+    asyncio.run(manage_gemini_process(service, TASK_TYPE))
+
 
 if __name__ == "__main__":
-    p4()
+    p5()
