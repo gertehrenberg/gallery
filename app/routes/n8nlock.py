@@ -3,8 +3,15 @@ import os
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
-from fastapi import FastAPI, Query, APIRouter
+from fastapi import FastAPI, Query, APIRouter, Request
 from pydantic import BaseModel
+
+from app.config import Settings
+from app.config_gdrive import sanitize_filename, folder_id_by_name
+from app.routes.auth import load_drive_service
+from app.utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 router = APIRouter()
 
@@ -18,6 +25,96 @@ app = FastAPI(
     description="Service zum Setzen, Prüfen und Entfernen eines einfachen Dateilocks mit TTL."
 )
 
+class FileNameResponse(BaseModel):
+    id: str
+    is_valid :bool
+    txtFileName: str
+
+
+@router.post("/filename", response_model=FileNameResponse)
+async def _filename(request: Request):
+    body = await request.json()
+
+    file_id = None
+    try:
+        file_id = body['id']
+    except Exception as e:
+        logger.error(f"Keine id lesbar: {str(e)}")
+        return FileNameResponse(id='', is_valid=False, txtFileName='')
+
+    file = None
+    try:
+        service = load_drive_service()
+        if service:
+            file = service.files().get(
+                fileId=file_id,
+                fields="id, name, mimeType, trashed, md5Checksum"
+            ).execute()
+            logger.info(f"Datei gefunden: {file.get('name')} (Typ: {file.get('mimeType')})")
+    except Exception as e:
+        logger.error(f"Fehler beim Laden der Datei {file_id}: {str(e)}")
+        return FileNameResponse(id=file_id, is_valid=False, txtFileName='')
+
+    if not file or file.get('trashed', False):
+        logger.warning(f"Datei {file_id} existiert nicht oder ist im Papierkorb")
+        return FileNameResponse(id=file_id, is_valid=False, txtFileName='')
+
+    md5 = sanitize_filename(file.get('md5Checksum'))
+    original_filename = file.get('name')
+    sanitized_filename = sanitize_filename(original_filename)
+
+    logger.info(f"Verarbeite Datei: {original_filename} (MD5: {md5})")
+
+    # Prüfe ob Dateiname sanitized werden muss
+    if original_filename != sanitized_filename:
+        logger.info(f"Dateiname muss bereinigt werden: {original_filename} → {sanitized_filename}")
+        try:
+            service.files().update(
+                fileId=file_id,
+                body={"name": sanitized_filename},
+                fields="id, name"
+            ).execute()
+            logger.info(f"Dateiname erfolgreich bereinigt zu: {sanitized_filename}")
+            original_filename = sanitized_filename
+        except Exception as e:
+            logger.error(f"Fehler beim Bereinigen des Dateinamens: {e}")
+            return FileNameResponse(id=file_id, is_valid=False, txtFileName='')
+
+    if not any(sanitized_filename.endswith(ext.lower()) for ext in Settings.IMAGE_EXTENSIONS):
+        logger.warning(f"Ungültige Dateiendung für {sanitized_filename}")
+        try:
+            logger.info(f"Verschiebe {sanitized_filename} in temp Ordner")
+            service.files().update(
+                fileId=file_id,
+                addParents=folder_id_by_name("temp"),
+                removeParents='root'
+            ).execute()
+            logger.info(f"Datei {sanitized_filename} erfolgreich in temp Ordner verschoben")
+        except Exception as e:
+            logger.error(f"Fehler beim Verschieben der Datei in temp: {e}")
+        return FileNameResponse(id=file_id, is_valid=False, txtFileName='')
+
+    if original_filename.startswith(f"{md5}_"):
+        logger.info(f"Datei {original_filename} hat bereits korrektes MD5-Prefix")
+        return FileNameResponse(id=file_id, is_valid=True, txtFileName=original_filename + ".txt")
+
+    if not original_filename.startswith(f"img_"):
+        logger.info(f"Datei {original_filename} beginnt nicht mit 'img_', keine Umbenennung nötig")
+        return FileNameResponse(id=file_id, is_valid=True, txtFileName=original_filename + ".txt")
+
+    try:
+        new_name = f"{md5}_{original_filename}"
+        logger.info(f"Benenne Datei um: {original_filename} → {new_name}")
+        service.files().update(
+            fileId=file_id,
+            body={"name": new_name},
+            fields="id, name"
+        ).execute()
+        logger.info(f"Erfolgreich umbenannt zu: {new_name}")
+        return FileNameResponse(id=file_id, is_valid=True, txtFileName=new_name + ".txt")
+    except Exception as e:
+        logger.error(f"Fehler beim Umbenennen der Datei {original_filename}: {e}")
+        return FileNameResponse(id=file_id, is_valid=False, txtFileName='')
 
 class LockResponse(BaseModel):
     locked: bool
@@ -25,7 +122,6 @@ class LockResponse(BaseModel):
 
 def _is_stale(timestamp: datetime) -> bool:
     return datetime.now(timezone.utc) - timestamp > timedelta(seconds=LOCK_TTL)
-
 
 @router.post("/lock", response_model=LockResponse)
 def check_lock():

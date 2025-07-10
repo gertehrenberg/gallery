@@ -1,7 +1,9 @@
 import asyncio
 import json
 import os
+import shutil
 import sqlite3
+from collections import defaultdict
 from pathlib import Path
 
 from googleapiclient.http import MediaFileUpload
@@ -12,8 +14,10 @@ from app.routes.auth import load_drive_service, load_drive_service_token
 from app.routes.gdrive_from_lokal import save_structured_hashes
 from app.utils.logger_config import setup_logger
 from app.utils.move_utils import move_single_image
-from app.utils.progress import list_all_files, save_simple_hashes
-from app.utils.progress_detail import update_detail_status
+from app.utils.progress import list_all_files, save_simple_hashes, update_progress_text, update_progress
+from app.utils.progress_detail import update_detail_status, stop_detail_progress, calc_detail_progress, \
+    start_detail_progress, update_detail_progress
+from utils.find_duplicate_md5_filnames_local import rename_file
 
 TASK_TYPE = 'gemini'
 
@@ -278,7 +282,9 @@ async def check_file_in_folder(
         file_name) -> dict:
     result = {}  # Initialize result dictionary
     try:
-        for cat in Settings.kategorien():
+        categories = list(Settings.kategorien())  # Konvertiere zu Liste um sie zu modifizieren
+        categories.append({"key": "temp", "label": "Temporär"})  # Füge temp hinzu
+        for cat in categories:
             folder_name_cat = cat["key"]
             folder_id_cat = folder_id_by_name(folder_name_cat)
             result[folder_id_cat] = []  # Initialize list for each category
@@ -655,6 +661,210 @@ async def process_save_folder_pairs(service, image_text_pairs) -> None:
     except Exception as e:
         logger.error(f"Fehler bei der Überprüfung des Save-Ordners: {e}")
 
+async def rename_double_files_to_md5_and_move_to_recheck_local(image_cache_dir):
+    recheck_dir = image_cache_dir / Settings.RECHECK
+    recheck_dir.mkdir(exist_ok=True)
+
+    # Group files by complete filename (including extension)
+    name_groups = defaultdict(list)
+    md5_groups = defaultdict(list)
+
+    # Scan through all category directories
+    total_dirs = sum(1 for d in image_cache_dir.iterdir() if d.is_dir())
+    for dir_idx, category_dir in enumerate(image_cache_dir.iterdir(), 1):
+        if not category_dir.is_dir():
+            continue
+
+        await update_progress_text(f"Verarbeite Verzeichnis {category_dir.name} ({dir_idx}/{total_dirs})")
+
+        # Count files for progress
+        total_files = sum(1 for f in category_dir.glob('*')
+                          if f.is_file() and f.suffix.lower() in Settings.IMAGE_EXTENSIONS)
+
+        # Scan all image files in this category
+        try:
+            await start_detail_progress(f"Verarbeite Dateien {total_files}")
+            for file_idx, file_path in enumerate(category_dir.glob('*'), 1):
+                if file_path.is_file() and file_path.suffix.lower() in Settings.IMAGE_EXTENSIONS:
+                    md5 = calculate_md5(file_path)
+                    file_info = {
+                        'path': file_path,
+                        'name': file_path.name,
+                        'md5': md5,
+                        'category': category_dir.name
+                    }
+                    name_groups[file_path.name].append(file_info)
+                    md5_groups[md5].append(file_info)
+
+                    # Detail progress nur alle 100 Dateien oder bei der letzten Datei
+                    if file_idx % 100 == 0 or file_idx == total_files:
+                        progress = calc_detail_progress(file_idx, total_files)
+                        await update_detail_progress(
+                            f"Verarbeite Datei {file_idx}/{total_files}",
+                            progress
+                        )
+
+        except Exception as e:
+            await stop_detail_progress(f"❌ Fehler bei Verarbeitung: {e}")
+        finally:
+            await stop_detail_progress(f"✅ {total_files} Dateien verarbeitet")
+
+        # Update overall progress after each directory
+        await update_progress(
+            f"Verzeichnis {category_dir.name} abgeschlossen ({len(name_groups)} Dateien gefunden)",
+            int((dir_idx / total_dirs) * 100)
+        )
+
+    # Verarbeite Dateien mit identischen Namen
+    for filename, files in name_groups.items():
+        if len(files) > 1:
+            await update_progress_text(f"\nVerarbeite Dateien mit identischem Namen: {filename}")
+
+            # Verarbeite lokale Dateien
+            for file in files:
+                try:
+                    # Verwende MD5 als neuen Namen mit Original-Erweiterung
+                    base_name, ext = os.path.splitext(filename)
+                    new_name = f"{file['md5']}{ext}"
+
+                    # Erstelle Zielpfade
+                    source_path = file['path']
+                    recheck_path = recheck_dir / new_name
+
+                    # Erst umbenennen und dann verschieben
+                    if source_path.exists():
+                        # Wenn die Zieldatei bereits existiert, füge eine Nummer hinzu
+                        counter = 1
+                        while recheck_path.exists():
+                            new_name = f"{file['md5']}_{counter}{ext}"
+                            recheck_path = recheck_dir / new_name
+                            counter += 1
+
+                        # Verschiebe die Datei nach recheck mit neuem Namen
+                        shutil.move(str(source_path), str(recheck_path))
+                        await update_progress_text(f"Verschoben nach recheck: {file['name']} -> {new_name}")
+
+                except Exception as e:
+                    await update_progress_text(f"Fehler beim Verarbeiten von {file['name']}: {e}")
+
+    changetemp = False
+    for md5, files in md5_groups.items():
+        if len(files) >= 2:
+            # Für mehrfache Dateien: Zeige MD5 und alle Pfade
+            file_paths = [f"{f['category']}/{f['name']}" for f in files]
+            logger.info(f"🔄 Mehrfach gefunden MD5 {md5}:")
+            for path in file_paths:
+                logger.info(f"    └── {path}")
+
+async def rename_double_files_to_md5_and_move_to_recheck_gdrive(service):
+    cached_folder_files = {}
+    await check_file_in_folder(service, cached_folder_files, None, None)
+
+    recheck_folder_id = folder_id_by_name(Settings.RECHECK)
+    if not recheck_folder_id:
+        await update_progress_text(f"Could not find 'recheck' folder ID")
+        return
+
+    # Create recheck directory locally if it doesn't exist
+    local_recheck_dir = Path(Settings.IMAGE_FILE_CACHE_DIR) / Settings.RECHECK
+    local_recheck_dir.mkdir(exist_ok=True)
+
+    # Group files by complete filename (including extension)
+    name_groups = defaultdict(list)
+    md5_groups = defaultdict(list)
+    for folder_id, files in cached_folder_files.items():
+        for file in files:
+            if file['name'].lower().endswith(tuple(Settings.IMAGE_EXTENSIONS)):
+                name_groups[file['name']].append({
+                    'folder_id': folder_id,
+                    'file_id': file['id'],
+                    'md5': file['md5Checksum'],
+                    'name': file['name']
+                })
+                md5_groups[file['md5Checksum']].append({
+                    'folder_id': folder_id,
+                    'file_id': file['id'],
+                    'md5': file['md5Checksum'],
+                    'name': file['name']
+                })
+
+    changetemp = False
+    for filename, files in md5_groups.items():
+        if len(files) >= 2:
+            # Zähle Dateien in temp und nicht in temp
+            temp_files = []
+            non_temp_files = []
+            for file in files:
+                if file['folder_id'] == folder_id_by_name('temp'):
+                    temp_files.append(file)
+                else:
+                    non_temp_files.append(file)
+
+            # Wenn genau eine Datei NICHT in temp ist und der Rest in temp
+            if len(non_temp_files) == 1 and len(temp_files) >= 1:
+                for temp_file in temp_files:
+                    try:
+                        service.files().delete(fileId=temp_file['file_id']).execute()
+                        await update_progress_text(f"🗑️ Gelöscht aus temp: {temp_file['name']}")
+                        changetemp = True
+                    except Exception as e:
+                        await update_progress_text(f"❌ Fehler beim Löschen von {temp_file['name']}: {e}")
+                continue
+        elif len(files) == 1:
+            file = files[0]
+            # Wenn die einzige Datei in temp ist, verschiebe sie nach recheck
+            if file['folder_id'] == folder_id_by_name('temp'):
+                try:
+                    recheck_folder_id = folder_id_by_name('recheck')
+                    # Verschiebe die Datei nach recheck
+                    service.files().update(
+                        fileId=file['file_id'],
+                        addParents=recheck_folder_id,
+                        removeParents=file['folder_id']
+                    ).execute()
+                    await update_progress_text(f"↗️ Verschoben nach recheck: {file['name']}")
+                    changetemp = True
+                except Exception as e:
+                    await update_progress_text(f"❌ Fehler beim Verschieben von {file['name']}: {e}")
+                continue
+
+    if changetemp:
+        await rename_double_files_to_md5_and_move_to_recheck_gdrive(service)
+
+    # Process only files with identical names
+    for filename, files in name_groups.items():
+        if len(files) > 1:
+            await update_progress_text(f"\nProcessing files with identical name: {filename}")
+
+            # Process GDrive files
+            for file in files:
+                try:
+                    # Use MD5 as the new name with original extension
+                    base_name, ext = os.path.splitext(filename)
+                    new_name = f"{file['md5']}{ext}"
+
+                    # First rename the file
+                    rename_file(service, file['file_id'], new_name)
+                    await update_progress_text(f"Renamed in GDrive: {file['name']} -> {new_name}")
+
+                    # Then move it to recheck folder
+                    file_metadata = service.files().get(
+                        fileId=file['file_id'],
+                        fields='parents'
+                    ).execute()
+                    previous_parents = ','.join(file_metadata.get('parents', []))
+
+                    # Move to recheck folder
+                    service.files().update(
+                        fileId=file['file_id'],
+                        addParents=recheck_folder_id,
+                        removeParents=previous_parents,
+                        fields='id, parents'
+                    ).execute()
+                    await update_progress_text(f"Moved to recheck: {new_name}")
+
+                except Exception as e:
+                    await update_progress_text(f"Error processing file in GDrive {file['name']}: {e}")
 
 def p4():
     """Konfiguration und Start des Gemini-Prozesses"""
@@ -692,5 +902,17 @@ def p5():
     asyncio.run(manage_gemini_process(service, TASK_TYPE))
 
 
+def p9():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+
+    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+    #asyncio.run(rename_double_files_to_md5_and_move_to_recheck_gdrive(service))
+    asyncio.run(rename_double_files_to_md5_and_move_to_recheck_local(Path(Settings.IMAGE_FILE_CACHE_DIR)))
+
 if __name__ == "__main__":
-    p5()
+    p9()

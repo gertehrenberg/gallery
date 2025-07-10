@@ -84,7 +84,7 @@ async def startup_event():
     import asyncio
     from app.services.manage_n8n import manage_gemini_process
     global background_task
-    # background_task = asyncio.create_task(manage_gemini_process(None))
+    background_task = asyncio.create_task(manage_gemini_process(None))
 
 def local():
     import uvicorn

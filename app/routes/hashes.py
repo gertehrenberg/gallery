@@ -14,7 +14,7 @@ from app.config_gdrive import sanitize_filename, folder_id_by_name, SettingsGdri
 from app.database import clear_folder_status_db_by_name
 from app.routes.auth import load_drive_service_token
 from app.routes.gdrive_from_lokal import save_structured_hashes
-from app.services.image_processing import find_png_file
+from app.services.image_processing import find_png_file, download_text_file
 from app.tools import readimages
 from app.utils.db_utils import save_folder_status_to_db, load_folder_status_from_db
 from app.utils.progress import init_progress_state, update_progress, update_progress_text, \
