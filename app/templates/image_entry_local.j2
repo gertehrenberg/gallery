@@ -64,21 +64,39 @@
                 <div id="checkboxes-{{ image_id }}">
                     <form class="checkbox-container" style="line-height: 0.8;">
                         <input name="image_id" type="hidden" value="{{ image_id }}"/>
-                        {% for k in kategorien %}
-                            <div style="display: flex; align-items: center; margin: 1px 0;">
-                <span onclick="move('{{ k.key }}', '{{ image_name }}')"
-                      style="cursor: pointer; font-size: 14px; margin-right: 6px;"
-                      title="Move to {{ k.label }}">📥</span>
-                                <label style="margin: 0; padding: 0;">
-                                    <input name="{{ image_id }}_{{ k.key }}"
-                                           type="checkbox"
-                                           data-group="{{ image_id }}_group"
-                                           onchange="handleCheckboxChange(this)"
-                                            {{ 'checked' if status.get(k.key) else '' }}>
-                                    {{ k.icon }} {{ k.label }}
-                                </label>
-                            </div>
-                        {% endfor %}
+                        <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                          {% for k in kategorien %}
+                            <tr>
+                              <!-- Move-Icon Spalte -->
+                              <td style="width:18px; text-align:left; padding:1px 3px;">
+                                <span
+                                  onclick="move('{{ k.key }}', '{{ image_name }}')"
+                                  style="cursor:pointer; font-size:12px;"
+                                  title="Move to {{ k.label }}"
+                                >📥</span>
+                              </td>
+                              <!-- Checkbox Spalte -->
+                              <td style="width:18px; text-align:left; padding:1px 3px;">
+                                <input
+                                  name="{{ image_id }}_{{ k.key }}"
+                                  type="checkbox"
+                                  data-group="{{ image_id }}_group"
+                                  onchange="handleCheckboxChange(this)"
+                                  style="margin:0; transform: scale(0.85);"
+                                  {{ 'checked' if status.get(k.key) else '' }}
+                                />
+                              </td>
+                              <!-- Icon Spalte -->
+                              <td style="width:18px; text-align:left; padding:1px 3px;">
+                                {{ k.icon }}
+                              </td>
+                              <!-- Label Spalte -->
+                              <td style="text-align:left; padding:1px 3px;">
+                                {{ k.label }}
+                              </td>
+                            </tr>
+                          {% endfor %}
+                        </table>
                     </form>
                 </div>
                 <script>

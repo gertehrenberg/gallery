@@ -21,16 +21,29 @@ error() {
 # Initialize variables
 EXCLUDE_FILE=""
 LOGFILE=""
+PARTIAL_DIR=".rsync-partial"
 
-# Cleanup-Function
+# Definiere wichtige Pfade zuerst
+SRC="/home/gert_ehrenberg/gallery"
+DEST="/mnt/f/Sicherungen/$(hostname)"
+NOW=$(date +"%Y-%m-%d_%H-%M")
+LATEST="$DEST/backup_$NOW"
+PREV=$(readlink -f "$DEST/letzte" 2>/dev/null || echo "")
+
+# Cleanup-Function mit zusätzlicher Fehlerbehandlung
 cleanup() {
+    local exit_code=$?
     if [[ -n "$EXCLUDE_FILE" && -f "$EXCLUDE_FILE" ]]; then
         rm -f "$EXCLUDE_FILE"
+    fi
+    if [[ $exit_code -ne 0 ]]; then
+        error "Skript wurde mit Fehlercode $exit_code beendet"
     fi
 }
 
 # Register cleanup function
 trap cleanup EXIT
+trap 'error "Skript wurde unterbrochen"; exit 1' INT TERM
 
 # 0) Prüfen, ob Ziel gemountet ist
 if ! mountpoint -q /mnt/f; then
@@ -38,25 +51,19 @@ if ! mountpoint -q /mnt/f; then
     exit 1
 fi
 
-# 1) Quelle und Ziel
-SRC="/home/gert_ehrenberg/gallery"
+# 1) Prüfe Quellverzeichnis
 if [[ ! -d "$SRC" ]]; then
     error "Fehler: Quellverzeichnis $SRC existiert nicht."
     exit 1
 fi
 
-DEST="/mnt/f/Sicherungen/$(hostname)"
+# Erstelle Zielverzeichnis
 mkdir -p "$DEST" || {
     error "Fehler: Konnte Zielverzeichnis $DEST nicht erstellen."
     exit 1
 }
 
-# 2) Zeitstempel & Pfade
-NOW=$(date +"%Y-%m-%d_%H-%M")
-LATEST="$DEST/backup_$NOW"
-PREV=$(readlink -f "$DEST/letzte" 2>/dev/null || echo "")
-
-# Überprüfe Festplattenplatz
+# 2) Überprüfe Festplattenplatz
 required_space=$(du -sb "$SRC" | cut -f1)
 available_space=$(df -B1 --output=avail "$DEST" | tail -n1)
 if [[ $available_space -lt $required_space ]]; then
@@ -99,10 +106,6 @@ log "${GREEN}Starte Backup: $NOW${NC}"
 log "Quelle: $SRC"
 log "Ziel: $LATEST"
 
-# Erstelle notwendige Verzeichnisse
-mkdir -p "$LATEST/cache/thumbnailfiles300/.rsync-partial"
-chmod 755 "$LATEST/cache/thumbnailfiles300/.rsync-partial"
-
 # 5) Rsync mit maximaler Fortschrittsanzeige und Wiederaufnahme-Funktion
 RSYNC_OPTS=(
     -aHAX                    # Archive mode + ACLs + extended attributes
@@ -110,24 +113,31 @@ RSYNC_OPTS=(
     --delete-excluded        # Delete excluded files too
     --exclude-from="$EXCLUDE_FILE"
     --partial               # Behalte teilweise übertragene Dateien
-    --partial-dir="$LATEST/cache/thumbnailfiles300/.rsync-partial"  # Absoluter Pfad für partial-dir
+    --partial-dir="$PARTIAL_DIR"  # Relativer Pfad für partial-dir
     --delay-updates         # Verzögere Updates bis zum Schluss
-    --info=progress2        # Detaillierte Fortschrittsanzeige
-    --info=name0           # Zeige aktuelle Datei
-    --info=stats2          # Detaillierte Statistiken
+    --progress             # Zeige Fortschritt
+    --verbose              # Ausführliche Ausgabe
+    --stats                # Zeige Statistiken am Ende
     --human-readable       # Menschenlesbare Größen
     --numeric-ids          # Keine UID/GID-Auflösung
     --one-file-system      # Bleibe im selben Dateisystem
     --checksum            # Nutze Checksummen statt Zeitstempel
+    --timeout=180         # Timeout nach 3 Minuten
 )
 
-# Wenn ein vorheriges, unvollständiges Backup existiert
+# Verbesserte Backup-Fortsetzungslogik
 if [[ -d "$LATEST" ]]; then
-    log "${YELLOW}Vorheriges unvollständiges Backup gefunden: $LATEST"
-    log "Setze Backup fort...${NC}"
+    if [[ -d "$LATEST/$PARTIAL_DIR" ]]; then
+        log "${YELLOW}Vorheriges unvollständiges Backup gefunden: $LATEST"
+        log "Setze Backup fort...${NC}"
+    else
+        mkdir -p "$LATEST/$PARTIAL_DIR"
+        chmod 755 "$LATEST/$PARTIAL_DIR"
+    fi
 else
     log "${GREEN}Starte neues Backup: $LATEST${NC}"
-    mkdir -p "$LATEST"
+    mkdir -p "$LATEST/$PARTIAL_DIR"
+    chmod 755 "$LATEST/$PARTIAL_DIR"
 fi
 
 # Wenn ein vorheriges vollständiges Backup existiert
@@ -141,12 +151,12 @@ log "${GREEN}Starte Synchronisation...${NC}"
 if ! rsync "${RSYNC_OPTS[@]}" "$SRC/" "$LATEST/"; then
     error "rsync wurde unterbrochen oder ist fehlgeschlagen."
     log "${YELLOW}Sie können das Backup später mit demselben Befehl fortsetzen."
-    log "Teilweise übertragene Dateien bleiben in $LATEST/cache/thumbnailfiles300/.rsync-partial${NC}"
+    log "Teilweise übertragene Dateien bleiben in $LATEST/$PARTIAL_DIR${NC}"
     exit 1
 fi
 
 # Nach erfolgreichem rsync
-rm -rf "$LATEST/cache/thumbnailfiles300/.rsync-partial"
+rm -rf "$LATEST/$PARTIAL_DIR"
 
 # 6) "letzte"-Symlink aktualisieren
 if ! ln -nfs "$LATEST" "$DEST/letzte"; then
@@ -161,3 +171,8 @@ log "Logdatei: $LOGFILE${NC}"
 echo -e "\n${GREEN}Backup-Statistiken:${NC}"
 du -sh "$LATEST"
 echo "Anzahl Dateien: $(find "$LATEST" -type f | wc -l)"
+echo "Anzahl Verzeichnisse: $(find "$LATEST" -type d | wc -l)"
+echo "Backup-Größe: $(du -sh "$LATEST" | cut -f1)"
+if [[ -n "$PREV" ]]; then
+    echo "Vorheriges Backup: $(du -sh "$PREV" | cut -f1)"
+fi

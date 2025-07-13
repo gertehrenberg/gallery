@@ -126,6 +126,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
 
     help_links = [
         {"label": "n8n", "url": "http://localhost", "icon": "⚙️"},
+        {"label": "ComfyUi", "url": "http://comfyui.local:8188", "icon": "🎨"},
         {"label": "n8n-server", "url": "https://nw1cs857bq8z5p-5678.proxy.runpod.net/", "icon": "⚙️"},
         {"label": "openai", "url": "https://platform.openai.com/settings/organization/usage", "icon": "🧠"},
         {"label": "runpod", "url": "https://console.runpod.io/user/billing", "icon": "☁️"}
