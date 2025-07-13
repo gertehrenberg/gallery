@@ -19,7 +19,7 @@ reverse_score_type_map = {v: k for k, v in score_type_map.items()}
 # Basis-Kategorien für die Bildergalerie
 _base_kategorien: List[dict] = [
     {"key": "real", "label": "Alle Bilder", "icon": "🖼️"},
-    {"key": "top", "label": "Fast Perfekt", "icon": "💎"},
+    {"key": "top", "label": "Perfekt", "icon": "😉"},
     {"key": "delete", "label": "Löschen", "icon": "❌"},
     {"key": "recheck", "label": "Neu", "icon": "🔄"},
     {"key": "bad", "label": "Schlecht", "icon": "⛔"},
@@ -109,6 +109,7 @@ class Settings:
     PAGESIZE = 1000
 
     RECHECK = "recheck"
+    COMFYUI = "comfyui"
 
     # Sonstige Konstanten
     KEIN_TEXT_GEFUNDEN = "Kein Text gefunden"

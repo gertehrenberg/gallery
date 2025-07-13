@@ -17,9 +17,8 @@ from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality
 from app.services.thumbnail import get_thumbnail_path, generate_thumbnail, thumbnail
 from app.tools import find_image_id_by_name, newpaircache
-from app.utils.db_utils import delete_checkbox_status
+from app.utils.db_utils import delete_checkbox_status, load_comfyui_count
 from app.utils.logger_config import setup_logger
-from app.utils.progress import update_progress_text
 from app.utils.score_utils import delete_scores
 
 logger = setup_logger(__name__)
@@ -198,7 +197,6 @@ def download_and_save_image(folder_name: str, image_name: str, image_id: str) ->
             return None
 
     return thumbnail_path
-
 
 def prepare_image_data(count: int, folder_name: str, image_name: str):
     logger.info(f"📦 Starte prepare_image_data() für {image_name}")

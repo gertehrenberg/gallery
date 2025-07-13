@@ -1032,6 +1032,57 @@
             });
     }
 
+    function handleCheckboxChange(checkbox) {
+        const group = checkbox.dataset.group;
+        const checkboxes = document.querySelectorAll(`input[data-group="${group}"]`);
+
+        if (checkbox.checked) {
+            checkboxes.forEach(cb => {
+                if (cb !== checkbox) {
+                    cb.checked = false;
+                }
+            });
+        }
+
+        const formData = new FormData();
+        formData.append('image_id', checkbox.name.split('_')[0]);
+        checkboxes.forEach(cb => {
+            formData.append(cb.name, cb.checked);
+        });
+
+        fetch('/gallery/save', {
+            method: 'POST',
+            body: formData
+        });
+    }
+
+    // Funktion zum Speichern der Gen-Anzahl
+    function saveGenCount(imageId, count) {
+        fetch(
+            `/gallery/savegencount?image_id=${imageId}&comfyui_count=${count}`,
+            {method: 'POST'}
+        )
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    console.log('Gen-Anzahl gespeichert:', data);
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("page", PAGE);
+                    url.searchParams.set("count", COUNT);
+                    url.searchParams.set("folder", FOLDER);
+                    url.searchParams.set("textflag", TEXTFLAG);
+                    window.location.href = url.toString();
+                } else {
+                    console.error('Fehler beim Speichern:', data.message || data.detail);
+                    alert('Fehler beim Speichern: ' + (data.message || data.detail || 'Unbekannter Fehler'));
+                }
+            })
+            .catch(error => {
+                console.error('Netzwerkfehler:', error);
+                alert('Netzwerkfehler: ' + error);
+            });
+    }
+
 </script>
 </body>
 </html>

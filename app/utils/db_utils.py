@@ -147,3 +147,35 @@ def load_scores_from_db(db_path, image_name):
         score_map[f"score{idx}"] = score
 
     return score_map
+
+
+def load_comfyui_count(db_path, image_id: str) -> int:
+    """
+    Lädt den gespeicherten Wert für 'comfyui_count' eines Bildes aus der Tabelle 'text_status'.
+    Gibt 0 zurück, wenn kein Eintrag gefunden wurde.
+    """
+    try:
+        with sqlite3.connect(db_path) as conn:
+            key = "comfyui_count"
+            cursor = conn.execute(
+                """
+                SELECT value
+                FROM text_status
+                WHERE image_name = ?
+                  AND field = ?
+                """,
+                (image_id,key,)
+            )
+            row = cursor.fetchone()
+            if row and row[0] is not None:
+                try:
+                    logger.info(f"[load_comfyui_count] ✅ Textfeld '{key}' für {image_id} geladen. Wert: {int(row[0])}")
+                    return int(row[0])
+                except ValueError:
+                    logger.warning(
+                        f"Wert für comfyui_count bei {image_id} ist kein Integer: {row[0]!r}. Verwende 0 als Fallback."
+                    )
+            return 0
+    except sqlite3.Error as e:
+        logger.error(f"Fehler beim Laden des comfyui_count für {image_id}: {e}")
+        return 0

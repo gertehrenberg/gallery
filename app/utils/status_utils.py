@@ -41,14 +41,6 @@ def load_status(image_name: str):
                                 """, (image_name,))
             for row in rows:
                 status[row[0]] = bool(row[1])
-
-            rows = conn.execute("""
-                                SELECT field, value
-                                FROM text_status
-                                WHERE image_name = ?
-                                """, (image_name,))
-            for row in rows:
-                status[row[0]] = row[1]
         logger.info(f"[load_status] ✅ Status geladen: {status}")
     except sqlite3.Error as e:
         logger.error(f"[load_status] ❌ Fehler beim Laden des Status für {image_name}: {e}")
@@ -71,12 +63,6 @@ def save_status(image_id: str, data: dict):
                         VALUES (?, ?, ?)
                     """, (image_name, key, checked))
                     logger.info(f"[save_status] ✅ Checkbox '{key}' für {image_name} gespeichert. Wert: {checked}")
-                else:
-                    conn.execute("""
-                        INSERT OR REPLACE INTO text_status (image_name, field, value)
-                        VALUES (?, ?, ?)
-                    """, (image_name, key, value))
-                    logger.info(f"[save_status] ✅ Textfeld '{key}' für {image_name} gespeichert. Wert: {value}")
             conn.commit()
     except sqlite3.Error as e:
         logger.error(f"[save_status] ❌ Fehler beim Speichern des Status für {image_name}: {e}")

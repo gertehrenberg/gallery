@@ -2,6 +2,7 @@ import asyncio
 import json
 import math
 import os
+import sqlite3
 import time
 from pathlib import Path
 from urllib.parse import unquote
@@ -20,6 +21,7 @@ from app.routes.dashboard import load_rendered_html_file, save_rendered_html_fil
 from app.scores.texte import search_recoll
 from app.services.image_processing import prepare_image_data, clean
 from app.tools import newpaircache
+from app.utils.db_utils import load_comfyui_count
 from app.utils.logger_config import setup_logger
 from app.utils.move_utils import move_marked_images_by_checkbox, get_checkbox_count, move_single_image
 from app.utils.progress import update_progress, stop_progress, progress_state, update_progress_text, init_progress_state
@@ -196,6 +198,10 @@ def show_images_gallery(
             image_id_text = f"{image_id}_{textflag}"
         else:
             image_id_text = f"{image_id}_{textflag}_{Settings.get_user_type()}"
+
+        if Settings.COMFYUI == folder_name:
+            image_id_text = f"{folder_name}_{image_id_text}"
+
         if rendered_html := load_rendered_html_file(Settings.RENDERED_HTML_DIR, image_id_text):
             logger.debug(f"[Gallery] Cache-Hit für {image_id_text}")
             images_html_parts.append(rendered_html)
@@ -278,14 +284,20 @@ def show_images_gallery(
 
         status_json = json.dumps({f"{image_id}_{key}": value for key, value in status.items()})
 
+        comfyui_count = load_comfyui_count(Settings.DB_PATH, image_id)
+
         images_html_parts.append(f"""
         <script>
         const checkboxStatus_{image_id} = {status_json};
         for (const key in checkboxStatus_{image_id}) {{
-            const checkbox = document.querySelector(`input[name="${{key}}"]`);  // <-- RICHTIG: Backticks!
+            const checkbox = document.querySelector(`input[name=\"${{key}}\"]`);  // <-- RICHTIG: Backticks!
             if (checkbox) {{
                 checkbox.checked = checkboxStatus_{image_id}[key];
             }}
+        }}
+        const input_{image_id} = document.getElementById('comfyui_count_{image_id}');
+        if (input_{image_id}) {{
+            input_{image_id}.value = {comfyui_count};
         }}
         </script>
         """)
@@ -348,6 +360,35 @@ def loading_status(user: str = Depends(require_login)):
         "folders_loaded": Settings.folders_loaded,
         "folders_total": Settings.folders_total
     }
+
+
+@router.post("/savegencount")
+async def save_gen_count(
+        image_id: str = Query(..., description="ID des Bildes"),
+        comfyui_count: int = Query(..., description="Anzahl der Generierungen"),
+        user: dict = Depends(require_login)
+) -> JSONResponse:
+    """
+    Speichert die ComfyUI-Generierungsanzahl für ein Bild.
+    """
+    logger.info(f"🔄 savegencount({image_id}{comfyui_count})")
+
+    try:
+        with sqlite3.connect(Settings.DB_PATH) as conn:
+            key = "comfyui_count"
+            conn.execute("""
+                INSERT OR REPLACE INTO text_status (image_name, field, value)
+                VALUES (?, ?, ?)
+            """, (image_id, key, comfyui_count))
+            logger.info(f"[savegencount] ✅ Textfeld '{key}' für {image_id} gespeichert. Wert: {comfyui_count}")
+            conn.commit()
+    except sqlite3.Error as e:
+        logger.error(f"[savegencount] ❌ Fehler beim Speichern des Status für {image_id}: {e}")
+        raise
+
+    return JSONResponse(content={
+        "status": "ok"
+    })
 
 
 @router.post("/moveToFolder/{checkbox}")
@@ -419,7 +460,7 @@ async def verarbeite_einzelnes_bild(
         current_folder: str = Query(..., alias="folder"),
         count: str = Query("6"),
         page: str = Query("1"),
-        textflag :str = Query("1"),
+        textflag: str = Query("1"),
         user: str = Depends(require_login)
 ) -> MoveResponse:
     folder_name = checkbox
