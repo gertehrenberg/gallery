@@ -321,6 +321,7 @@ async def check_file_in_folder(
 
     return result
 
+
 async def manage_gemini_process(service: None, task_type: str = TASK_TYPE):
     """Überwacht den Gemini-Ordner und verarbeitet Bilddateien"""
     logger.info(f"[{task_type}] Starte Überwachungsprozess")
@@ -661,6 +662,7 @@ async def process_save_folder_pairs(service, image_text_pairs) -> None:
     except Exception as e:
         logger.error(f"Fehler bei der Überprüfung des Save-Ordners: {e}")
 
+
 async def rename_double_files_to_md5_and_move_to_recheck_local(image_cache_dir):
     recheck_dir = image_cache_dir / Settings.RECHECK
     recheck_dir.mkdir(exist_ok=True)
@@ -755,6 +757,7 @@ async def rename_double_files_to_md5_and_move_to_recheck_local(image_cache_dir):
             logger.info(f"🔄 Mehrfach gefunden MD5 {md5}:")
             for path in file_paths:
                 logger.info(f"    └── {path}")
+
 
 async def rename_double_files_to_md5_and_move_to_recheck_gdrive(service):
     cached_folder_files = {}
@@ -866,6 +869,7 @@ async def rename_double_files_to_md5_and_move_to_recheck_gdrive(service):
                 except Exception as e:
                     await update_progress_text(f"Error processing file in GDrive {file['name']}: {e}")
 
+
 def p4():
     """Konfiguration und Start des Gemini-Prozesses"""
     Settings.DB_PATH = '../../gallery_local.db'
@@ -886,6 +890,7 @@ def p4():
     # Finde Bild/Text Paare
     image_text_pairs = asyncio.run(get_pairs(save_files_dict))
     asyncio.run(process_save_folder_pairs(service, image_text_pairs))
+
 
 def p5():
     """Konfiguration und Start des Gemini-Prozesses"""
