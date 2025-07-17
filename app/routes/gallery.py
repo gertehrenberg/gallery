@@ -17,6 +17,7 @@ from app.config import Settings, score_type_map  # Importiere die Settings-Klass
 from app.config_gdrive import SettingsGdrive
 from app.database import get_scores_filtered_by_expr
 from app.dependencies import require_login
+from app.routes.auth import load_drive_service_token
 from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
 from app.scores.texte import search_recoll
 from app.services.image_processing import prepare_image_data, clean
@@ -27,6 +28,7 @@ from app.utils.move_utils import move_marked_images_by_checkbox, get_checkbox_co
 from app.utils.progress import update_progress, stop_progress, progress_state, update_progress_text, init_progress_state
 from app.utils.score_parser import parse_score_expression
 from app.utils.status_utils import set_status, save_status, load_status
+from utils.move_local_files_from_gdrive import download_file
 
 DEFAULT_COUNT: str = "6"
 DEFAULT_FOLDER: str = "real"
@@ -472,6 +474,12 @@ async def verarbeite_einzelnes_bild(
 
     success = await move_single_image(image_name, current_folder, folder_name)
 
+    if Settings.COMFYUI == folder_name:
+        page = 1
+        count = 6
+        current_folder = Settings.COMFYUI
+        textflag = 4
+
     redirect_url = f"/gallery/?page={page}&count={count}&folder={current_folder}&textflag={textflag}"
 
     logger.info(f"📦 URL {redirect_url}")
@@ -491,6 +499,7 @@ async def verarbeite_einzelnes_bild(
             redirect=redirect_url,
             moved=0
         )
+
 
 @router.get("/verarbeite/check/{checkbox}")
 def verarbeite_check_checkbox(checkbox: str, user: str = Depends(require_login)):
@@ -739,5 +748,62 @@ def p4():
     asyncio.run(gen_pages("delete"))
 
 
+async def download_comfyui_gifs(service):
+    """Downloads GIF files from Google Drive folder and saves them in DATA_DIR/comfyui_gif"""
+
+    # Erstelle Zielverzeichnis falls es nicht existiert
+    gif_dir = Path(Settings.IMAGE_FILE_CACHE_DIR).parent / 'comfyui_gif' / file_nmae
+    gif_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+
+        # ID des Quell-Ordners
+        folder_id = "1tw4DeaZiK8IVmDcENm9exSrXfXKX8x6R"
+
+        # Suche nach GIF Dateien im Ordner
+        response = service.files().list(
+            q=f"'{folder_id}' in parents and mimeType='image/gif' and trashed=false",
+            spaces='drive',
+            fields="files(id, name)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True
+        ).execute()
+
+        files = response.get('files', [])
+
+        # Lade jedes GIF herunter
+        for file in files:
+            file_name = file['name']
+            file_id = file['id']
+            target_path = gif_dir / file_name
+
+            if not target_path.exists():
+                logger.info(f"Lade {file_name} herunter...")
+                # Direktes Herunterladen mit der download_file Funktion aus move_local_files_from_gdrive.py
+                try:
+                    download_file(service, file_id, target_path)
+                    logger.info(f"✅ {file_name} erfolgreich heruntergeladen")
+                except Exception as e:
+                    logger.error(f"❌ Fehler beim Herunterladen von {file_name}: {e}")
+            else:
+                logger.info(f"⏩ {file_name} existiert bereits, überspringe...")
+
+    except Exception as e:
+        logger.error(f"Fehler beim Herunterladen der GIF-Dateien: {e}")
+
+
+def p5():
+    Settings.DB_PATH = '../../gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+
+    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+
+    asyncio.run(download_comfyui_gifs(service))
+
+
 if __name__ == "__main__":
-    p4()
+    p5()

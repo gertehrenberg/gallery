@@ -90,6 +90,8 @@ class Settings:
     IMAGE_EXTENSIONS: Tuple[str, ...] = (".bmp", ".gif", ".jpg", ".jpeg", ".png")
     IMAGE_FILE_CACHE_DIR = '/data/imagefiles'
 
+    GIF_FILE_CACHE_PATH = Path(DATA_DIR) / 'comfyui_gif'
+
     TEXT_EXTENSIONS = {".txt"}
     TEXT_FILE_CACHE_DIR = DATA_DIR / TEXTFILES_FOLDERNAME
 

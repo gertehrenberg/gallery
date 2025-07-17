@@ -18,6 +18,7 @@ services:
       - ./cache/thumbnailfiles300:/app/thumbnails
       - ./cache/imagefiles:/app/imagefiles
       - ./cache/facefiles:/app/facefiles
+      - ./cache/comfyui_gif:/app/comfyui_gif
     environment:
       - HOME=/data
       - XDG_CONFIG_HOME=/data

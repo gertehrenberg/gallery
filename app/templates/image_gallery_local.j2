@@ -564,7 +564,7 @@
         img.src = "/gallery/static/imagefiles/" + image_name;
     }
 
-    function openModalThumb(image_name) {
+    function openModalThumb(image_pfad) {
         const modal = document.getElementById("meinModal");
         const img = document.getElementById("zoomImage");
         const spinner = document.getElementById("spinner");
@@ -586,7 +586,7 @@
             img.addEventListener('dblclick', () => panzoomInstance.reset());
         };
 
-        img.src = "/gallery/static/facefiles/" + image_name;
+        img.src = image_pfad
     }
 
     function closeModal() {

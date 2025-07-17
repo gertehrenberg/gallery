@@ -11,7 +11,7 @@ router = APIRouter()
 
 @router.get("/thumbnails/{file_path:path}")
 @router.get("/static/thumbnails/{file_path:path}")
-async def get_thumbnail(file_path: str, request: Request):
+async def _thumbnails(file_path: str, request: Request):
     file = Path("/app/thumbnails") / file_path
     print("🔍 Angeforderte Datei:", file)
     print("📁 Existiert:", file.exists())
@@ -22,7 +22,7 @@ async def get_thumbnail(file_path: str, request: Request):
 
 @router.get("/imagefiles/{file_path:path}")
 @router.get("/static/imagefiles/{file_path:path}")
-async def get_imagefile(file_path: str, request: Request, user: str = Depends(require_login)):
+async def _imagefiles(file_path: str, request: Request, user: str = Depends(require_login)):
     """Liefert eine Bilddatei. Wenn nicht vorhanden, wird anhand der Kategorien gesucht."""
     base_path = Path("/app/imagefiles")
     file = base_path / file_path
@@ -45,10 +45,21 @@ async def get_imagefile(file_path: str, request: Request, user: str = Depends(re
 
 @router.get("/facefiles/{file_path:path}")
 @router.get("/static/facefiles/{file_path:path}")
-async def get_facefile(file_path: str, request: Request, user: str = Depends(require_login)):
+async def _facefiles(file_path: str, request: Request, user: str = Depends(require_login)):
     """Liefert eine Datei mit Gesichtsausschnitten."""
     # decoded_file_path = unquote(file_path) # Entfernt
     file = Path("/app/facefiles") / file_path  # Zurück zum Originalpfad
+    if file.exists() and file.is_file():
+        return FileResponse(file)
+    raise HTTPException(status_code=404)
+
+
+@router.get("/comfyui_gif/{file_path:path}")
+@router.get("/static/comfyui_gif/{file_path:path}")
+async def _comfyui_gif(file_path: str, request: Request, user: str = Depends(require_login)):
+    """Liefert eine Datei mit Gesichtsausschnitten."""
+    # decoded_file_path = unquote(file_path) # Entfernt
+    file = Path("/app/comfyui_gif") / file_path  # Zurück zum Originalpfad
     if file.exists() and file.is_file():
         return FileResponse(file)
     raise HTTPException(status_code=404)

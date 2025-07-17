@@ -1,10 +1,8 @@
-import asyncio
-import json
 import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Any
 
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
@@ -17,7 +15,7 @@ from app.scores.nsfw import load_nsfw
 from app.scores.quality import load_quality
 from app.services.thumbnail import get_thumbnail_path, generate_thumbnail, thumbnail
 from app.tools import find_image_id_by_name, newpaircache
-from app.utils.db_utils import delete_checkbox_status, load_comfyui_count
+from app.utils.db_utils import delete_checkbox_status
 from app.utils.logger_config import setup_logger
 from app.utils.score_utils import delete_scores
 
@@ -198,6 +196,7 @@ def download_and_save_image(folder_name: str, image_name: str, image_id: str) ->
 
     return thumbnail_path
 
+
 def prepare_image_data(count: int, folder_name: str, image_name: str):
     logger.info(f"📦 Starte prepare_image_data() für {image_name}")
     image_name = image_name.lower()
@@ -217,27 +216,54 @@ def prepare_image_data(count: int, folder_name: str, image_name: str):
 
     quality_scores = load_quality(Settings.DB_PATH, Settings.IMAGE_FILE_CACHE_DIR, folder_name, image_name)
     nsfw_scores = load_nsfw(Settings.DB_PATH, folder_name, image_name)
-    faces = load_faces(Settings.DB_PATH, folder_name, image_name, image_id)
+    extra_thumbnails1 = add_gif_thumbnail(image_name)
+    extra_thumbnails2 = load_faces(Settings.DB_PATH, folder_name, image_name, image_id)
+    extra_thumbnails = extra_thumbnails1 + extra_thumbnails2
 
     return {
         "thumbnail_src": thumbnail_src,
         "image_id": image_id,
         "quality_scores": quality_scores,
         "nsfw_scores": nsfw_scores,
-        "extra_thumbnails": faces
+        "extra_thumbnails": extra_thumbnails
     }
 
 
-def delete_rendered_html_file(file_dir: Path, file_name: str) -> bool:
-    file_path = file_dir / (file_name + ".j2")
-    if file_path.is_file():
-        try:
-            file_path.unlink()
-            logger.info(f"[delete_rendered_html_file] ✅ gelöscht: {file_path}")
-            return True
-        except Exception as e:
-            logger.error(f"[delete_rendered_html_file] ❌ Fehler: {e}")
-    return False
+def add_gif_thumbnail(image_name: str) -> list[Any] | list[dict[str, str]]:
+    gif_file = Settings.GIF_FILE_CACHE_PATH / f"{image_name}.gif"
+    gif_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if not gif_file.exists():
+        return []
+
+    logger.info(f"[Gallery] Gif-Datei gefunden: {gif_file}")
+
+    # Verwende relative Pfade für die URLs
+    relative_path = gif_file.relative_to(Settings.DATA_DIR)
+
+    extra_thumbnails = [{
+        "src": f"/gallery/static/{relative_path}",
+        "link": f"/gallery/static/{relative_path}",
+        "image_name": f"/gallery/static/{Settings.GIF_FILE_CACHE_PATH.name}/{gif_file.name}"
+    }]
+
+    return extra_thumbnails
+
+
+def delete_rendered_html_file(file_dir: Path, image_id: str) -> bool:
+    try:
+        success = False
+        for file_path in file_dir.glob(f"*{image_id}*"):
+            try:
+                file_path.unlink()
+                logger.info(f"[delete_rendered_html_file] ✅ gelöscht: {file_path}")
+                success = True
+            except Exception as e:
+                logger.error(f"[delete_rendered_html_file] ❌ Fehler beim Löschen von {file_path}: {e}")
+        return success
+    except Exception as e:
+        logger.error(f"[delete_rendered_html_file] ❌ Fehler beim Durchsuchen des Verzeichnisses: {e}")
+        return False
 
 
 def clean(image_name: str):
@@ -254,10 +280,8 @@ def clean(image_name: str):
     delete_scores(image_name)
     delete_scores(image_id)
 
-    for i in range(1, 5):
-        key = f"{image_id}_{i}"
-        if delete_rendered_html_file(Settings.RENDERED_HTML_DIR, key):
-            logger.info(f"[clean] ✅ gerendertes HTML gelöscht: {key}")
+    if delete_rendered_html_file(Settings.RENDERED_HTML_DIR, image_id):
+        logger.info(f"[clean] ✅ gerendertes HTML gelöscht: {image_id}")
 
     thumbnail_path = get_thumbnail_path(image_id)
     if os.path.exists(thumbnail_path):

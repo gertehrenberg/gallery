@@ -7,7 +7,7 @@ from app.config import Settings
 from app.routes.what import remove_items
 from app.tools import readimages
 from app.utils.db_utils import load_face_from_db, save_quality_scores
-from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
+from app.utils.progress import init_progress_state, update_progress, stop_progress
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -88,7 +88,7 @@ def load_faces(db_path, folder_key: str, image_name: str, image_id: str) -> list
         {
             "src": f"/gallery{base_url}/{thumb.name}",
             "link": f"/gallery{base_url}/{thumb.name}",
-            "image_name": f"{thumb.name}"
+            "image_name": f"/gallery/static/facefiles/{thumb.name}"
         }
         for thumb in thumbs
     ]
