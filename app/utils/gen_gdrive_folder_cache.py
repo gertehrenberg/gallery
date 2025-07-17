@@ -1,10 +1,14 @@
 import os
 from pathlib import Path
 
-from app.config import Settings
-from app.config_gdrive import collect_all_folders, save_dict, SettingsGdrive, folder_id_by_name, folder_name_by_id
-from app.routes.auth import load_drive_service_token
 from logger_config import setup_logger
+from ..config import Settings
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import collect_all_folders
+from ..config_gdrive import folder_id_by_name
+from ..config_gdrive import folder_name_by_id
+from ..config_gdrive import save_dict
+from ..routes.auth import load_drive_service_token
 
 logger = setup_logger(__name__)
 

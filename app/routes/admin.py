@@ -4,7 +4,7 @@ import subprocess
 
 from fastapi import APIRouter
 
-from app.config import Settings  # Importiere die Settings-Klasse
+from ..config import Settings  # Importiere die Settings-Klasse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

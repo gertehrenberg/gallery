@@ -1,11 +1,14 @@
-from googleapiclient.http import MediaIoBaseDownload
 from io import BytesIO
 from pathlib import Path
+
+from googleapiclient.http import MediaIoBaseDownload
 from tqdm import tqdm
 
-from app.config import Settings
-from app.config_gdrive import folder_id_by_name, sanitize_filename, calculate_md5
-from app.routes.auth import load_drive_service
+from ..config import Settings
+from ..config_gdrive import calculate_md5
+from ..config_gdrive import folder_id_by_name
+from ..config_gdrive import sanitize_filename
+from ..routes.auth import load_drive_service
 
 
 def move_file_to_folder(service, file_id, old_parents, new_parent):

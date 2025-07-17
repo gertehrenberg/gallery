@@ -1,6 +1,7 @@
 import os
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
+from fastapi import Request
 from fastapi.responses import RedirectResponse
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow

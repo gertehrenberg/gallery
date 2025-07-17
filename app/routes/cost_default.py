@@ -1,14 +1,16 @@
-
-import logging
 import calendar
-from typing import List, Dict, Any
+import logging
 from datetime import datetime
+from typing import Any
+from typing import Dict
+from typing import List
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
+
 
 def load_default_costs(year: int, month: int) -> List[Dict[str, Any]]:
     """Verteilt die monatlichen Default-Kosten gleichmäßig auf alle Tage des angegebenen Monats."""
@@ -19,13 +21,13 @@ def load_default_costs(year: int, month: int) -> List[Dict[str, Any]]:
         (2025, 3): 31.95,  # März 2025
         (2025, 4): 36.30,  # April 2025
         (2025, 5): 36.95,  # Mai 2025
-        (2025, 6): 36.95,  #geschätzt
-        (2025, 7): 36.95,  #geschätzt
-        (2025, 8): 36.95,  #geschätzt
-        (2025, 9): 36.95,  #geschätzt
-        (2025, 10): 36.95,  #geschätzt
-        (2025, 11): 36.95,  #geschätzt
-        (2025, 12): 36.95,  #geschätzt
+        (2025, 6): 36.95,  # geschätzt
+        (2025, 7): 36.95,  # geschätzt
+        (2025, 8): 36.95,  # geschätzt
+        (2025, 9): 36.95,  # geschätzt
+        (2025, 10): 36.95,  # geschätzt
+        (2025, 11): 36.95,  # geschätzt
+        (2025, 12): 36.95,  # geschätzt
     }
 
     # Bestimme den Basisbetrag und zusätzliche Beträge One
@@ -36,7 +38,7 @@ def load_default_costs(year: int, month: int) -> List[Dict[str, Any]]:
     # Bestimme den Basisbetrag und zusätzliche Beträge JetBrain
     base_amount = 0  # Standardmäßig kein Basisbetrag
     if year > 2025 or (year == 2025 and month >= 6):
-        base_amount = 19.0 #AI & Basis
+        base_amount = 19.0  # AI & Basis
 
     # Gesamtbetrag berechnen
     monthly_amount = additional_amounts.get((year, month), 0.0) + base_amount
@@ -59,14 +61,15 @@ def load_default_costs(year: int, month: int) -> List[Dict[str, Any]]:
 
     return result
 
+
 if __name__ == "__main__":
     # Debug-Level für detailliertere Ausgaben
     logging.getLogger().setLevel(logging.DEBUG)
-    
+
     # Beispiel für den aktuellen Monat
     now = datetime.now()
     monthly = load_default_costs(now.year, now.month)
-    
+
     if monthly:
         total = sum(day['kosten_chf'] for day in monthly)
         logger.info(f"\n📅 Standard-Kosten für {now.year}-{now.month:02d}:")

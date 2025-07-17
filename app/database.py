@@ -1,7 +1,9 @@
 import sqlite3
 
-from app.config import Settings, reverse_score_type_map, score_type_map
-from app.utils.logger_config import setup_logger
+from .config import Settings
+from .config import reverse_score_type_map
+from .config import score_type_map
+from .utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

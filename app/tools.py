@@ -3,16 +3,23 @@ import json
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, List, Tuple, Any
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
+from typing import Tuple
 
 from PIL import Image
 
-from app.config import Settings
-from app.config_gdrive import calculate_md5, SettingsGdrive
-from app.utils.logger_config import setup_logger
-from app.utils.progress import update_progress_text
-from app.utils.progress_detail import update_detail_progress, stop_detail_progress, start_detail_progress, \
-    calc_detail_progress
+from .config import Settings
+from .config_gdrive import SettingsGdrive
+from .config_gdrive import calculate_md5
+from .utils.logger_config import setup_logger
+from .utils.progress import update_progress_text
+from .utils.progress_detail import calc_detail_progress
+from .utils.progress_detail import start_detail_progress
+from .utils.progress_detail import stop_detail_progress
+from .utils.progress_detail import update_detail_progress
 
 logger = setup_logger(__name__)
 

@@ -3,11 +3,14 @@ from pathlib import Path
 
 import cv2
 
-from app.config import Settings
-from app.routes.what import remove_items
-from app.tools import readimages
-from app.utils.db_utils import load_face_from_db, save_quality_scores
-from app.utils.progress import init_progress_state, update_progress, stop_progress
+from ..config import Settings
+from ..routes.what import remove_items
+from ..tools import readimages
+from ..utils.db_utils import load_face_from_db
+from ..utils.db_utils import save_quality_scores
+from ..utils.progress import init_progress_state
+from ..utils.progress import stop_progress
+from ..utils.progress import update_progress
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -27,7 +30,7 @@ reverse_mapping = {v: k for k, v in mapping.items()}
 
 
 def generate_faces(db_path, folder_key, image_name, image_id, min_size=(50, 50)):
-    from app.config import Settings
+    from ..config import Settings
 
     rows = load_face_from_db(db_path, image_id)
 

@@ -1,10 +1,10 @@
 import json
 from pathlib import Path
 
-from app.config import Settings
-from app.config_gdrive import SettingsGdrive
-from app.services.image_processing import clean
-from app.utils.logger_config import setup_logger
+from ..config import Settings
+from ..config_gdrive import SettingsGdrive
+from ..services.image_processing import clean
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

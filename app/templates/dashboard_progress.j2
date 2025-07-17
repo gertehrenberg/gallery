@@ -6,141 +6,141 @@
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 text-gray-900 p-6">
-    <!-- Header -->
-    <h1 class="text-2xl font-bold mb-6">Dateiübertragung – Fortschritt</h1>
+<!-- Header -->
+<h1 class="text-2xl font-bold mb-6">Dateiübertragung – Fortschritt</h1>
 
-    <!-- Hauptfortschritt -->
-    <div class="mb-8">
-        <div class="flex justify-between items-center mb-2">
-            <div id="status" class="text-sm text-gray-700 italic">Warte auf Start...</div>
-            <div id="mainPercent" class="text-sm font-medium">0%</div>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-6 overflow-hidden shadow-inner">
-            <div id="progressBar"
-                 class="bg-blue-600 h-6 text-white text-center text-sm leading-6 transition-all duration-300 ease-in-out"
-                 style="width: 0%">
-            </div>
+<!-- Hauptfortschritt -->
+<div class="mb-8">
+    <div class="flex justify-between items-center mb-2">
+        <div id="status" class="text-sm text-gray-700 italic">Warte auf Start...</div>
+        <div id="mainPercent" class="text-sm font-medium">0%</div>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-6 overflow-hidden shadow-inner">
+        <div id="progressBar"
+             class="bg-blue-600 h-6 text-white text-center text-sm leading-6 transition-all duration-300 ease-in-out"
+             style="width: 0%">
         </div>
     </div>
+</div>
 
-    <!-- Detailfortschritt -->
-    <div class="mb-8">
-        <div class="flex justify-between items-center mb-2">
-            <div id="detailStatus" class="text-sm text-gray-700">Details: -</div>
-            <div id="detailPercent" class="text-sm font-medium">0%</div>
-        </div>
-        <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner">
-            <div id="detailProgressBar"
-                 class="bg-green-500 h-4 transition-all duration-300 ease-in-out"
-                 style="width: 0%">
-            </div>
+<!-- Detailfortschritt -->
+<div class="mb-8">
+    <div class="flex justify-between items-center mb-2">
+        <div id="detailStatus" class="text-sm text-gray-700">Details: -</div>
+        <div id="detailPercent" class="text-sm font-medium">0%</div>
+    </div>
+    <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner">
+        <div id="detailProgressBar"
+             class="bg-green-500 h-4 transition-all duration-300 ease-in-out"
+             style="width: 0%">
         </div>
     </div>
+</div>
 
-    <!-- Aktionsbereich -->
-    <div class="flex justify-between items-center">
-        <button onclick="startTransfer()"
-                class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700
+<!-- Aktionsbereich -->
+<div class="flex justify-between items-center">
+    <button onclick="startTransfer()"
+            class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700
                        transition-colors duration-200 flex items-center space-x-2 disabled:opacity-50"
-                id="startButton">
-            <span>{{ button_text }}</span>
-        </button>
-        <div id="timeEstimate" class="text-sm text-gray-600"></div>
-    </div>
+            id="startButton">
+        <span>{{ button_text }}</span>
+    </button>
+    <div id="timeEstimate" class="text-sm text-gray-600"></div>
+</div>
 
-    <script>
-        const START_URL = "{{ start_url }}";
-        const PROGRESS_URL = "{{ progress_url }}";
-        const FOLDER = "{{ folder_name }}";
-        const DIRECTION = "{{ direction }}";
-        let interval = null;
-        let startTime = null;
+<script>
+    const START_URL = "{{ start_url }}";
+    const PROGRESS_URL = "{{ progress_url }}";
+    const FOLDER = "{{ folder_name }}";
+    const DIRECTION = "{{ direction }}";
+    let interval = null;
+    let startTime = null;
 
-        async function startTransfer() {
-            const startButton = document.getElementById('startButton');
-            startButton.disabled = true;
-            startTime = Date.now();
+    async function startTransfer() {
+        const startButton = document.getElementById('startButton');
+        startButton.disabled = true;
+        startTime = Date.now();
 
-            const formData = new FormData();
-            formData.append("folder", FOLDER);
-            formData.append("direction", DIRECTION);
+        const formData = new FormData();
+        formData.append("folder", FOLDER);
+        formData.append("direction", DIRECTION);
 
-            try {
-                const response = await fetch(START_URL, {
-                    method: "POST",
-                    body: formData
-                });
+        try {
+            const response = await fetch(START_URL, {
+                method: "POST",
+                body: formData
+            });
 
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-
-                if (!interval) {
-                    interval = setInterval(updateProgress, 200);
-                }
-            } catch (error) {
-                console.error("Fehler beim Starten:", error);
-                document.getElementById("status").textContent = "❌ Fehler beim Starten: " + error.message;
-                startButton.disabled = false;
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
             }
-        }
 
-        function updateTimeEstimate(progress) {
-            if (!startTime || progress <= 0) return;
-
-            const elapsed = (Date.now() - startTime) / 1000;
-            const total = elapsed * (100 / progress);
-            const remaining = Math.max(0, total - elapsed);
-
-            const minutes = Math.floor(remaining / 60);
-            const seconds = Math.floor(remaining % 60);
-
-            document.getElementById('timeEstimate').textContent =
-                `Geschätzte Restzeit: ${minutes}m ${seconds}s`;
-        }
-
-        async function updateProgress() {
-            try {
-                const response = await fetch(PROGRESS_URL);
-                const data = await response.json();
-
-                // Hauptfortschritt aktualisieren
-                const mainProgress = data.progress || 0;
-                const statusText = document.getElementById("status");
-                const progressBar = document.getElementById("progressBar");
-                const mainPercent = document.getElementById("mainPercent");
-
-                statusText.textContent = data.status;
-                progressBar.style.width = mainProgress + "%";
-                mainPercent.textContent = mainProgress + "%";
-
-                updateTimeEstimate(mainProgress);
-
-                // Detail-Fortschritt aktualisieren
-                if (data.details) {
-                    const detailStatus = document.getElementById("detailStatus");
-                    const detailBar = document.getElementById("detailProgressBar");
-                    const detailPercent = document.getElementById("detailPercent");
-
-                    detailStatus.textContent = data.details.status || "Details: -";
-                    if (data.details.progress !== undefined) {
-                        const detailProgress = data.details.progress;
-                        detailBar.style.width = detailProgress + "%";
-                        detailPercent.textContent = detailProgress + "%";
-                    }
-                }
-
-                if (data.status === "Abgeschlossen.") {
-                    clearInterval(interval);
-                    interval = null;
-                    document.getElementById('timeEstimate').textContent = "Fertig!";
-                    setTimeout(() => window.location.href = "/gallery/dashboard", 500);
-                }
-            } catch (error) {
-                console.error("Fehler beim Update:", error);
-                document.getElementById("status").textContent = "⚠️ Verbindungsfehler: " + error.message;
+            if (!interval) {
+                interval = setInterval(updateProgress, 200);
             }
+        } catch (error) {
+            console.error("Fehler beim Starten:", error);
+            document.getElementById("status").textContent = "❌ Fehler beim Starten: " + error.message;
+            startButton.disabled = false;
         }
-    </script>
+    }
+
+    function updateTimeEstimate(progress) {
+        if (!startTime || progress <= 0) return;
+
+        const elapsed = (Date.now() - startTime) / 1000;
+        const total = elapsed * (100 / progress);
+        const remaining = Math.max(0, total - elapsed);
+
+        const minutes = Math.floor(remaining / 60);
+        const seconds = Math.floor(remaining % 60);
+
+        document.getElementById('timeEstimate').textContent =
+            `Geschätzte Restzeit: ${minutes}m ${seconds}s`;
+    }
+
+    async function updateProgress() {
+        try {
+            const response = await fetch(PROGRESS_URL);
+            const data = await response.json();
+
+            // Hauptfortschritt aktualisieren
+            const mainProgress = data.progress || 0;
+            const statusText = document.getElementById("status");
+            const progressBar = document.getElementById("progressBar");
+            const mainPercent = document.getElementById("mainPercent");
+
+            statusText.textContent = data.status;
+            progressBar.style.width = mainProgress + "%";
+            mainPercent.textContent = mainProgress + "%";
+
+            updateTimeEstimate(mainProgress);
+
+            // Detail-Fortschritt aktualisieren
+            if (data.details) {
+                const detailStatus = document.getElementById("detailStatus");
+                const detailBar = document.getElementById("detailProgressBar");
+                const detailPercent = document.getElementById("detailPercent");
+
+                detailStatus.textContent = data.details.status || "Details: -";
+                if (data.details.progress !== undefined) {
+                    const detailProgress = data.details.progress;
+                    detailBar.style.width = detailProgress + "%";
+                    detailPercent.textContent = detailProgress + "%";
+                }
+            }
+
+            if (data.status === "Abgeschlossen.") {
+                clearInterval(interval);
+                interval = null;
+                document.getElementById('timeEstimate').textContent = "Fertig!";
+                setTimeout(() => window.location.href = "/gallery/dashboard", 500);
+            }
+        } catch (error) {
+            console.error("Fehler beim Update:", error);
+            document.getElementById("status").textContent = "⚠️ Verbindungsfehler: " + error.message;
+        }
+    }
+</script>
 </body>
 </html>

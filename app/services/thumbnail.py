@@ -1,9 +1,11 @@
 import logging
 import os
-from PIL import Image, ImageOps
 from pathlib import Path
 
-from app.config import Settings  # Importiere die Settings-Klasse
+from PIL import Image
+from PIL import ImageOps
+
+from ..config import Settings  # Importiere die Settings-Klasse
 
 
 def get_thumbnail_path(image_id) -> Path:
@@ -26,7 +28,7 @@ def generate_thumbnail(image_path: Path, thumbnail_path: Path, image_id: str) ->
 
 
 def thumbnail(count, folder_name, image_id, image_name):
-    from app.services.image_processing import download_and_save_image
+    from ..services.image_processing import download_and_save_image
     local_thumbnail_path = download_and_save_image(folder_name, image_name, image_id)
 
     if local_thumbnail_path and os.path.exists(local_thumbnail_path):

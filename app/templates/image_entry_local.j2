@@ -1,141 +1,143 @@
 <div class="eintrag">
-  <table style="width:100%; table-layout:fixed;">
-    <tr>
-      <td colspan="2" class="bildname">
+    <table style="width:100%; table-layout:fixed;">
+        <tr>
+            <td colspan="2" class="bildname">
         <span
-          style="cursor:pointer; margin-left:10px;"
-          onclick="saveAndGoName('{{ image_name }}')"
+                style="cursor:pointer; margin-left:10px;"
+                onclick="saveAndGoName('{{ image_name }}')"
         >🔍</span>
-        {{ image_name }}
-        {% if civitai %}
-          <span
-            style="cursor:pointer; margin-left:10px;"
-            onclick="window.open('{{ civitai }}', '_blank')"
-          >🤖</span>
-        {% endif %}
-      </td>
-    </tr>
-    <tr>
-      <td style="width:60%; vertical-align:top;">
-        {% if nsfw_scores %}
-          <div class="nsfw-bars">
-            {% for label, value in nsfw_scores.items() %}
-              <div
-                class="nsfw_quality-bar"
-                data-tooltip="{{ label }}: {{ value }}"
-              >
-                <div class="nsfw_bar" style="width:100%;">
-                  <div
-                    class="nsfw_marker"
-                    style="left: {{ value }}%;"
-                  >●</div>
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        {% endif %}
-
-        <img
-          alt="{{ image_name }}"
-          class="bild"
-          src="{{ thumbnail_src }}"
-          onclick="openModal('{{ folder_name }}/{{ image_name }}')"
-          style="cursor:pointer; max-width:100%;"
-        />
-
-        {% if quality_scores %}
-          <div class="nsfw-bars">
-            {% for label, value in quality_scores.items() %}
-              <div
-                class="nsfw_quality-bar"
-                data-tooltip="{{ label }}: {{ value }}"
-              >
-                <div class="nsfw_bar" style="width:100%;">
-                  <div
-                    class="nsfw_marker"
-                    style="left: {{ value }}%;"
-                  >●</div>
-                </div>
-              </div>
-            {% endfor %}
-          </div>
-        {% endif %}
-
-        <div class="thumbnails-row">
-          {% for thumb in extra_thumbnails %}
-            <img
-              src="{{ thumb.src }}"
-              alt="extra"
-              class="thumbnail-mini"
-              onclick="openModalThumb('{{ thumb.image_name }}')"
-              style="cursor:pointer;"
-            />
-          {% endfor %}
-        </div>
-      </td>
-
-      <td style="width:40%; vertical-align:top; padding-left:10px;">
-        <div id="checkboxes-{{ image_id }}">
-          <form class="checkbox-container" style="line-height:0.8;">
-            <input
-              type="hidden"
-              name="image_id"
-              value="{{ image_id }}"
-            />
-
-            <table
-              style="width:100%; border-collapse:collapse; font-size:12px;"
-            >
-              {% for k in kategorien %}
-                <tr>
-                  <td style="width:18px; padding:1px 3px; text-align:left;">
+                {{ image_name }}
+                {% if civitai %}
                     <span
-                      onclick="move('{{ k.key }}','{{ image_name }}')"
-                      style="cursor:pointer; font-size:12px;"
-                      title="Move to {{ k.label }}"
+                            style="cursor:pointer; margin-left:10px;"
+                            onclick="window.open('{{ civitai }}', '_blank')"
+                    >🤖</span>
+                {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td style="width:60%; vertical-align:top;">
+                {% if nsfw_scores %}
+                    <div class="nsfw-bars">
+                        {% for label, value in nsfw_scores.items() %}
+                            <div
+                                    class="nsfw_quality-bar"
+                                    data-tooltip="{{ label }}: {{ value }}"
+                            >
+                                <div class="nsfw_bar" style="width:100%;">
+                                    <div
+                                            class="nsfw_marker"
+                                            style="left: {{ value }}%;"
+                                    >●
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <img
+                        alt="{{ image_name }}"
+                        class="bild"
+                        src="{{ thumbnail_src }}"
+                        onclick="openModal('{{ folder_name }}/{{ image_name }}')"
+                        style="cursor:pointer; max-width:100%;"
+                />
+
+                {% if quality_scores %}
+                    <div class="nsfw-bars">
+                        {% for label, value in quality_scores.items() %}
+                            <div
+                                    class="nsfw_quality-bar"
+                                    data-tooltip="{{ label }}: {{ value }}"
+                            >
+                                <div class="nsfw_bar" style="width:100%;">
+                                    <div
+                                            class="nsfw_marker"
+                                            style="left: {{ value }}%;"
+                                    >●
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+
+                <div class="thumbnails-row">
+                    {% for thumb in extra_thumbnails %}
+                        <img
+                                src="{{ thumb.src }}"
+                                alt="extra"
+                                class="thumbnail-mini"
+                                onclick="openModalThumb('{{ thumb.image_name }}')"
+                                style="cursor:pointer;"
+                        />
+                    {% endfor %}
+                </div>
+            </td>
+
+            <td style="width:40%; vertical-align:top; padding-left:10px;">
+                <div id="checkboxes-{{ image_id }}">
+                    <form class="checkbox-container" style="line-height:0.8;">
+                        <input
+                                type="hidden"
+                                name="image_id"
+                                value="{{ image_id }}"
+                        />
+
+                        <table
+                                style="width:100%; border-collapse:collapse; font-size:12px;"
+                        >
+                            {% for k in kategorien %}
+                                <tr>
+                                    <td style="width:18px; padding:1px 3px; text-align:left;">
+                    <span
+                            onclick="move('{{ k.key }}','{{ image_name }}')"
+                            style="cursor:pointer; font-size:12px;"
+                            title="Move to {{ k.label }}"
                     >📥</span>
-                  </td>
-                  <td style="width:18px; padding:1px 3px; text-align:left;">
-                    <input
-                      type="checkbox"
-                      name="{{ image_id }}_{{ k.key }}"
-                      data-group="{{ image_id }}_group"
-                      onchange="handleCheckboxChange(this)"
-                      style="margin:0; transform:scale(0.85);"
-                      {{ 'checked' if status.get(k.key) else '' }}
-                    />
-                  </td>
-                  <td style="width:18px; padding:1px 3px; text-align:left;">
-                    {{ k.icon }}
-                  </td>
-                  <td style="padding:1px 3px; text-align:left;">
-                    {{ k.label }}
-                  </td>
-                </tr>
-              {% endfor %}
-              {% if folder_name == 'comfyui' %}
-                <!-- Gen-Anzahl mit Checkmark-Trigger -->
-                  <tr>
-                      <td style="width:18px; padding:1px 3px; text-align:left;">
+                                    </td>
+                                    <td style="width:18px; padding:1px 3px; text-align:left;">
+                                        <input
+                                                type="checkbox"
+                                                name="{{ image_id }}_{{ k.key }}"
+                                                data-group="{{ image_id }}_group"
+                                                onchange="handleCheckboxChange(this)"
+                                                style="margin:0; transform:scale(0.85);"
+                                                {{ 'checked' if status.get(k.key) else '' }}
+                                        />
+                                    </td>
+                                    <td style="width:18px; padding:1px 3px; text-align:left;">
+                                        {{ k.icon }}
+                                    </td>
+                                    <td style="padding:1px 3px; text-align:left;">
+                                        {{ k.label }}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            {% if folder_name == 'comfyui' %}
+                                <!-- Gen-Anzahl mit Checkmark-Trigger -->
+                                <tr>
+                                    <td style="width:18px; padding:1px 3px; text-align:left;">
                         <span
-                          onclick="saveGenCount('{{ image_id }}',document.getElementById('comfyui_count_{{ image_id }}').value)"
-                          style="cursor:pointer; font-size:12px;"
+                                onclick="saveGenCount('{{ image_id }}',document.getElementById('comfyui_count_{{ image_id }}').value)"
+                                style="cursor:pointer; font-size:12px;"
                         >✓</span>
-                      </td>
-                    <td colspan="2" style="padding:1px 3px;">
-                      <input
-                        onkeydown="
+                                    </td>
+                                    <td colspan="2" style="padding:1px 3px;">
+                                        <input
+                                                onkeydown="
                         if(event.key==='Enter')
                             {
                                 event.preventDefault();
                             }
                         "
-                        type="number"
-                        id="comfyui_count_{{ image_id }}"
-                        value="{{ comfyui_count }}"
-                        placeholder="0"
-                        step="1"
-                        style="
+                                                type="number"
+                                                id="comfyui_count_{{ image_id }}"
+                                                value="{{ comfyui_count }}"
+                                                placeholder="0"
+                                                step="1"
+                                                style="
                           width:100%;
                           margin:0;
                           padding:2px 4px;
@@ -144,25 +146,25 @@
                           border-radius:3px;
                           appearance:textfield;
                         "
-                      >
-                    </td>
-                    <td style="padding:1px 3px; text-align:left;">
-                      Gen-Anzahl
-                    </td>
-                  </tr>
-                {% endif %}
-            </table>
-          </form>
-        </div>
-      </td>
-    </tr>
+                                        >
+                                    </td>
+                                    <td style="padding:1px 3px; text-align:left;">
+                                        Gen-Anzahl
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </table>
+                    </form>
+                </div>
+            </td>
+        </tr>
 
-    <tr>
-      <td colspan="2">
-        <div class="text">
-          {{ text_content | safe }}
-        </div>
-      </td>
-    </tr>
-  </table>
+        <tr>
+            <td colspan="2">
+                <div class="text">
+                    {{ text_content | safe }}
+                </div>
+            </td>
+        </tr>
+    </table>
 </div>

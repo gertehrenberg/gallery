@@ -6,38 +6,54 @@ import os
 import shutil
 import sqlite3
 import time
-from datetime import datetime, date, timedelta
+from datetime import date
+from datetime import datetime
+from datetime import timedelta
 from pathlib import Path
 from typing import Dict
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
 from fastapi import Form
+from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from google.cloud import bigquery
 from starlette.responses import JSONResponse
 
-from app.config import Settings, score_type_map
-from app.config_gdrive import sanitize_filename, calculate_md5, folder_id_by_name, SettingsGdrive
-from app.routes import what
-from app.routes.auth import load_drive_service, load_drive_service_token
-from app.routes.cost_openai_api import load_openai_costs_from_dir
-from app.routes.cost_runpod import load_runpod_costs_from_dir
-from app.routes.hashes import reloadcache_progress, download_file, update_gdrive_hashes
-from app.routes.manage_image_files import move_gdrive_files_by_local
-from app.scores.comfyUI import reload_comfyui
-from app.scores.faces import reload_faces
-from app.scores.nsfw import reload_nsfw
-from app.scores.quality import reload_quality
-from app.scores.texte import reload_texte
-from app.tools import readimages, fill_pair_cache
-from app.utils.db_utils import delete_all_checkbox_status, delete_all_external_tasks
-from app.utils.folder_utils import count_folder_entries
-from app.utils.logger_config import setup_logger
-from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress, \
-    update_progress_text
-from app.utils.progress import list_files
-from app.utils.progress_detail import detail_state
+from . import what
+from .auth import load_drive_service
+from .auth import load_drive_service_token
+from .cost_openai_api import load_openai_costs_from_dir
+from .cost_runpod import load_runpod_costs_from_dir
+from .hashes import download_file
+from .hashes import reloadcache_progress
+from .hashes import update_gdrive_hashes
+from .manage_image_files import move_gdrive_files_by_local
+from ..config import Settings
+from ..config import score_type_map
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import calculate_md5
+from ..config_gdrive import folder_id_by_name
+from ..config_gdrive import sanitize_filename
+from ..scores.comfyUI import reload_comfyui
+from ..scores.faces import reload_faces
+from ..scores.nsfw import reload_nsfw
+from ..scores.quality import reload_quality
+from ..scores.texte import reload_texte
+from ..tools import fill_pair_cache
+from ..tools import readimages
+from ..utils.db_utils import delete_all_checkbox_status
+from ..utils.db_utils import delete_all_external_tasks
+from ..utils.folder_utils import count_folder_entries
+from ..utils.logger_config import setup_logger
+from ..utils.move_utils import fill_pair_cache_folder
+from ..utils.progress import init_progress_state
+from ..utils.progress import list_files
+from ..utils.progress import progress_state
+from ..utils.progress import stop_progress
+from ..utils.progress import update_progress
+from ..utils.progress import update_progress_text
+from ..utils.progress_detail import detail_state
 
 DASHBOARD_PROGRESS = "/gallery/dashboard/progress"
 
@@ -89,7 +105,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
     runpod_map = {d["tag"]: float(d["kosten_chf"]) for d in runpod_daily}
 
     # Lade die Standard-Kosten
-    from app.routes.cost_default import load_default_costs
+    from .cost_default import load_default_costs
     default_daily = load_default_costs(year, month)
     default_map = {d["tag"]: float(d["kosten_chf"]) for d in default_daily}
 
@@ -1111,6 +1127,7 @@ def p5():
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
     asyncio.run(update_gdrive_hashes(service, "ki", Settings.IMAGE_EXTENSIONS, Path(Settings.IMAGE_FILE_CACHE_DIR)))
 
+
 def p_lokal_zu_gdrive():
     Settings.DB_PATH = '../../gallery_local.db'
     Settings.TEMP_DIR_PATH = Path("../../cache/temp")
@@ -1121,6 +1138,7 @@ def p_lokal_zu_gdrive():
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
     asyncio.run(move_gdrive_files_by_local(service, "delete"))
+
 
 if __name__ == "__main__":
     p_lokal_zu_gdrive()

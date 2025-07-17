@@ -1,6 +1,7 @@
-import os
-import requests
 import logging
+import os
+
+import requests
 from dotenv import load_dotenv
 
 # Configure logging
@@ -185,7 +186,6 @@ def list_gpu_types():
     gpu_types = result["data"]["gpuTypes"]
     print(f"Gefundene GPU-Typen: {len(gpu_types)}")
     print("TypeId                          | Name        | VRAM (GB)")
-
 
     print("--------------------------------|-------------|-----------")
     for gpu in gpu_types:

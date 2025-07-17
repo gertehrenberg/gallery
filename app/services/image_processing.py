@@ -2,22 +2,27 @@ import os
 import shutil
 from datetime import datetime
 from pathlib import Path
-from typing import List, Any
+from typing import Any
+from typing import List
 
 from PIL import Image
-from PIL.ExifTags import TAGS, GPSTAGS
+from PIL.ExifTags import GPSTAGS
+from PIL.ExifTags import TAGS
 from geopy.geocoders import Nominatim
 from starlette.responses import JSONResponse
 
-from app.config import Settings  # Importiere die Settings-Klasse
-from app.scores.faces import load_faces
-from app.scores.nsfw import load_nsfw
-from app.scores.quality import load_quality
-from app.services.thumbnail import get_thumbnail_path, generate_thumbnail, thumbnail
-from app.tools import find_image_id_by_name, newpaircache
-from app.utils.db_utils import delete_checkbox_status
-from app.utils.logger_config import setup_logger
-from app.utils.score_utils import delete_scores
+from ..config import Settings  # Importiere die Settings-Klasse
+from ..scores.faces import load_faces
+from ..scores.nsfw import load_nsfw
+from ..scores.quality import load_quality
+from ..services.thumbnail import generate_thumbnail
+from ..services.thumbnail import get_thumbnail_path
+from ..services.thumbnail import thumbnail
+from ..tools import find_image_id_by_name
+from ..tools import newpaircache
+from ..utils.db_utils import delete_checkbox_status
+from ..utils.logger_config import setup_logger
+from ..utils.score_utils import delete_scores
 
 logger = setup_logger(__name__)
 
@@ -266,7 +271,7 @@ def delete_rendered_html_file(file_dir: Path, image_id: str) -> bool:
         return False
 
 
-def clean(image_name: str, image_id : str = None) -> JSONResponse | None:
+def clean(image_name: str, image_id: str = None) -> JSONResponse | None:
     logger.info(f"🧹 Starte clean() für: {image_name}")
     text_cache = Settings.CACHE.get("text_cache")
 

@@ -1,7 +1,7 @@
 import sqlite3
 
-from app.config import Settings
-from app.utils.logger_config import setup_logger
+from ..config import Settings
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

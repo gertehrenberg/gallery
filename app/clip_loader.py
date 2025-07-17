@@ -1,6 +1,7 @@
 from pathlib import Path
 
-from transformers import CLIPModel, CLIPProcessor
+from transformers import CLIPModel
+from transformers import CLIPProcessor
 
 model_path = Path(__file__).resolve().parent.parent / "clip_model"
 

@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from app.config import Settings
-from app.utils.db_utils import save_folder_status_to_db
-from app.utils.logger_config import setup_logger
+from ..config import Settings
+from ..utils.db_utils import save_folder_status_to_db
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -31,4 +31,3 @@ def _process_image_files(image_files, folder_name, file_parents_cache, db_path):
         image_id = pair["image_id"]
         file_parents_cache[folder_name].append(image_id)
         save_folder_status_to_db(db_path, image_id, folder_name)
-

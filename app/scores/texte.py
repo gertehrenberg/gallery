@@ -3,9 +3,9 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-from app.config import Settings
-from app.config_gdrive import SettingsGdrive
-from app.utils.find_missing_text_files import move_images_without_textfile_2_recheck
+from ..config import Settings
+from ..config_gdrive import SettingsGdrive
+from ..utils.find_missing_text_files import move_images_without_textfile_2_recheck
 
 # Type-Hint für IDE und Fallback-Import
 try:
@@ -16,8 +16,8 @@ except ImportError:
         @staticmethod
         def connect(*args: Any, **kwargs: Any) -> Any: ...
 
-from app.utils.logger_config import setup_logger
-from app.utils.progress import init_progress_state, stop_progress
+from ..utils.logger_config import setup_logger
+from ..utils.progress import init_progress_state, stop_progress
 
 logger = setup_logger(__name__)
 
@@ -25,7 +25,8 @@ logger = setup_logger(__name__)
 async def reload_texte():
     await init_progress_state()
     try:
-        await move_images_without_textfile_2_recheck(Path(Settings.IMAGE_FILE_CACHE_DIR), Path(Settings.TEXT_FILE_CACHE_DIR))
+        await move_images_without_textfile_2_recheck(Path(Settings.IMAGE_FILE_CACHE_DIR),
+                                                     Path(Settings.TEXT_FILE_CACHE_DIR))
     finally:
         await stop_progress()
 

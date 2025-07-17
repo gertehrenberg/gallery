@@ -3,17 +3,24 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
+from typing import List
 
 from tqdm import tqdm
 
-from app.config import Settings
-from app.config_gdrive import folder_id_by_name, get_all_subfolders, sanitize_filename, delete_all_hashfiles, \
-    SettingsGdrive, calculate_md5
-from app.database import clear_folder_status_db_by_name, load_folder_status_from_db_by_name
-from app.routes.auth import load_drive_service_token
-from app.tools import readimages, save_pair_cache
-from app.utils.progress import save_simple_hashes
+from ..config import Settings
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import calculate_md5
+from ..config_gdrive import delete_all_hashfiles
+from ..config_gdrive import folder_id_by_name
+from ..config_gdrive import get_all_subfolders
+from ..config_gdrive import sanitize_filename
+from ..database import clear_folder_status_db_by_name
+from ..database import load_folder_status_from_db_by_name
+from ..routes.auth import load_drive_service_token
+from ..tools import readimages
+from ..tools import save_pair_cache
+from ..utils.progress import save_simple_hashes
 
 logging.basicConfig(
     level=logging.INFO,

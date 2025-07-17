@@ -1,7 +1,7 @@
 import sqlite3
 
-from app.config import Settings
-from app.utils.logger_config import setup_logger
+from ..config import Settings
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -164,7 +164,7 @@ def load_comfyui_count(db_path, image_id: str) -> int:
                 WHERE image_name = ?
                   AND field = ?
                 """,
-                (image_id,key,)
+                (image_id, key,)
             )
             row = cursor.fetchone()
             if row and row[0] is not None:

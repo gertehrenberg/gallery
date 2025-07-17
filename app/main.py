@@ -9,16 +9,23 @@ from googleapiclient.discovery import build
 from starlette.middleware.sessions import SessionMiddleware  # Korrigierter Import
 
 # Importiere die Konfiguration aus app/config_new.py
-from app.config import Settings
+from .config import Settings
 # Importiere die Datenbankfunktionen aus app/database.py
-from app.database import init_db
+from .database import init_db
 # Importiere die Routen
-from app.routes import auth, gallery, static, admin, login, dashboard, n8nlock
-from app.routes.auth import SCOPES, TOKEN_FILE
+from .routes import admin
+from .routes import auth
+from .routes import dashboard
+from .routes import gallery
+from .routes import login
+from .routes import n8nlock
+from .routes import static
+from .routes.auth import SCOPES
+from .routes.auth import TOKEN_FILE
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
-from app.services.google_drive import verify_folders_exist
-from app.tools import fillcache_local
-from app.utils.logger_config import setup_logger
+from .services.google_drive import verify_folders_exist
+from .tools import fillcache_local
+from .utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -76,15 +83,17 @@ app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(n8nlock.router)
 
-
 # Add this at the top level of the file, after the other imports
 background_task = None
+
+
 @app.on_event("startup")
 async def startup_event():
     import asyncio
-    from app.services.manage_n8n import manage_gemini_process
+    from .services.manage_n8n import manage_gemini_process
     global background_task
     background_task = asyncio.create_task(manage_gemini_process(None))
+
 
 def local():
     import uvicorn

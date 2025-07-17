@@ -1,6 +1,7 @@
 from enum import Enum
 from pathlib import Path
-from typing import List, Tuple
+from typing import List
+from typing import Tuple
 
 score_type_map = {
     "q1": 1,

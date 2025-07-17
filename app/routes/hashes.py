@@ -4,23 +4,42 @@ import json
 import os
 import sqlite3
 from pathlib import Path
-from typing import Dict, List, Any, Tuple
+from typing import Any
+from typing import Dict
+from typing import List
 from typing import Optional
+from typing import Tuple
 
-from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
+from googleapiclient.http import MediaFileUpload
+from googleapiclient.http import MediaIoBaseDownload
 
-from app.config import Settings, score_type_map
-from app.config_gdrive import sanitize_filename, folder_id_by_name, SettingsGdrive, collect_all_folders, calculate_md5
-from app.database import clear_folder_status_db_by_name
-from app.routes.auth import load_drive_service_token
-from app.routes.gdrive_from_lokal import save_structured_hashes
-from app.services.image_processing import find_png_file, download_text_file
-from app.tools import readimages
-from app.utils.db_utils import save_folder_status_to_db, load_folder_status_from_db
-from app.utils.progress import init_progress_state, update_progress, update_progress_text, \
-    save_simple_hashes, hold_progress, stop_progress, update_progress_auto
-from app.utils.progress_detail import update_detail_status, update_detail_progress, start_detail_progress, \
-    stop_detail_progress, calc_detail_progress
+from ..config import Settings
+from ..config import score_type_map
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import calculate_md5
+from ..config_gdrive import collect_all_folders
+from ..config_gdrive import folder_id_by_name
+from ..config_gdrive import sanitize_filename
+from ..database import clear_folder_status_db_by_name
+from ..routes.auth import load_drive_service_token
+from ..routes.gdrive_from_lokal import save_structured_hashes
+from ..services.image_processing import download_text_file
+from ..services.image_processing import find_png_file
+from ..tools import readimages
+from ..utils.db_utils import load_folder_status_from_db
+from ..utils.db_utils import save_folder_status_to_db
+from ..utils.progress import hold_progress
+from ..utils.progress import init_progress_state
+from ..utils.progress import save_simple_hashes
+from ..utils.progress import stop_progress
+from ..utils.progress import update_progress
+from ..utils.progress import update_progress_auto
+from ..utils.progress import update_progress_text
+from ..utils.progress_detail import calc_detail_progress
+from ..utils.progress_detail import start_detail_progress
+from ..utils.progress_detail import stop_detail_progress
+from ..utils.progress_detail import update_detail_progress
+from ..utils.progress_detail import update_detail_status
 
 
 async def update_local_hashes_text():
@@ -1088,14 +1107,13 @@ async def move_duplicates_in_gdrive_folder(service, folder_id: str, extensions) 
         for file in files:
             if not any(file.get('name', '').lower().endswith(ext) for ext in Settings.IMAGE_EXTENSIONS):
                 continue
-                
 
             md5 = file.get('md5Checksum')
             if md5:
                 if md5 not in md5_groups:
                     md5_groups[md5] = []
                     md5_groups[md5].append(file)
-                else: 
+                else:
                     md5_groups[md5].append(file)
 
         # Verschiebe Duplikate
@@ -1319,6 +1337,7 @@ def p7():
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
 
     asyncio.run(delete_files_by_mimetype(service, folder_id_by_name(Settings.TEXTFILES_FOLDERNAME), "image/*"))
+
 
 def p8():
     Settings.DB_PATH = '../../gallery_local.db'

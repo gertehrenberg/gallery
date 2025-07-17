@@ -8,20 +8,37 @@ from pathlib import Path
 
 from googleapiclient.http import MediaFileUpload
 
-from app.config import Settings
-from app.config_gdrive import folder_id_by_name, SettingsGdrive, calculate_md5, sanitize_filename
-from app.routes.auth import load_drive_service, load_drive_service_token
-from app.routes.gdrive_from_lokal import save_structured_hashes
-from app.utils.logger_config import setup_logger
-from app.utils.move_utils import move_single_image
-from app.utils.progress import list_all_files, save_simple_hashes, update_progress_text, update_progress
-from app.utils.progress_detail import update_detail_status, stop_detail_progress, calc_detail_progress, \
-    start_detail_progress, update_detail_progress
-from utils.find_duplicate_md5_filnames_local import rename_file
+from ..config import Settings
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import calculate_md5
+from ..config_gdrive import folder_id_by_name
+from ..config_gdrive import sanitize_filename
+from ..routes.auth import load_drive_service
+from ..routes.auth import load_drive_service_token
+from ..routes.gdrive_from_lokal import save_structured_hashes
+from ..utils.logger_config import setup_logger
+from ..utils.move_utils import move_single_image
+from ..utils.progress import list_all_files
+from ..utils.progress import save_simple_hashes
+from ..utils.progress import update_progress
+from ..utils.progress import update_progress_text
+from ..utils.progress_detail import calc_detail_progress
+from ..utils.progress_detail import start_detail_progress
+from ..utils.progress_detail import stop_detail_progress
+from ..utils.progress_detail import update_detail_progress
+from ..utils.progress_detail import update_detail_status
 
 TASK_TYPE = 'gemini'
 
 logger = setup_logger(__name__)
+
+
+def rename_file(service, file_id: str, new_name: str):
+    service.files().update(
+        fileId=file_id,
+        body={"name": new_name},
+        fields="id, name"
+    ).execute()
 
 
 async def get_uploaded_tasks(task_type: str = TASK_TYPE) -> list[tuple[str, str]] | None:
@@ -916,8 +933,9 @@ def p9():
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    #asyncio.run(rename_double_files_to_md5_and_move_to_recheck_gdrive(service))
+    # asyncio.run(rename_double_files_to_md5_and_move_to_recheck_gdrive(service))
     asyncio.run(rename_double_files_to_md5_and_move_to_recheck_local(Path(Settings.IMAGE_FILE_CACHE_DIR)))
+
 
 if __name__ == "__main__":
     p9()

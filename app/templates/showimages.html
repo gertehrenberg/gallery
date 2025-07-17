@@ -47,21 +47,21 @@
                 return;
             }
             fetch("/gallery/progress?progress_id=" + PROGRESS_ID)
-                .then(response => response.json())
-                .then(data => {
-                    const {current, total, running} = data;
-                    if (current === total && !running) {
-                        window.location.href = window.location.href = "/gallery/result?progress_id=" + PROGRESS_ID;
-                    } else {
-                        dots = (dots + 1) % 4; // 0, 1, 2, 3 Punkte
-                        let dotString = '.'.repeat(dots);
-                        document.getElementById('progress').innerText =
-                            `🔹 ${current} Bilder von ${total} Bildern geladen${dotString}`;
-                    }
-                })
-                .catch(err => {
-                    console.error('Statusabfrage fehlgeschlagen', err);
-                });
+                    .then(response => response.json())
+                    .then(data => {
+                        const {current, total, running} = data;
+                        if (current === total && !running) {
+                            window.location.href = window.location.href = "/gallery/result?progress_id=" + PROGRESS_ID;
+                        } else {
+                            dots = (dots + 1) % 4; // 0, 1, 2, 3 Punkte
+                            let dotString = '.'.repeat(dots);
+                            document.getElementById('progress').innerText =
+                                    `🔹 ${current} Bilder von ${total} Bildern geladen${dotString}`;
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Statusabfrage fehlgeschlagen', err);
+                    });
         }
 
         setInterval(checkStatus, 2000); // Alle 2 Sekunden neuen Status abrufen

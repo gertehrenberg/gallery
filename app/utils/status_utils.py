@@ -1,8 +1,8 @@
 import sqlite3
 
-from app.config import Settings
-from app.tools import find_image_name_by_id
-from app.utils.logger_config import setup_logger
+from ..config import Settings
+from ..tools import find_image_name_by_id
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

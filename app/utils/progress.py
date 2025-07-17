@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 from typing import Dict
 
-from app.config import Settings
-from app.config_gdrive import folder_name_by_id
-from app.utils.logger_config import setup_logger
+from ..config import Settings
+from ..config_gdrive import folder_name_by_id
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -18,8 +18,10 @@ progress_state = {
     "current_task": None
 }
 
+
 def getlast() -> int:
     return int(progress_state["progress"])
+
 
 async def update_progress(status: str, progress: int, ctime=0.01, showlog=True):
     if isinstance(status, str) and len(status) > 0:
@@ -38,6 +40,7 @@ async def update_progress_auto(status: str, ctime=0.01, showlog=True):
     if showlog:
         logger.info(f"{status} : {progress}")
     await asyncio.sleep(ctime)
+
 
 async def update_progress_text(status: str, ctime=0.01, showlog=True):
     if isinstance(status, str) and len(status) > 0:

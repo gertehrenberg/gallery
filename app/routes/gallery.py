@@ -8,27 +8,44 @@ from pathlib import Path
 from urllib.parse import unquote
 
 import httpx
-from fastapi import APIRouter, Depends, Request, Query, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter
+from fastapi import Depends
+from fastapi import Form
+from fastapi import Query
+from fastapi import Request
+from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
-from app.config import Settings, score_type_map  # Importiere die Settings-Klasse
-from app.config_gdrive import SettingsGdrive, calculate_md5
-from app.database import get_scores_filtered_by_expr
-from app.dependencies import require_login
-from app.routes.auth import load_drive_service_token
-from app.routes.dashboard import load_rendered_html_file, save_rendered_html_file
-from app.scores.texte import search_recoll
-from app.services.image_processing import prepare_image_data, clean
-from app.tools import newpaircache
-from app.utils.db_utils import load_comfyui_count
-from app.utils.logger_config import setup_logger
-from app.utils.move_utils import move_marked_images_by_checkbox, get_checkbox_count, move_single_image
-from app.utils.progress import update_progress, stop_progress, progress_state, update_progress_text, init_progress_state
-from app.utils.score_parser import parse_score_expression
-from app.utils.status_utils import set_status, save_status, load_status
-from utils.move_local_files_from_gdrive import download_file
+from app.routes.hashes import download_file
+from .auth import load_drive_service_token
+from .dashboard import load_rendered_html_file
+from .dashboard import save_rendered_html_file
+from ..config import Settings  # Importiere die Settings-Klasse
+from ..config import score_type_map
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import calculate_md5
+from ..database import get_scores_filtered_by_expr
+from ..dependencies import require_login
+from ..scores.texte import search_recoll
+from ..services.image_processing import clean
+from ..services.image_processing import prepare_image_data
+from ..tools import newpaircache
+from ..utils.db_utils import load_comfyui_count
+from ..utils.logger_config import setup_logger
+from ..utils.move_utils import get_checkbox_count
+from ..utils.move_utils import move_marked_images_by_checkbox
+from ..utils.move_utils import move_single_image
+from ..utils.progress import init_progress_state
+from ..utils.progress import progress_state
+from ..utils.progress import stop_progress
+from ..utils.progress import update_progress
+from ..utils.progress import update_progress_text
+from ..utils.score_parser import parse_score_expression
+from ..utils.status_utils import load_status
+from ..utils.status_utils import save_status
+from ..utils.status_utils import set_status
 
 DEFAULT_COUNT: str = "6"
 DEFAULT_FOLDER: str = "real"
@@ -790,7 +807,7 @@ async def download_comfyui_gifs(service):
                 logger.info(f"Lade {file_name} herunter...")
                 # Direktes Herunterladen mit der download_file Funktion aus move_local_files_from_gdrive.py
                 try:
-                    download_file(service, file_id, target_path)
+                    await download_file(service, file_id, target_path)
                     logger.info(f"✅ {file_name} erfolgreich heruntergeladen")
 
                     # Suche nach entsprechender Datei im IMAGE_FILE_CACHE_DIR

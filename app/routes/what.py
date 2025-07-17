@@ -3,13 +3,14 @@ import os
 import shutil
 from pathlib import Path
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter
+from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
-from app.config import Settings
-from app.utils.score_utils import delete_scores_by_type
+from ..config import Settings
+from ..utils.score_utils import delete_scores_by_type
 
 router = APIRouter()
 

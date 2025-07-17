@@ -4,7 +4,7 @@ setup(
     name="gallery-lib",
     version="0.1",
     packages=["app", "app.routes", "app.scores", "app.services", "app.templates", "app.utils"],
-    python_requires=">=3.12",
+    python_requires=">=3.10",
     install_requires=[
         "boto3",
         "click",

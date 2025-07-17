@@ -1,12 +1,18 @@
 import logging
 from pathlib import Path
 
-from app.config import Settings, reverse_score_type_map, score_type_map  # Importiere die Settings-Klasse
-from app.tools import readimages
-from app.utils.db_utils import load_nsfw_from_db, save_nsfw_scores, load_all_nsfw_scores
-from app.utils.logger_config import setup_logger
-from app.utils.progress import init_progress_state, progress_state, update_progress, stop_progress
-from app.utils.score_utils import delete_scores_by_type
+from ..config import Settings  # Importiere die Settings-Klasse
+from ..config import reverse_score_type_map
+from ..config import score_type_map
+from ..tools import readimages
+from ..utils.db_utils import load_all_nsfw_scores
+from ..utils.db_utils import load_nsfw_from_db
+from ..utils.db_utils import save_nsfw_scores
+from ..utils.logger_config import setup_logger
+from ..utils.progress import init_progress_state
+from ..utils.progress import stop_progress
+from ..utils.progress import update_progress
+from ..utils.score_utils import delete_scores_by_type
 
 logger = setup_logger(__name__)
 

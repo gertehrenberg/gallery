@@ -9,6 +9,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
+
 # https://platform.openai.com/settings/organization/usage
 
 def load_openai_costs_from_dir(cost_dir: Path, year: int, month: int) -> list[dict]:

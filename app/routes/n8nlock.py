@@ -1,15 +1,21 @@
 import json
 import os
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
+from datetime import timedelta
+from datetime import timezone
 from pathlib import Path
 
-from fastapi import FastAPI, Query, APIRouter, Request
+from fastapi import APIRouter
+from fastapi import FastAPI
+from fastapi import Query
+from fastapi import Request
 from pydantic import BaseModel
 
-from app.config import Settings
-from app.config_gdrive import sanitize_filename, folder_id_by_name
-from app.routes.auth import load_drive_service
-from app.utils.logger_config import setup_logger
+from .auth import load_drive_service
+from ..config import Settings
+from ..config_gdrive import folder_id_by_name
+from ..config_gdrive import sanitize_filename
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -25,9 +31,10 @@ app = FastAPI(
     description="Service zum Setzen, Prüfen und Entfernen eines einfachen Dateilocks mit TTL."
 )
 
+
 class FileNameResponse(BaseModel):
     id: str
-    is_valid :bool
+    is_valid: bool
     txtFileName: str
 
 
@@ -116,12 +123,14 @@ async def _filename(request: Request):
         logger.error(f"Fehler beim Umbenennen der Datei {original_filename}: {e}")
         return FileNameResponse(id=file_id, is_valid=False, txtFileName='')
 
+
 class LockResponse(BaseModel):
     locked: bool
 
 
 def _is_stale(timestamp: datetime) -> bool:
     return datetime.now(timezone.utc) - timestamp > timedelta(seconds=LOCK_TTL)
+
 
 @router.post("/lock", response_model=LockResponse)
 def check_lock():

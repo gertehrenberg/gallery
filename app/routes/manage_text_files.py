@@ -1,20 +1,27 @@
 import json
 from pathlib import Path
+from typing import Any
+from typing import Dict
+from typing import List
 from typing import Optional
-from typing import Set, Dict, Any, Tuple, List
+from typing import Set
+from typing import Tuple
 
-from app.config import Settings
-from app.config_gdrive import folder_id_by_name
-from app.routes.hashes import upload_file_to_gdrive, update_gdrive_hashes, delete_duplicates_in_gdrive_folder
-from app.utils.progress import (
-    init_progress_state,
-    progress_state,
-    update_progress,
-    update_progress_text, update_progress_auto, stop_progress,
-)
-from app.utils.progress_detail import stop_detail_progress, \
-    start_detail_progress
-from app.utils.progress_detail import update_detail_status, update_detail_progress, calc_detail_progress
+from .hashes import delete_duplicates_in_gdrive_folder
+from .hashes import update_gdrive_hashes
+from .hashes import upload_file_to_gdrive
+from ..config import Settings
+from ..config_gdrive import folder_id_by_name
+from ..utils.progress import init_progress_state
+from ..utils.progress import stop_progress
+from ..utils.progress import update_progress
+from ..utils.progress import update_progress_auto
+from ..utils.progress import update_progress_text
+from ..utils.progress_detail import calc_detail_progress
+from ..utils.progress_detail import start_detail_progress
+from ..utils.progress_detail import stop_detail_progress
+from ..utils.progress_detail import update_detail_progress
+from ..utils.progress_detail import update_detail_status
 
 
 async def gdrive_textfiles_files_by_local(service, folder_name: str) -> None:

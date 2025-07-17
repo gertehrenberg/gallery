@@ -2,14 +2,19 @@ import asyncio
 import json
 import shutil
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import Any
+from typing import Dict
+from typing import List
 
-from app.config import Settings
-from app.config_gdrive import sanitize_filename, SettingsGdrive
-from app.utils.logger_config import setup_logger
-from app.utils.progress import update_progress_auto
-from app.utils.progress_detail import start_detail_progress, update_detail_progress, stop_detail_progress, \
-    calc_detail_progress
+from ..config import Settings
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import sanitize_filename
+from ..utils.logger_config import setup_logger
+from ..utils.progress import update_progress_auto
+from ..utils.progress_detail import calc_detail_progress
+from ..utils.progress_detail import start_detail_progress
+from ..utils.progress_detail import stop_detail_progress
+from ..utils.progress_detail import update_detail_progress
 
 logger = setup_logger(__name__)
 

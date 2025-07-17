@@ -1,9 +1,12 @@
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict
+from typing import List
+
 from tqdm import tqdm
-from app.config import Settings
-from app.config_gdrive import SettingsGdrive
-from app.utils.logger_config import setup_logger
+
+from ..config import Settings
+from ..config_gdrive import SettingsGdrive
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -79,6 +82,7 @@ def p5():
             logger.info(f"[analyze] 📸 {image_name}:")
             for text_file in text_files:
                 logger.info(f"[analyze]   └─ 📄 {text_file}")
+
 
 if __name__ == "__main__":
     p5()

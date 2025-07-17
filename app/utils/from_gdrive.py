@@ -1,14 +1,9 @@
-import io
 import os
-from pathlib import Path
-from typing import Set
-from googleapiclient.http import MediaIoBaseDownload
-from tqdm.auto import tqdm
 
-from app.config import Settings
-from app.config_gdrive import calculate_md5, SettingsGdrive, folder_id_by_name
-from app.routes.auth import load_drive_service_token
-from app.utils.logger_config import setup_logger
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import folder_id_by_name
+from ..routes.auth import load_drive_service_token
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 
@@ -123,9 +118,9 @@ from typing import Set
 from googleapiclient.http import MediaIoBaseDownload
 from tqdm.auto import tqdm
 
-from app.config import Settings
-from app.config_gdrive import calculate_md5
-from app.utils.logger_config import setup_logger
+from ..config import Settings
+from ..config_gdrive import calculate_md5
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

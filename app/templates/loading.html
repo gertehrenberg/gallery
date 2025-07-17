@@ -42,20 +42,20 @@
 
         function checkStatus() {
             fetch('/gallery/loading_status')
-                .then(response => response.json())
-                .then(data => {
-                    if (data.ready) {
-                        window.location.href = "/gallery/?page=1&count=6&folder=real";
-                    } else {
-                        dots = (dots + 1) % 4; // 0, 1, 2, 3 Punkte
-                        let dotString = '.'.repeat(dots);
-                        document.getElementById('progress').innerText =
-                            `🔹 ${data.folders_loaded} von ${data.folders_total} Ordnern geladen${dotString} (${data.current_folder})`;
-                    }
-                })
-                .catch(err => {
-                    console.error('Statusabfrage fehlgeschlagen', err);
-                });
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.ready) {
+                            window.location.href = "/gallery/?page=1&count=6&folder=real";
+                        } else {
+                            dots = (dots + 1) % 4; // 0, 1, 2, 3 Punkte
+                            let dotString = '.'.repeat(dots);
+                            document.getElementById('progress').innerText =
+                                    `🔹 ${data.folders_loaded} von ${data.folders_total} Ordnern geladen${dotString} (${data.current_folder})`;
+                        }
+                    })
+                    .catch(err => {
+                        console.error('Statusabfrage fehlgeschlagen', err);
+                    });
         }
 
         setInterval(checkStatus, 2000); // Alle 2 Sekunden neuen Status abrufen

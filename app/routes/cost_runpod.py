@@ -1,15 +1,17 @@
-
 import json
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any
+from typing import Dict
+from typing import List
+from typing import Optional
 
 import requests
 from dotenv import load_dotenv
 
-from app.config import Settings
+from ..config import Settings
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -19,6 +21,7 @@ logging.basicConfig(
 
 _current_date = None
 _cached_rate = None
+
 
 def _make_runpod_request(query: str, variables: Optional[Dict] = None) -> Dict:
     """Hilfsfunktion für RunPod API Requests."""
@@ -53,15 +56,18 @@ def _make_runpod_request(query: str, variables: Optional[Dict] = None) -> Dict:
         logger.error(f"❌ RunPod API Fehler: {e}")
         raise
 
+
 def _get_cache_file_path(year: int, month: int) -> Path:
     """Generiert den Pfad zur Cache-Datei für den angegebenen Monat."""
     return Path(Settings.COSTS_FILE_DIR) / f"runpod_costs_{year}_{month:02d}.json"
+
 
 def _save_to_cache(data: List[Dict[str, Any]], cache_file: Path) -> None:
     """Speichert Daten in einer Cache-Datei."""
     os.makedirs(cache_file.parent, exist_ok=True)
     with open(cache_file, 'w', encoding='utf-8') as f:
         json.dump(data, f, indent=2)
+
 
 def _load_from_cache(cache_file: Path) -> Optional[List[Dict[str, Any]]]:
     """Lädt Daten aus einer Cache-Datei."""
@@ -75,6 +81,7 @@ def _load_from_cache(cache_file: Path) -> Optional[List[Dict[str, Any]]]:
         except Exception as e:
             logger.error(f"❌ Fehler beim Laden des Caches {cache_file}: {e}")
     return None
+
 
 def get_usd_to_chf_rate() -> float:
     """Holt den aktuellen USD zu CHF Wechselkurs. Gecached für einen Tag."""
@@ -105,6 +112,7 @@ def get_usd_to_chf_rate() -> float:
     except Exception as e:
         logger.error(f"❌ Fehler beim Laden des Wechselkurses: {e}")
         return 0.9  # Fallback-Wert
+
 
 def load_runpod_costs() -> Optional[Dict[str, Any]]:
     """Lädt die aktuellen RunPod-Kosten über die GraphQL API."""
@@ -181,6 +189,7 @@ def load_runpod_costs() -> Optional[Dict[str, Any]]:
         logger.error("Stack trace:", exc_info=True)
         return None
 
+
 def load_runpod_costs_from_dir(year: int, month: int) -> List[Dict[str, Any]]:
     """Lädt RunPod-Kosten für einen bestimmten Monat, verwendet Cache wenn möglich."""
     cache_file = _get_cache_file_path(year, month)
@@ -235,10 +244,10 @@ def load_runpod_costs_from_dir(year: int, month: int) -> List[Dict[str, Any]]:
                 continue
 
             total_usd = (
-                float(summary['storageAmount']) +
-                float(summary['gpuCloudAmount']) +
-                float(summary['serverlessAmount']) +
-                float(storage['networkStorageAmount'])
+                    float(summary['storageAmount']) +
+                    float(summary['gpuCloudAmount']) +
+                    float(summary['serverlessAmount']) +
+                    float(storage['networkStorageAmount'])
             )
 
             total_chf = round(total_usd * rate, 4)
@@ -258,6 +267,7 @@ def load_runpod_costs_from_dir(year: int, month: int) -> List[Dict[str, Any]]:
         logger.error(f"❌ Fehler beim Laden der RunPod-Kosten: {e}")
         logger.error("Stack trace:", exc_info=True)
         return []
+
 
 if __name__ == "__main__":
     Settings.COSTS_FILE_DIR = "../../cache/costs"

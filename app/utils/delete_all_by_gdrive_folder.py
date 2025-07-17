@@ -2,12 +2,17 @@ import asyncio
 import os
 from pathlib import Path
 
-from app.config import Settings
-from app.config_gdrive import SettingsGdrive, sanitize_filename, folder_id_by_name
-from app.routes.auth import load_drive_service_token
-from app.routes.hashes import update_gdrive_hashes, update_local_hashes_text, update_local_hashes
-from app.utils.progress import update_progress, stop_progress, \
-    update_progress_text
+from ..config import Settings
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import folder_id_by_name
+from ..config_gdrive import sanitize_filename
+from ..routes.auth import load_drive_service_token
+from ..routes.hashes import update_gdrive_hashes
+from ..routes.hashes import update_local_hashes
+from ..routes.hashes import update_local_hashes_text
+from ..utils.progress import stop_progress
+from ..utils.progress import update_progress
+from ..utils.progress import update_progress_text
 
 
 async def delete_files_in_folder(service, folder_id: str = "1q1b1DpBAVDfkvAOMBQ-G8aJ-xJuqf_B6"):

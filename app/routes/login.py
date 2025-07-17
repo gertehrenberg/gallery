@@ -1,9 +1,14 @@
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Request, Form, status
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter
+from fastapi import Form
+from fastapi import Request
+from fastapi import status
+from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 
-from app.config import Settings, UserType
+from ..config import Settings
+from ..config import UserType
 
 router = APIRouter()
 

@@ -2,32 +2,30 @@ import asyncio
 import json
 import os
 from pathlib import Path
-from typing import Dict, Set, Tuple
+from typing import Dict
+from typing import Set
+from typing import Tuple
 
-from app.config import Settings
-from app.config_gdrive import folder_id_by_name, SettingsGdrive
-from app.routes.auth import load_drive_service_token
-from app.routes.hashes import (
-    update_gdrive_hashes,
-    delete_duplicates_in_gdrive_folder,
-    upload_file_to_gdrive,
-)
-from app.routes.manage_text_files import (
-    gdrive_textfiles_files_by_local,
-    check_and_move_gdrive_files,
-    move_file_to_folder,
-)
-from app.utils.logger_config import setup_logger
-from app.utils.progress import (
-    init_progress_state,
-    update_progress_text,
-    update_progress_auto, stop_progress,
-)
-from app.utils.progress_detail import (
-    start_detail_progress,
-    update_detail_progress,
-    calc_detail_progress, stop_detail_progress, update_detail_status,
-)
+from .auth import load_drive_service_token
+from .hashes import delete_duplicates_in_gdrive_folder
+from .hashes import update_gdrive_hashes
+from .hashes import upload_file_to_gdrive
+from .manage_text_files import check_and_move_gdrive_files
+from .manage_text_files import gdrive_textfiles_files_by_local
+from .manage_text_files import move_file_to_folder
+from ..config import Settings
+from ..config_gdrive import SettingsGdrive
+from ..config_gdrive import folder_id_by_name
+from ..utils.logger_config import setup_logger
+from ..utils.progress import init_progress_state
+from ..utils.progress import stop_progress
+from ..utils.progress import update_progress_auto
+from ..utils.progress import update_progress_text
+from ..utils.progress_detail import calc_detail_progress
+from ..utils.progress_detail import start_detail_progress
+from ..utils.progress_detail import stop_detail_progress
+from ..utils.progress_detail import update_detail_progress
+from ..utils.progress_detail import update_detail_status
 
 logger = setup_logger(__name__)
 
@@ -65,7 +63,6 @@ async def fetch_files_in_folder(
         folder_name,
         local_md5=None,
         filename=None):
-
     if folder_id in cached_folder_files:
         files = cached_folder_files[folder_id]
     else:
@@ -129,11 +126,11 @@ async def process_hash_entry(
         folder_name_cat = cat["key"]
         folder_id_cat = folder_id_by_name(folder_name_cat)
         entry = await fetch_files_in_folder(
-            service, 
-            cached_folder_files, 
-            folder_id_cat, 
-            folder_name_cat, 
-            local_md5, 
+            service,
+            cached_folder_files,
+            folder_id_cat,
+            folder_name_cat,
+            local_md5,
             filename)
         if entry:
             break

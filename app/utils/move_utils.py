@@ -6,11 +6,12 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from app.config import Settings
-from app.config_gdrive import calculate_md5
-from app.routes.hashes import update_local_hash
-from app.tools import newpaircache, readimages
-from app.utils.logger_config import setup_logger
+from ..config import Settings
+from ..config_gdrive import calculate_md5
+from ..routes.hashes import update_local_hash
+from ..tools import newpaircache
+from ..tools import readimages
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 

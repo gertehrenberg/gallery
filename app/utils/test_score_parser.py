@@ -1,10 +1,9 @@
-
 import unittest
 from unittest.mock import patch
 
-from app.config import score_type_map
-from app.utils.score_parser import check_image_scores, parse_score_expression
-
+from ..config import score_type_map
+from ..utils.score_parser import check_image_scores
+from ..utils.score_parser import parse_score_expression
 
 dummy_scores = {key: 0 for key in score_type_map.keys()}
 
@@ -109,6 +108,7 @@ class TestScoreParser(unittest.TestCase):
         expr = "nsfw_score >>> 50"  # Invalid syntax
         with self.assertRaises(ValueError):
             parse_score_expression(expr, dummy_scores)
+
 
 if __name__ == '__main__':
     unittest.main()
