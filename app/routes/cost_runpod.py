@@ -17,8 +17,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 
-# 80, 8888, 5678, 11434, 8001, 8002, 8003, 8004
-
 _current_date = None
 _cached_rate = None
 
@@ -108,7 +106,7 @@ def get_usd_to_chf_rate() -> float:
         logger.error(f"❌ Fehler beim Laden des Wechselkurses: {e}")
         return 0.9  # Fallback-Wert
 
-def load_runpod_costs() -> Dict[str, Any]:
+def load_runpod_costs() -> Optional[Dict[str, Any]]:
     """Lädt die aktuellen RunPod-Kosten über die GraphQL API."""
     today = datetime.now()
     cache_file = _get_cache_file_path(today.year, today.month)
@@ -161,7 +159,14 @@ def load_runpod_costs() -> Dict[str, Any]:
             "datum": latest_summary['time'],
             "storage_gesamt": round(float(latest_summary['storageAmount']) * rate, 2),
             "netzwerk_volumen": round(float(latest_storage['networkStorageAmount']) * rate, 2),
-            "gpu_kosten": round(float(latest_summary['gpuCloudAmount']) * rate, 2)
+            "gpu_kosten": round(float(latest_summary['gpuCloudAmount']) * rate, 2),
+            "kosten_chf": round(
+                (float(latest_summary['storageAmount']) +
+                 float(latest_summary['gpuCloudAmount']) +
+                 float(latest_summary['serverlessAmount']) +
+                 float(latest_storage['networkStorageAmount'])) * rate,
+                2
+            )
         }
 
         # Cache aktualisieren
@@ -183,11 +188,12 @@ def load_runpod_costs_from_dir(year: int, month: int) -> List[Dict[str, Any]]:
     # Prüfe ob es einen vollständigen Cache für den Monat gibt
     cached_data = _load_from_cache(cache_file)
     if cached_data:
-        # Prüfe ob der Cache für diesen Monat vollständig ist
-        month_str = f"{year}-{month:02d}"
-        if any(isinstance(entry, dict) and entry.get('tag', '').startswith(month_str) for entry in cached_data):
-            logger.info(f"📂 Lade Kosten für {month_str} aus Cache")
-            return cached_data
+        # Validate cache data structure
+        if all(isinstance(entry, dict) and 'tag' in entry and 'kosten_chf' in entry for entry in cached_data):
+            month_str = f"{year}-{month:02d}"
+            if any(entry.get('tag', '').startswith(month_str) for entry in cached_data):
+                logger.info(f"📂 Lade Kosten für {month_str} aus Cache")
+                return cached_data
 
     # Wenn kein Cache oder nicht vollständig, lade von API
     query = """
@@ -254,6 +260,8 @@ def load_runpod_costs_from_dir(year: int, month: int) -> List[Dict[str, Any]]:
         return []
 
 if __name__ == "__main__":
+    Settings.COSTS_FILE_DIR = "../../cache/costs"
+
     # Debug-Level für detailliertere Ausgaben
     logging.getLogger().setLevel(logging.DEBUG)
 
@@ -269,13 +277,19 @@ if __name__ == "__main__":
         logger.info(f"Storage gesamt:  CHF {current['storage_gesamt']:.2f}/Tag")
         logger.info(f"– Netzwerk-Vol.: CHF {current['netzwerk_volumen']:.2f}/Tag")
         logger.info(f"GPU-Kosten:      CHF {current['gpu_kosten']:.2f}/Tag")
+        if 'kosten_chf' in current:
+            logger.info(f"Gesamtkosten:    CHF {current['kosten_chf']:.2f}/Tag")
 
     # Monatsübersicht anzeigen
     now = datetime.now()
     monthly = load_runpod_costs_from_dir(now.year, now.month)
     if monthly:
-        total = sum(day['kosten_chf'] for day in monthly)
-        logger.info(f"\n📅 Kosten für {now.year}-{now.month:02d}:")
-        for day in monthly:
-            logger.info(f"{day['tag']}: CHF {day['kosten_chf']:.2f}")
-        logger.info(f"\n💰 Gesamtkosten: CHF {total:.2f}")
+        try:
+            total = sum(day.get('kosten_chf', 0) for day in monthly)
+            logger.info(f"\n📅 Kosten für {now.year}-{now.month:02d}:")
+            for day in monthly:
+                logger.info(f"{day['tag']}: CHF {day.get('kosten_chf', 0):.2f}")
+            logger.info(f"\n💰 Gesamtkosten: CHF {total:.2f}")
+        except Exception as e:
+            logger.error(f"Fehler bei der Berechnung der Gesamtkosten: {e}")
+            logger.debug("Monatsdaten:", monthly)

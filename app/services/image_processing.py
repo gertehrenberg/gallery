@@ -266,7 +266,7 @@ def delete_rendered_html_file(file_dir: Path, image_id: str) -> bool:
         return False
 
 
-def clean(image_name: str):
+def clean(image_name: str, image_id : str = None) -> JSONResponse | None:
     logger.info(f"🧹 Starte clean() für: {image_name}")
     text_cache = Settings.CACHE.get("text_cache")
 
@@ -274,7 +274,8 @@ def clean(image_name: str):
         text_cache.pop(image_name, None)
         logger.info(f"[clean] ✅ text_cache gelöscht: {image_name}")
 
-    image_id = find_image_id_by_name(image_name)
+    if not image_id:
+        image_id = find_image_id_by_name(image_name)
 
     delete_checkbox_status(image_name)
     delete_scores(image_name)

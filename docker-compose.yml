@@ -15,6 +15,7 @@ services:
       - ./cache:/data
       - ./cache/recoll_config:/data/recoll_config:rw
       - ./cache/textfiles:/data/textfiles:rw
+      - ./cache/costs:/data/costs
       - ./cache/thumbnailfiles300:/app/thumbnails
       - ./cache/imagefiles:/app/imagefiles
       - ./cache/facefiles:/app/facefiles

@@ -30,3 +30,5 @@ wget \
   rm -rf ComfyUI/temp
 
 
+ docker rmi gallery_gallery
+ docker system prune -f

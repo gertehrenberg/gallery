@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.responses import JSONResponse
 
 from app.config import Settings, score_type_map  # Importiere die Settings-Klasse
-from app.config_gdrive import SettingsGdrive
+from app.config_gdrive import SettingsGdrive, calculate_md5
 from app.database import get_scores_filtered_by_expr
 from app.dependencies import require_login
 from app.routes.auth import load_drive_service_token
@@ -178,11 +178,21 @@ def show_images_gallery(
     # 3. Hauptschleife über alle Bilder
     logger.info("[Gallery] Starte Hauptschleife über Bilder")
     for image_name in pair_cache.keys():
-        # Nur Bilder mit positivem Score-Match weiterverarbeiten
+        # Bei Textsuche: Prüfe ob Bildname den Suchtext enthält
+        if SettingsFilter.SEARCH_TEXT:
+            text_match = SettingsFilter.SEARCH_TEXT.lower() in image_name.lower()
+            if text_match:
+                if start <= total_images < end:
+                    image_keys.append(image_name.lower())
+                total_images += 1
+                continue
+
+        # Bei Score-Filter: Prüfe ob Bild in gefilterten Namen enthalten
         if score_expr and filtered_names is not None:
             if image_name.lower() not in filtered_names:
                 continue
 
+        # Füge Bild zur aktuellen Seite hinzu wenn im richtigen Bereich
         if start <= total_images < end:
             image_keys.append(image_name.lower())
         total_images += 1
@@ -751,14 +761,10 @@ def p4():
 async def download_comfyui_gifs(service):
     """Downloads GIF files from Google Drive folder and saves them in DATA_DIR/comfyui_gif"""
 
-    # Erstelle Zielverzeichnis falls es nicht existiert
-    gif_dir = Path(Settings.IMAGE_FILE_CACHE_DIR).parent / 'comfyui_gif' / file_nmae
-    gif_dir.mkdir(parents=True, exist_ok=True)
-
     try:
 
         # ID des Quell-Ordners
-        folder_id = "1tw4DeaZiK8IVmDcENm9exSrXfXKX8x6R"
+        folder_id = "1dQwLa3tZYY10-BJ7L_3N02AwuopiAHuM"
 
         # Suche nach GIF Dateien im Ordner
         response = service.files().list(
@@ -775,7 +781,10 @@ async def download_comfyui_gifs(service):
         for file in files:
             file_name = file['name']
             file_id = file['id']
-            target_path = gif_dir / file_name
+            target_path = Settings.GIF_FILE_CACHE_PATH / file_name
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+
+            target_path.unlink()
 
             if not target_path.exists():
                 logger.info(f"Lade {file_name} herunter...")
@@ -783,6 +792,16 @@ async def download_comfyui_gifs(service):
                 try:
                     download_file(service, file_id, target_path)
                     logger.info(f"✅ {file_name} erfolgreich heruntergeladen")
+
+                    # Suche nach entsprechender Datei im IMAGE_FILE_CACHE_DIR
+                    base_name = file_name[:-4]  # Entferne .gif Endung
+                    cache_dir = Path(Settings.IMAGE_FILE_CACHE_DIR)
+                    matching_files = list(cache_dir.rglob(base_name + "*"))
+
+                    if len(matching_files) == 1:
+                        image_id = calculate_md5(matching_files[0])
+                        clean(matching_files[0].name, image_id)
+
                 except Exception as e:
                     logger.error(f"❌ Fehler beim Herunterladen von {file_name}: {e}")
             else:
@@ -798,6 +817,8 @@ def p5():
     Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
     Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
     Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
+    Settings.GIF_FILE_CACHE_PATH = Path("../../cache/comfyui_gif")
+
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
 
     service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
