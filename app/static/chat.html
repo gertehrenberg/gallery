@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>Chat mit Ollama</title>
+  <style>
+    body { font-family: sans-serif; background: #111; color: #eee; display: flex; flex-direction: column; height: 100vh; margin: 0; }
+    #chat { flex: 1; overflow-y: auto; padding: 1em; white-space: pre-wrap; }
+    .user { color: #4af; margin: .5em 0; }
+    .bot { color: #afa; margin: .5em 0; }
+    form { display: flex; border-top: 1px solid #333; }
+    input { flex: 1; padding: .8em; background: #222; color: #eee; border: none; }
+    button { background: #4af; border: none; color: white; padding: .8em 1.2em; cursor: pointer; }
+    button:hover { background: #69f; }
+  </style>
+</head>
+<body>
+  <div id="chat"></div>
+  <form id="form">
+    <input id="input" type="text" placeholder="Schreibe etwas..." autocomplete="off" />
+    <button>Senden</button>
+  </form>
+
+  <script>
+    const form = document.getElementById("form");
+    const input = document.getElementById("input");
+    const chat = document.getElementById("chat");
+
+    async function sendMessage(prompt) {
+      const userMsg = document.createElement("div");
+      userMsg.className = "user";
+      userMsg.textContent = "🧑 " + prompt;
+      chat.appendChild(userMsg);
+
+      const botMsg = document.createElement("div");
+      botMsg.className = "bot";
+      chat.appendChild(botMsg);
+
+      const res = await fetch("/chat", {  // <── wichtig: relativer Pfad!
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt })
+      });
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        botMsg.textContent += decoder.decode(value);
+        chat.scrollTop = chat.scrollHeight;
+      }
+    }
+
+    form.addEventListener("submit", e => {
+      e.preventDefault();
+      const prompt = input.value.trim();
+      if (!prompt) return;
+      input.value = "";
+      sendMessage(prompt);
+    });
+  </script>
+</body>
+</html>
