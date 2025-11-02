@@ -134,5 +134,6 @@ class Settings:
 
     current_loading_folder = ""
     folders_loaded = 0
+    folders_total = 0
 
     RECOLL_CONFIG_DIR = "/data/recoll_config"

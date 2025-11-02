@@ -21,6 +21,47 @@ logging.basicConfig(
 
 _current_date = None
 _cached_rate = None
+_writable_cache_dir = None  # Cache the writable directory
+
+
+def _find_writable_cache_dir() -> Path:
+    """Find and cache a writable cache directory."""
+    global _writable_cache_dir
+
+    # Return cached result if already found
+    if _writable_cache_dir is not None:
+        return _writable_cache_dir
+
+    # Try multiple cache locations in order of preference
+    cache_dirs = [
+        Path("/data/.cache/costs"),  # Hidden cache in /data
+        Path("/data/costs"),
+        Path("./cache/costs"),  # Relative to current directory
+        Path.home() / ".cache" / "costs",  # User's home cache
+        Path("/tmp/costs")  # System temp directory as last resort
+    ]
+
+    for cache_dir in cache_dirs:
+        try:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+            # Test write permissions
+            test_file = cache_dir / ".write_test"
+            test_file.touch()
+            test_file.unlink()
+            # If we got here, directory is writable
+            _writable_cache_dir = cache_dir
+            logger.info(f"✅ Using writable cache directory: {cache_dir}")
+            return cache_dir
+        except (PermissionError, OSError) as e:
+            logger.debug(f"Cannot write to {cache_dir}: {e}")
+            continue
+
+    # If all locations fail, use temp directory without testing
+    fallback_dir = Path("/tmp/costs")
+    fallback_dir.mkdir(parents=True, exist_ok=True)
+    _writable_cache_dir = fallback_dir
+    logger.warning(f"⚠️ Using fallback cache directory (may not persist): {fallback_dir}")
+    return fallback_dir
 
 
 def _make_runpod_request(query: str, variables: Optional[Dict] = None) -> Dict:
@@ -58,29 +99,53 @@ def _make_runpod_request(query: str, variables: Optional[Dict] = None) -> Dict:
 
 
 def _get_cache_file_path(year: int, month: int) -> Path:
-    """Generiert den Pfad zur Cache-Datei für den angegebenen Monat."""
-    return Path(Settings.COSTS_FILE_DIR) / f"runpod_costs_{year}_{month:02d}.json"
+    """Gibt den Pfad zur Cache-Datei zurück."""
+    cache_dir = _find_writable_cache_dir()
+    return cache_dir / f"runpod_costs_{year}_{month:02d}.json"
 
 
 def _save_to_cache(data: List[Dict[str, Any]], cache_file: Path) -> None:
     """Speichert Daten in einer Cache-Datei."""
-    os.makedirs(cache_file.parent, exist_ok=True)
-    with open(cache_file, 'w', encoding='utf-8') as f:
-        json.dump(data, f, indent=2)
+    try:
+        # Ensure parent directory exists and is writable
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Write to temporary file first, then rename (atomic operation)
+        temp_file = cache_file.with_suffix('.tmp')
+        with open(temp_file, 'w', encoding='utf-8') as f:
+            json.dump(data, f, indent=2)
+
+        # Atomic rename
+        temp_file.replace(cache_file)
+        logger.info(f"✅ Cache gespeichert: {cache_file}")
+
+    except PermissionError as e:
+        logger.error(f"❌ Keine Schreibberechtigung für {cache_file}: {e}")
+        # Don't raise - caching is optional, application should continue
+    except Exception as e:
+        logger.error(f"❌ Fehler beim Speichern des Cache: {e}")
+        # Don't raise - caching is optional
 
 
 def _load_from_cache(cache_file: Path) -> Optional[List[Dict[str, Any]]]:
     """Lädt Daten aus einer Cache-Datei."""
-    if cache_file.exists():
-        try:
-            with open(cache_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    return data
-                logger.error(f"❌ Ungültiges Cache-Format in {cache_file}")
-        except Exception as e:
-            logger.error(f"❌ Fehler beim Laden des Caches {cache_file}: {e}")
-    return None
+    if not cache_file.exists():
+        return None
+
+    try:
+        with open(cache_file, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            logger.info(f"✅ Cache geladen: {cache_file}")
+            return data
+    except (PermissionError, OSError) as e:
+        logger.warning(f"⚠️ Kann Cache nicht lesen: {cache_file}: {e}")
+        return None
+    except json.JSONDecodeError as e:
+        logger.warning(f"⚠️ Ungültiger Cache: {cache_file}: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Fehler beim Laden des Cache: {e}")
+        return None
 
 
 def get_usd_to_chf_rate() -> float:
@@ -88,7 +153,10 @@ def get_usd_to_chf_rate() -> float:
     global _current_date, _cached_rate
 
     today = datetime.now().strftime('%Y-%m-%d')
-    cache_file = Path(Settings.COSTS_FILE_DIR) / "exchange_rate.json"
+
+    # Use the writable cache directory
+    cache_dir = _find_writable_cache_dir()
+    cache_file = cache_dir / "exchange_rate.json"
 
     # Prüfe den Cache
     cached_data = _load_from_cache(cache_file)

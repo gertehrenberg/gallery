@@ -10,6 +10,8 @@ RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         libgl1 \
         libglib2.0-0 \
+        zlib1g \
+        zlib1g-dev \
         sqlite3 \
         curl \
         recoll \
@@ -17,6 +19,7 @@ RUN apt-get update && \
         aspell \
         aspell-de \
         aspell-en \
+        libssl-dev \
         file \
         locales && \
     # Locale auf Deutsch setzen
@@ -26,24 +29,22 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Erstelle Benutzer
+# Erstelle Benutzer und Verzeichnisse
 RUN useradd -m -u 1000 gallery && \
-    # Erstelle Verzeichnisse
     mkdir -p /data/recoll_config /data/textfiles && \
-    # Setze Berechtigungen
     chown -R gallery:gallery /data /app
 
-# Kopiere Projektdateien
+# Projektdateien kopieren
 COPY --chown=gallery:gallery requirements.txt .
 COPY --chown=gallery:gallery app ./app
 
-# Python-Pakete installieren
+# Python-Abhängigkeiten installieren
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Wechsle zum gallery Benutzer
+# Benutzer wechseln
 USER gallery
 
-# Erstelle Recoll-Konfiguration
+# Recoll-Konfiguration erstellen
 RUN echo "\
 topdirs = /data/textfiles\n\
 indexedmimetypes = text/plain text/*\n\
@@ -67,5 +68,5 @@ ENV LANG=de_DE.UTF-8 \
 # Port freigeben
 EXPOSE 8000
 
-# Starte Anwendung
+# Anwendung starten
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
