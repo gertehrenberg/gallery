@@ -1,3 +1,18 @@
+# Disable IPv6 globally in Python
+import socket
+
+def force_ipv4():
+    old_getaddrinfo = socket.getaddrinfo
+
+    def new_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        if family == 0:
+            family = socket.AF_INET
+        return old_getaddrinfo(host, port, family, type, proto, flags)
+
+    socket.getaddrinfo = new_getaddrinfo
+
+force_ipv4()
+
 import os
 import threading
 

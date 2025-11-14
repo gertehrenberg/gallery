@@ -346,6 +346,8 @@ async def update_gdrive_hashes(
                     results = service.files().list(
                         q=f"'{folder_id}' in parents and trashed=false",
                         spaces='drive',
+                        supportsAllDrives=True,
+                        includeItemsFromAllDrives = True,
                         fields="nextPageToken, files(id, name, md5Checksum)",
                         pageSize=Settings.PAGESIZE,
                         pageToken=page_token
@@ -369,8 +371,6 @@ async def update_gdrive_hashes(
                 gdrive_hashes = {}
             try:
                 hash_file_path = folder_path / Settings.GDRIVE_HASH_FILE
-                if not hash_file_path.exists():
-                    hash_file_path = folder_path.parent / Settings.GDRIVE_HASH_FILE
                 await save_structured_hashes(gdrive_hashes, hash_file_path)
                 await update_progress_auto(
                     f"✅ {current_folder}: {len(gdrive_hashes)} Einträge gespeichert")

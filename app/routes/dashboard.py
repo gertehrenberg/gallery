@@ -1064,13 +1064,13 @@ async def handle_filename_duplicates(filename_map):
 
 
 def localp2():
-    Settings.DB_PATH = '../../gallery_local.db'
-    Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
-    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
-    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
-    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
-    return load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+    Settings.DB_PATH = '/home/ubuntu/gallery/gallery_local.db'
+    Settings.RENDERED_HTML_DIR = "/home/ubuntu/gallery/cache/rendered_html"
+    Settings.PAIR_CACHE_PATH = "/home/ubuntu/gallery/cache/pair_cache_local.json"
+    Settings.IMAGE_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/textfiles"
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ubuntu/gallery/secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
+    return load_drive_service_token(os.path.abspath(os.path.join("/home/ubuntu/gallery/secrets", "token.json")))
 
 
 def p2():
@@ -1086,15 +1086,15 @@ def p2():
 
 
 def localp3():
-    Settings.DB_PATH = '../../gallery_local.db'
-    Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
-    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
-    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
-    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
-    Settings.SAVE_LOG_FILE = "../../cache/from_save_"
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
-    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
-    return load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+    Settings.DB_PATH = '/home/ubuntu/gallery/gallery_local.db'
+    Settings.RENDERED_HTML_DIR = "/home/ubuntu/gallery/cache/rendered_html"
+    Settings.PAIR_CACHE_PATH = "/home/ubuntu/gallery/cache/pair_cache_local.json"
+    Settings.IMAGE_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/textfiles"
+    Settings.SAVE_LOG_FILE = "/home/ubuntu/gallery/cache/from_save_"
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ubuntu/gallery/secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("/home/ubuntu/gallery/cache/gdrive_folders.pkl")
+    return load_drive_service_token(os.path.abspath(os.path.join("/home/ubuntu/gallery/secrets", "token.json")))
 
 
 def p3():
@@ -1102,43 +1102,43 @@ def p3():
 
 
 def p4():
-    Settings.DB_PATH = '../../gallery_local.db'
-    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
-    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
-    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
-    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
-    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+    Settings.DB_PATH = '/home/ubuntu/gallery/gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("/home/ubuntu/gallery/cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "/home/ubuntu/gallery/cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("/home/ubuntu/gallery/cache/gdrive_folders.pkl")
 
     fill_pair_cache(Settings.IMAGE_FILE_CACHE_DIR, Settings.CACHE.get("pair_cache"), Settings.PAIR_CACHE_PATH)
 
-    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+    service = load_drive_service_token(os.path.abspath(os.path.join("/home/ubuntu/gallery/secrets", "token.json")))
 
     asyncio.run(copy_or_move_local_by_gdrive(service, Settings.RECHECK))
 
 
 def p5():
-    Settings.DB_PATH = '../../gallery_local.db'
-    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
-    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
-    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
-    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
-    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+    Settings.DB_PATH = '/home/ubuntu/gallery/gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("/home/ubuntu/gallery/cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "/home/ubuntu/gallery/cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("/home/ubuntu/gallery/cache/gdrive_folders.pkl")
 
-    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
-    asyncio.run(update_gdrive_hashes(service, "ki", Settings.IMAGE_EXTENSIONS, Path(Settings.IMAGE_FILE_CACHE_DIR)))
+    service = load_drive_service_token(os.path.abspath(os.path.join("/home/ubuntu/gallery/secrets", "token.json")))
+    asyncio.run(update_gdrive_hashes(service, "bad", Settings.IMAGE_EXTENSIONS, Path(Settings.IMAGE_FILE_CACHE_DIR)))
 
 
 def p_lokal_zu_gdrive():
-    Settings.DB_PATH = '../../gallery_local.db'
-    Settings.TEMP_DIR_PATH = Path("../../cache/temp")
-    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
-    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
-    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
-    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+    Settings.DB_PATH = '/home/ubuntu/gallery/gallery_local.db'
+    Settings.TEMP_DIR_PATH = Path("/home/ubuntu/gallery/cache/temp")
+    Settings.IMAGE_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/imagefiles"
+    Settings.TEXT_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/textfiles"
+    Settings.PAIR_CACHE_PATH = "/home/ubuntu/gallery/cache/pair_cache_local.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("/home/ubuntu/gallery/cache/gdrive_folders.pkl")
 
-    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+    service = load_drive_service_token(os.path.abspath(os.path.join("/home/ubuntu/gallery/secrets", "token.json")))
     asyncio.run(move_gdrive_files_by_local(service, "delete"))
 
 
 if __name__ == "__main__":
-    p_lokal_zu_gdrive()
+    p5()

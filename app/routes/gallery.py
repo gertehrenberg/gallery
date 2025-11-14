@@ -94,6 +94,30 @@ def show_images_gallery(
         request: Request,
         user: str = Depends(require_login)
 ):
+    def get_civitai_url(image_name: str):
+        base = image_name.split('.')[0]
+        url = f"https://civitai.com/images/{base}"
+
+        try:
+            with httpx.Client(follow_redirects=True, timeout=4.0) as client:
+                # HEAD liefert keinen HTML-Body → wir brauchen GET
+                response = client.get(url)
+
+                # Bedingung 1: Status 200
+                if response.status_code != 200:
+                    return None
+
+                # Bedingung 2: HTML muss den Namen enthalten
+                html = response.text or ""
+
+                if base in html:
+                    return url
+
+        except Exception:
+            pass
+
+        return None
+
     """
     Zeigt eine Galerie von Bildern an, mit Paginierung, Filtern und Textanzeigeoptionen.
     """
@@ -278,15 +302,7 @@ def show_images_gallery(
             if not isinstance(quality_scores, dict):
                 quality_scores = {}
 
-            civitai = None
-            url = f"https://civitai.com/images/{image_name.split('.')[0]}"
-            try:
-                with httpx.Client() as client:
-                    response = client.head(url, timeout=2.0, follow_redirects=True)
-                    if response.status_code == 200:
-                        civitai = url
-            except:
-                pass
+            civitai = get_civitai_url(image_name)
 
             rendered_html = templates.get_template("image_entry_local.j2").render(
                 thumbnail_src=image_data["thumbnail_src"],
