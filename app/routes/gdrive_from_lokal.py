@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import shutil
@@ -253,8 +254,6 @@ async def process_image_folders_gdrive(service, extensions, file_folder_dir, fol
 
             gdrive_hashes: Dict[str, Dict[str, str]] = {}
             if files:
-                folder = service.files().get(fileId=folder_id, fields="name").execute()
-
                 for file in files:
                     try:
                         name = sanitize_filename(file['name'])
@@ -534,18 +533,18 @@ def find_image_file(image_name: str) -> Path | None:
 
 def p1():
     # Basis-Pfade
-    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.IMAGE_FILE_CACHE_DIR = "./cache/imagefiles"
 
     # Token-Pfad für Google Drive
-    token_path = os.path.abspath(os.path.join("../../secrets", "token.json"))
+    token_path = os.path.abspath(os.path.join("./secrets", "token.json"))
 
-    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("./cache/gdrive_folders.pkl")
 
-    Settings.DB_PATH = '../../gallery_local.db'
-    Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
-    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
-    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
-    Settings.SAVE_LOG_FILE = "../../cache/from_save_"
+    Settings.DB_PATH = './gallery_local.db'
+    Settings.RENDERED_HTML_DIR = "./cache/rendered_html"
+    Settings.PAIR_CACHE_PATH = "./cache/pair_cache_local.json"
+    Settings.TEXT_FILE_CACHE_DIR = "./cache/textfiles"
+    Settings.SAVE_LOG_FILE = "./cache/from_save_"
 
     fillcache_local(Settings.PAIR_CACHE_PATH, Settings.IMAGE_FILE_CACHE_DIR)
 
@@ -618,26 +617,26 @@ def p1():
     if count > 0:
         write_local_hashes(Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR)
 
-    # asyncio.run(gdrive_from_lokal(
-    #     load_drive_service_token(token_path),
-    #     "recheck"
-    # ))
+    asyncio.run(gdrive_from_lokal(
+        load_drive_service_token(token_path),
+        "recheck"
+    ))
 
 
 def p2():
     # Basis-Pfade
-    Settings.IMAGE_FILE_CACHE_DIR = "../../cache/imagefiles"
+    Settings.IMAGE_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/imagefiles"
 
     # Token-Pfad für Google Drive
-    token_path = os.path.abspath(os.path.join("../../secrets", "token.json"))
+    token_path = os.path.abspath(os.path.join("/home/ubuntu/gallery/secrets", "token.json"))
 
-    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("/home/ubuntu/gallery/cache/gdrive_folders.pkl")
 
-    Settings.DB_PATH = '../../gallery_local.db'
-    Settings.RENDERED_HTML_DIR = "../../cache/rendered_html"
-    Settings.PAIR_CACHE_PATH = "../../cache/pair_cache_local.json"
-    Settings.TEXT_FILE_CACHE_DIR = "../../cache/textfiles"
-    Settings.SAVE_LOG_FILE = "../../cache/from_save_"
+    Settings.DB_PATH = '/home/ubuntu/gallery/gallery_local.db'
+    Settings.RENDERED_HTML_DIR = "/home/ubuntu/gallery/cache/rendered_html"
+    Settings.PAIR_CACHE_PATH = "/home/ubuntu/gallery/cache/pair_cache_local.json"
+    Settings.TEXT_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/textfiles"
+    Settings.SAVE_LOG_FILE = "/home/ubuntu/gallery/cache/from_save_"
 
     service = load_drive_service_token(token_path)
 
@@ -662,8 +661,8 @@ def p2():
             # Generate new hash file for this folder
             try:
                 logger.info(f"Attempting to regenerate hash file for folder: {folder_key}")
-                process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR,
-                                             [folder_id_by_name(folder_key)])
+                asyncio.run(process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.IMAGE_FILE_CACHE_DIR,
+                                             [folder_key]))
 
                 # Try to read the newly generated file
                 if local_path.exists():
@@ -685,8 +684,8 @@ def p2():
 
     logger.info(f"Anzahl Ordner gesamt: {len(hash_cache)}")
 
-    process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR,
-                                 [Settings.TEXTFILES_FOLDERNAME])
+    asyncio.run(process_image_folders_gdrive(service, Settings.IMAGE_EXTENSIONS, Settings.TEXT_FILE_CACHE_DIR,
+                                 [Settings.TEXTFILES_FOLDERNAME]))
 
 
 if __name__ == "__main__":
