@@ -1,0 +1,84 @@
+/home/ubuntu/gallery
+├── app
+│   ├── __pycache__
+│   ├── routes
+│   │   └── __pycache__
+│   ├── scores
+│   │   └── __pycache__
+│   ├── services
+│   │   └── __pycache__
+│   ├── static
+│   ├── templates
+│   └── utils
+│       └── __pycache__
+├── cache
+│   ├── comfyui_gif
+│   ├── costs
+│   ├── facefiles
+│   ├── imagefiles
+│   │   ├── bad
+│   │   ├── comfyui
+│   │   │   ├── 2025-02-14-213757_4294967295.jpeg
+│   │   │   ├── 2a1a89a99751fa47c746f705872909b8_img_2715.jpg
+│   │   │   ├── 53e05edf866c28ae55855e93cc23d83a_img_2189.jpg
+│   │   │   ├── 70074290.png
+│   │   │   ├── 72fb45cc63043a10d6bcb49f2bb39be2_img_2707.jpg
+│   │   │   ├── 8155f6e97d967175a2070d24c5136749.jpg
+│   │   │   ├── 822c47c4-fdf9-4d89-84ff-5d948ecbd8fa.jpg
+│   │   │   ├── 84312438.jpg
+│   │   │   ├── 84477941.jpg
+│   │   │   ├── 84670374.jpg
+│   │   │   ├── 850ed8428cc1bad633bd3a40cecee79f_img_2731.jpg
+│   │   │   ├── 85515922.png
+│   │   │   ├── 85632794.png
+│   │   │   ├── 85721274.jpg
+│   │   │   ├── 86065552.jpg
+│   │   │   ├── 86226666.png
+│   │   │   ├── 87298010.jpg
+│   │   │   ├── 87314815.png
+│   │   │   ├── 87369688.png
+│   │   │   ├── 87376981.png
+│   │   │   ├── 87378750.png
+│   │   │   ├── 87405882.jpg
+│   │   │   ├── 87409795.jpg
+│   │   │   ├── 87461436.png
+│   │   │   ├── 87468981.jpg
+│   │   │   ├── 87476401.jpg
+│   │   │   ├── 87488511.png
+│   │   │   ├── 87933949.png
+│   │   │   ├── 88382477.jpg
+│   │   │   ├── dc3bc3896acea1673600e9fb23c42c7a_img_2737.jpg
+│   │   │   ├── img_0730(2).jpeg
+│   │   │   ├── img_2522.jpg
+│   │   │   ├── img_2546.jpg
+│   │   │   ├── img_2623.jpeg
+│   │   │   ├── img_3616(1).jpg
+│   │   │   └── screenshot 2025-07-11 160538.png
+│   │   ├── delete
+│   │   ├── document
+│   │   ├── double
+│   │   ├── gemini
+│   │   ├── ki
+│   │   ├── real
+│   │   ├── recheck
+│   │   ├── sex
+│   │   ├── todo
+│   │   └── top
+│   ├── recoll_config
+│   │   └── xapiandb
+│   ├── rendered_html
+│   ├── temp
+│   ├── textfiles
+│   │   └── textfiles
+│   └── thumbnailfiles300
+├── comfyui_gif
+├── facefiles
+├── gallery_lib.egg-info
+├── html chor
+├── imagefiles
+├── secrets
+├── thumbnails
+└── utils
+    └── testing
+
+82 directories
