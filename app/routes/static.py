@@ -8,6 +8,9 @@ from fastapi.responses import FileResponse
 
 from ..config import Settings  # Importiere die Settings-Klasse
 from ..dependencies import require_login
+from ..utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 router = APIRouter()
 
@@ -16,8 +19,8 @@ router = APIRouter()
 @router.get("/static/thumbnails/{file_path:path}")
 async def _thumbnails(file_path: str, request: Request):
     file = Path("/app/thumbnails") / file_path
-    print("🔍 Angeforderte Datei:", file)
-    print("📁 Existiert:", file.exists())
+    logger.info(f"🔍 Angeforderte Datei: {file}")
+    logger.info(f"📁 Existiert: {file.exists()}")
     if file.exists() and file.is_file():
         return FileResponse(file)
     raise HTTPException(status_code=404)

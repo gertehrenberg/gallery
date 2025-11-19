@@ -96,6 +96,8 @@ def find_image_id_by_name(image_name: str) -> Optional[str]:
 
 
 def find_image_name_by_id(image_id: str) -> Optional[str]:
+    image_id = dict2md5(image_id)
+
     """Return the image name for a given image_id, updating cache per-category."""
     logger.info(f"🔎 Suche Bildname für ID: {image_id}")
     try:
@@ -114,6 +116,14 @@ def find_image_name_by_id(image_id: str) -> Optional[str]:
 
     logger.warning(f"❌ Kein Bildname gefunden für ID: {image_id}")
     return None
+
+
+def dict2md5(image_id: object) -> Any:
+    if isinstance(image_id, dict):
+        image_id = image_id["md5"]
+    else:
+        image_id = image_id
+    return image_id
 
 
 def process_directory(directory: Path) -> bool:

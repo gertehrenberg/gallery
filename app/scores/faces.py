@@ -1,22 +1,18 @@
-import logging
 from pathlib import Path
 
 import cv2
 
 from ..config import Settings
 from ..routes.what import remove_items
-from ..tools import readimages
+from ..tools import readimages, dict2md5
 from ..utils.db_utils import load_face_from_db
 from ..utils.db_utils import save_quality_scores
+from ..utils.logger_config import setup_logger
 from ..utils.progress import init_progress_state
 from ..utils.progress import stop_progress
 from ..utils.progress import update_progress
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logger = setup_logger(__name__)
 
 # Absolute Pfade zu den Haar Cascade Klassifikatoren.  Diese sollten relativ zum Projektverzeichnis sein.
 HAAR_FRONTALFACE_ALT2 = cv2.data.haarcascades + 'haarcascade_frontalface_alt2.xml'
@@ -38,12 +34,12 @@ def generate_faces(db_path, folder_key, image_name, image_id, min_size=(50, 50))
     if set(range(5)).issubset(scores):
         return {reverse_mapping[k]: scores[k] for k in scores}
 
-    logging.info(f"[generate_faces] nicht vollständig in DB für {image_name}")
+    logger.info(f"[generate_faces] nicht vollständig in DB für {image_name}")
 
     full_path = Path(Settings.IMAGE_FILE_CACHE_DIR) / folder_key / image_name
     img = cv2.imread(str(full_path))
     if img is None:
-        logging.error(f"[gen_faces] Fehler beim Lesen des Bildes: {full_path}")
+        logger.error(f"[gen_faces] Fehler beim Lesen des Bildes: {full_path}")
         return False
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -59,26 +55,28 @@ def generate_faces(db_path, folder_key, image_name, image_id, min_size=(50, 50))
         faces = face_cascade_3.detectMultiScale(gray, 1.1, 4, minSize=min_size)
 
     if len(faces) > 0:
-        logging.info(f"[gen_faces] {len(faces)} Gesichter erkannt in {image_name}")
+        logger.info(f"[gen_faces] {len(faces)} Gesichter erkannt in {image_name}")
         for i, (x, y, w, h) in enumerate(faces):
             face_img = img[y:y + h, x:x + w]
             face_filename = f'/app/facefiles/{image_id}_{i}.jpg'  # Zielpfad für Gesichtsausschnitt
             try:
                 cv2.imwrite(face_filename, face_img)
-                logging.info(f"[gen_faces] Gesichtsausschnitt gespeichert: {face_filename}")
+                logger.info(f"[gen_faces] Gesichtsausschnitt gespeichert: {face_filename}")
             except Exception as e:
-                logging.error(f"[gen_faces] Fehler beim Speichern des Gesichtsausschnitts: {face_filename} - {e}")
+                logger.error(f"[gen_faces] Fehler beim Speichern des Gesichtsausschnitts: {face_filename} - {e}")
                 return False
         save(db_path, image_id, scores)
         return True
     else:
-        logging.info(f"[gen_faces] Keine Gesichter erkannt in {image_name}")
+        logger.info(f"[gen_faces] Keine Gesichter erkannt in {image_name}")
         save(db_path, image_id, scores)
         return False
 
 
-def load_faces(db_path, folder_key: str, image_name: str, image_id: str) -> list[dict]:
-    logging.info(f"🔍 Starte get_faces() für {image_id}")
+def load_faces(db_path, folder_key: str, image_name: str, image_id: object) -> list[dict]:
+    image_id = dict2md5(image_id)
+
+    logger.info(f"🔍 Starte load_faces() für {image_name} {image_id}")
 
     generate_faces(db_path, folder_key, image_name, image_id)
 
@@ -86,7 +84,7 @@ def load_faces(db_path, folder_key: str, image_name: str, image_id: str) -> list
     face_dir = Path(Settings.GESICHTER_FILE_CACHE_DIR)
     thumbs = sorted(face_dir.glob(f"{image_id}_*.jpg"))
     if thumbs:
-        logging.info(f"[get_faces] ✅ {len(thumbs)} gefunden")
+        logger.info(f"[load_faces] ✅ {len(thumbs)} gefunden")
     return [
         {
             "src": f"/gallery{base_url}/{thumb.name}",
@@ -99,7 +97,7 @@ def load_faces(db_path, folder_key: str, image_name: str, image_id: str) -> list
 
 def save(db_path, image_id, scores: dict[str, int] | None = None):
     if scores:
-        logging.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
+        logger.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
         save_quality_scores(db_path, image_id, scores, mapping)
 
 

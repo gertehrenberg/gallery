@@ -69,4 +69,4 @@ ENV LANG=de_DE.UTF-8 \
 EXPOSE 8000
 
 # Anwendung starten
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--reload"]

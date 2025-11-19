@@ -1,6 +1,7 @@
 import sqlite3
 
 from ..config import Settings
+from ..tools import dict2md5
 from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
@@ -150,6 +151,8 @@ def load_scores_from_db(db_path, image_name):
 
 
 def load_comfyui_count(db_path, image_id: str) -> int:
+    image_id = dict2md5(image_id)
+
     """
     Lädt den gespeicherten Wert für 'comfyui_count' eines Bildes aus der Tabelle 'text_status'.
     Gibt 0 zurück, wenn kein Eintrag gefunden wurde.

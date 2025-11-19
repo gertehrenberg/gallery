@@ -33,7 +33,7 @@ def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, fl
             "pathname": str(Path(folder_name).name),
             "filename": image_name
         }
-        print(f"[load_nsfw] Rufe auf: {NSFW_SERVICE_URL} mit {payload}")
+        logger.info(f"[load_nsfw] Rufe auf: {NSFW_SERVICE_URL} mit {payload}")
         response = httpx.post(NSFW_SERVICE_URL, json=payload, timeout=5.0)
         response.raise_for_status()
         data = response.json()
@@ -47,7 +47,7 @@ def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, fl
             return scores
         return None
     except Exception as e:
-        print(f"Fehler beim NSFW-Check für {image_name}: {e}")
+        logger.info(f"Fehler beim NSFW-Check für {image_name}: {e}")
         return None
 
 
@@ -75,7 +75,7 @@ def load_all_scores(db_path: str) -> dict[str, dict[str, float]]:
 
         return filtered
     except Exception as e:
-        print(f"Fehler beim Laden aller NSFW-Scores: {e}")
+        logger.info(f"Fehler beim Laden aller NSFW-Scores: {e}")
         return {}
 
 
@@ -164,13 +164,13 @@ def test_all_nsfw_urls(pathname: str, filename: str, max_retries: int = 3, delay
     for url in urls:
         for attempt in range(1, max_retries + 1):
             try:
-                print(f"🌐 [{attempt}/{max_retries}] Teste NSFW-Service: {url} mit {payload}")
+                logger.info(f"🌐 [{attempt}/{max_retries}] Teste NSFW-Service: {url} mit {payload}")
                 response = httpx.post(url, json=payload, timeout=5.0)
-                print(f"✅ Antwort von {url}: {response.status_code} → {response.text[:200]}")
+                logger.info(f"✅ Antwort von {url}: {response.status_code} → {response.text[:200]}")
                 break  # Erfolgreich, nächste URL testen
             except Exception as e:
-                print(f"❌ Fehler bei {url} (Versuch {attempt}): {e}")
+                logger.info(f"❌ Fehler bei {url} (Versuch {attempt}): {e}")
                 if attempt < max_retries:
                     time.sleep(delay)
                 else:
-                    print(f"⛔ {url} endgültig fehlgeschlagen.\n")
+                    logger.info(f"⛔ {url} endgültig fehlgeschlagen.\n")

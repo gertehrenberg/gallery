@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 
 import cv2
@@ -7,6 +6,7 @@ from skimage import feature
 
 from ..config import Settings
 from ..tools import readimages
+from ..utils.logger_config import setup_logger
 from ..utils.db_utils import load_quality_from_db
 from ..utils.db_utils import save_quality_scores
 from ..utils.progress import init_progress_state
@@ -14,11 +14,7 @@ from ..utils.progress import stop_progress
 from ..utils.progress import update_progress
 from ..utils.score_utils import delete_scores_by_type
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logger = setup_logger(__name__)
 
 
 def scale_score_to_0_100(score):
@@ -44,7 +40,7 @@ def load_quality(db_path, image_file_path, folder_name: str, image_name: str):
         if set(range(1, 2)).issubset(scores):
             return {reverse_mapping[k]: scores[k] for k in scores}
 
-        logging.info(f"[load_quality] nicht vollständig in DB für {image_name}")
+        logger.info(f"[load_quality] nicht vollständig in DB für {image_name}")
 
         full_path = Path(image_file_path) / folder_name / image_name
         scoreq1, scoreq2 = calculateq1andq2(full_path)
@@ -58,7 +54,7 @@ def load_quality(db_path, image_file_path, folder_name: str, image_name: str):
         return scores
 
     except Exception as e:
-        logging.error(f"[load_quality] Fehler bei {image_name}: {e}")
+        logger.error(f"[load_quality] Fehler bei {image_name}: {e}")
 
     return None, None
 
@@ -128,7 +124,7 @@ def calculateq1andq2(image_path):
 
 def save(db_path, image_id, scores: dict[str, int] | None = None):
     if scores:
-        logging.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
+        logger.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
         save_quality_scores(db_path, image_id, scores, mapping)
 
 

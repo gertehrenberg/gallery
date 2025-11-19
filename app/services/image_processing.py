@@ -18,7 +18,7 @@ from ..scores.quality import load_quality
 from ..services.thumbnail import generate_thumbnail
 from ..services.thumbnail import get_thumbnail_path
 from ..services.thumbnail import thumbnail
-from ..tools import find_image_id_by_name
+from ..tools import find_image_id_by_name, dict2md5
 from ..tools import newpaircache
 from ..utils.db_utils import delete_checkbox_status
 from ..utils.logger_config import setup_logger
@@ -281,6 +281,8 @@ def clean(image_name: str, image_id: str = None) -> JSONResponse | None:
 
     if not image_id:
         image_id = find_image_id_by_name(image_name)
+
+    image_id = dict2md5(image_id)
 
     delete_checkbox_status(image_name)
     delete_scores(image_name)

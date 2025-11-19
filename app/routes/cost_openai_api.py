@@ -3,12 +3,9 @@ import logging
 
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+from ..utils.logger_config import setup_logger
 
+logger = setup_logger(__name__)
 
 # https://platform.openai.com/settings/organization/usage
 

@@ -11,13 +11,10 @@ from typing import Optional
 import requests
 from dotenv import load_dotenv
 
+from ..utils.logger_config import setup_logger
 from ..config import Settings
 
-logger = logging.getLogger(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
+logger = setup_logger(__name__)
 
 _current_date = None
 _cached_rate = None
