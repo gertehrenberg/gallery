@@ -114,3 +114,22 @@ docker exec -it gallery cat /data/recoll_config/recoll.log
 
 # Dateianzahl prüfen
 docker exec -it gallery bash -c "find /data/textfiles -name "*.txt" | wc -l"
+
+
+Recoll läuft im Container auf python:3.11-slim-bookworm und verwendet die stabilen Debian-Bookworm-Pakete recoll und python3-recoll. Der entscheidende Punkt ist der Bind-Mount /data/recoll_config: er überschreibt die im Dockerfile erzeugten Dateien, weshalb die recoll.conf nach dem Containerstart manuell im Container erzeugt werden muss.
+
+Damit Recoll funktioniert, muss das Host-Verzeichnis cache/recoll_config vollständig geleert und neu erstellt werden. Es muss komplett root:root gehören und die Rechte 755 haben. Erst dann kann Xapian Schreib-Locks korrekt setzen.
+
+Nach dem Containerstart wird die recoll.conf im Container neu angelegt. Anschließend wird der Index mit folgendem Befehl erzeugt:
+
+docker exec -it -u root gallery recollindex -c /data/recoll_config -Z
+
+
+Das Logfile /data/recoll_config/recoll.log zeigt den Fortschritt. Meldungen wie Db::add: docid … added bedeuten erfolgreichen Indexaufbau.
+
+Für MP3/MP4-Metadaten muss zusätzlich mutagen per pip install mutagen installiert werden.
+
+Mit diesen Schritten funktioniert Recoll stabil und zuverlässig.
+
+docker exec -it -u root gallery recollindex -c /data/recoll_config -Z
+docker exec -it gallery recollq -c /data/recoll_config Schirm

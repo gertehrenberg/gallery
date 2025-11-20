@@ -1,4 +1,3 @@
-import logging
 from pathlib import Path
 
 from ..config import Settings  # Importiere die Settings-Klasse
@@ -27,7 +26,7 @@ def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, fl
         if set(range(10, 15)).issubset(scores):
             return {reverse_score_type_map[k]: scores[k] for k in scores}
 
-        logging.info(f"[load_nsfw] nicht vollständig in DB für {folder_name}/{image_name}")
+        logger.info(f"[load_nsfw] nicht vollständig in DB für {folder_name}/{image_name}")
 
         payload = {
             "pathname": str(Path(folder_name).name),
@@ -53,7 +52,7 @@ def load_nsfw(db_path, folder_name: str | Path, image_name: str) -> dict[str, fl
 
 def save(db_path, image_id, scores: dict[str, int] | None = None):
     if scores:
-        logging.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
+        logger.info(f"[save] 📂 Schreiben für: {image_id} {scores}")
         save_nsfw_scores(db_path, image_id, scores, score_type_map)
 
 
@@ -80,9 +79,9 @@ def load_all_scores(db_path: str) -> dict[str, dict[str, float]]:
 
 
 def log_scores(image_name: str, scores: dict[str, float]) -> None:
-    logging.info(f"[log_scores] Scores für {image_name}:")
+    logger.info(f"[log_scores] Scores für {image_name}:")
     for k, v in scores.items():
-        logging.info(f"  {k}: {v}")
+        logger.info(f"  {k}: {v}")
 
 
 def log_missing_scores_from_cache(db_path: str) -> None:
@@ -93,7 +92,7 @@ def log_missing_scores_from_cache(db_path: str) -> None:
         rerun = False
         for image_name in Settings.CACHE["pair_cache"]:
             if image_name.lower() not in available:
-                logging.info(f"[log_missing_scores_from_cache] 📂 Lesen für: {image_name}")
+                logger.info(f"[log_missing_scores_from_cache] 📂 Lesen für: {image_name}")
                 rerun = True
                 for eintrag in Settings.kategorien():
                     alt_key = eintrag["key"]
@@ -105,10 +104,10 @@ def log_missing_scores_from_cache(db_path: str) -> None:
 
             for image_name in Settings.CACHE["pair_cache"]:
                 if image_name.lower() not in available:
-                    logging.warning(f"[log_missing_scores] Kein vollständiger Score gefunden für {image_name}")
+                    logger.warning(f"[log_missing_scores] Kein vollständiger Score gefunden für {image_name}")
 
     except Exception as e:
-        logging.error(f"Fehler bei der Prüfung fehlender NSFW-Scores: {e}")
+        logger.error(f"Fehler bei der Prüfung fehlender NSFW-Scores: {e}")
 
 
 def delete_nsfw_by_type():
