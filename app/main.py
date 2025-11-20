@@ -37,6 +37,9 @@ from .routes import n8nlock
 from .routes import static
 from .routes.auth import SCOPES
 from .routes.auth import TOKEN_FILE
+
+from .routes import gdrive_cleanup
+
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from .services.google_drive import verify_folders_exist
 from .tools import fillcache_local
@@ -97,6 +100,7 @@ app.include_router(static.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(n8nlock.router)
+app.include_router(gdrive_cleanup.router)
 
 # Add this at the top level of the file, after the other imports
 background_task = None

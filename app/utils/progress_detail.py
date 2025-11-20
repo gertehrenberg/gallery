@@ -1,8 +1,9 @@
 import asyncio
-import logging
 from typing import Optional
 
-logger = logging.getLogger(__name__)
+from ..utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 # Zustand für Detail-Fortschritt
 detail_state = {
