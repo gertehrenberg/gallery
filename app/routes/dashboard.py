@@ -143,13 +143,13 @@ async def dashboard(request: Request, year: int = None, month: int = None):
     help_links = [
         {"label": "n8n", "url": "http://localhost", "icon": "⚙️"},
         {"label": "ComfyUi", "url": "http://comfyui.local:8188", "icon": "🎨"},
-        {"label": "n8n-server", "url": "https://nw1cs857bq8z5p-5678.proxy.runpod.net/", "icon": "⚙️"},
         {"label": "openai", "url": "https://platform.openai.com/settings/organization/usage", "icon": "🧠"},
-        {"label": "runpod", "url": "https://console.runpod.io/user/billing", "icon": "☁️"}
+        {"label": "Hyperstack", "url": "https://console.hyperstack.cloud/", "icon": "☁️"},
     ]
 
     # Tool Links Definition
     tool_links = [
+        {"label": "Google Drive Clean (gross/klein)", "url": "/gallery/gdrive_cleanup", "icon": "🧹"},
         {"label": 'Sync mit "Save" (GDrive)', "url": f"{_BASE}/test?folder=save&direction=manage_save", "icon": "🔄"},
         {"label": "Reload pair & File-hashes", "url": f"{_BASE}/test?direction=reloadcache", "icon": "🔄"},
         {"label": "Lösche File Cache(s)", "url": f"{_BASE}/what?what=reloadfilecache", "icon": "🗑️"},
