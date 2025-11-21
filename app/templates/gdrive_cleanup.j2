@@ -133,6 +133,16 @@
         .delete-btn:hover {
             background: #c9302c;
         }
+
+        .select-btn {
+            background: #5bc0de;
+            color: white;
+        }
+
+        .select-btn:hover {
+            background: #31b0d5;
+        }
+
     </style>
 </head>
 
@@ -156,6 +166,12 @@
             <button type="button" class="btn reload-btn"
                     onclick="window.location.href='/gallery/gdrive_cleanup_reload'">
                 🔄 Neu laden
+            </button>
+
+            <!-- Erste 50 auswählen -->
+            <button type="button" class="btn select-btn"
+                    onclick="selectFirst50()">
+                ✔️ Erste 50 auswählen
             </button>
 
             <!-- Delete Button -->
@@ -226,6 +242,18 @@
 <script>
     function dashboard() {
         window.location.href = "/gallery/dashboard";
+    }
+
+    function selectFirst50() {
+        const boxes = document.querySelectorAll("input[type='checkbox'][name='delete_ids']");
+        let count = 0;
+
+        boxes.forEach(box => {
+            if (count < 50) {
+                box.checked = true;
+                count++;
+            }
+        });
     }
 </script>
 
