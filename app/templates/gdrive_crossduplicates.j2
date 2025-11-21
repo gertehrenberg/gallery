@@ -39,10 +39,22 @@
             object-fit: cover;
         }
 
-        .thumb-right { text-align: right; }
         .thumb-left { text-align: left; }
         .center { text-align: center; }
 
+        /* Sticky Bar */
+        .sticky-bar {
+            position: sticky;
+            top: 0;
+            background: #ffffffdd;
+            backdrop-filter: blur(6px);
+            padding: 10px 0;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #ddd;
+            z-index: 100;
+        }
+
+        /* Buttons */
         .btn {
             padding: 8px 16px;
             font-size: 15px;
@@ -64,6 +76,7 @@
         .delete-btn { background: #d9534f; color: white; }
         .delete-btn:hover { background: #c9302c; }
 
+        /* Progress */
         #progressBox {
             display: none;
             background: #fff;
@@ -103,21 +116,25 @@
 
 <form action="/gallery/gdrive_crossduplicates_delete" method="post">
 
-    <!-- Buttons -->
-    <div style="display: flex; gap: 8px; margin-bottom: 20px;">
-        <button type="button" class="btn dashboard-btn"
-                onclick="window.location.href='/gallery/dashboard'">
-            📊 Dashboard
-        </button>
+    <!-- STICKY BUTTON BAR -->
+    <div class="sticky-bar">
+        <div style="display: flex; gap: 8px; align-items: center;">
 
-        <button id="reloadBtn" type="button" class="btn reload-btn"
-                onclick="startReload()">
-            🔄 Neu laden
-        </button>
+            <button type="button" class="btn dashboard-btn"
+                    onclick="window.location.href='/gallery/dashboard'">
+                📊 Dashboard
+            </button>
 
-        <button id="deleteBtn" class="btn delete-btn" type="submit">
-            🗑 Ausgewählte löschen
-        </button>
+            <button id="reloadBtn" type="button" class="btn reload-btn"
+                    onclick="startReload()">
+                🔄 Neu laden
+            </button>
+
+            <button id="deleteBtn" class="btn delete-btn" type="submit">
+                🗑 Ausgewählte löschen
+            </button>
+
+        </div>
     </div>
 
     <!-- PROGRESS -->
@@ -167,16 +184,13 @@
                         <span style="color:#777;">({{ f.folder }})</span>
                     </td>
 
-                    <!-- Filename -->
                     <td>{{ f.name }}</td>
 
-                    <!-- Thumbnail -->
                     <td class="thumb-left">
                         <img class="thumb"
                              src="https://drive.google.com/thumbnail?id={{ f.id }}&sz=w200">
                     </td>
 
-                    <!-- Checkbox -->
                     <td class="center">
                         <input type="checkbox" name="delete_ids" value="{{ f.id }}">
                     </td>

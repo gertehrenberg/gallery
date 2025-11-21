@@ -21,6 +21,7 @@ templates = Jinja2Templates(
 # ============================================================================
 
 CROSSFOLDER_RESULTS = []     # [{md5, files:[...]}]
+CROSSFOLDER_CACHE = None     # optionaler Cache (analog zu cleanup)
 CROSSFOLDER_PROGRESS = {
     "status": "Bereit",
     "progress": 0,
@@ -136,29 +137,25 @@ async def load_drive_folders_and_md5():
                 "name": f["name"]
             })
 
-    # ============================================================================
-    # FIX: Cross-Folder Ergebnisstruktur erweitern
-    # ============================================================================
+    # Nur MD5 mit mehreren Ordnern
     results = []
     for md5, flist in md5_groups.items():
         folders = {f["folder"] for f in flist}
-
-        if len(folders) > 1:   # echte Cross-Folder-Duplikate
+        if len(folders) > 1:
             results.append({
                 "md5": md5,
-                "folders": list(folders),   # <-- hinzugefügt
-                "files": flist              # f enthält folder/label/icon
+                "files": flist
             })
-    # ============================================================================
 
-    global CROSSFOLDER_RESULTS
+    global CROSSFOLDER_RESULTS, CROSSFOLDER_CACHE
     CROSSFOLDER_RESULTS = results
+    CROSSFOLDER_CACHE = results.copy()   # Cache speichern
 
     await set_progress("Fertig", 100, "MD5 analysiert", 20)
 
 
 # ============================================================================
-# Start Button
+# START
 # ============================================================================
 
 @router.post("/gdrive_crossduplicates_start")
@@ -168,12 +165,11 @@ async def gdrive_crossduplicates_start():
     CROSSFOLDER_RESULTS = []
 
     asyncio.create_task(load_drive_folders_and_md5())
-
     return JSONResponse({"started": True})
 
 
 # ============================================================================
-# Progress Endpoint
+# PROGRESS
 # ============================================================================
 
 @router.get("/gdrive_crossduplicates_progress")
@@ -182,7 +178,7 @@ async def gdrive_crossduplicates_progress():
 
 
 # ============================================================================
-# Seite anzeigen
+# PAGE
 # ============================================================================
 
 @router.get("/gdrive_crossduplicates", response_class=HTMLResponse)
@@ -194,25 +190,52 @@ async def gdrive_crossduplicates(request: Request):
 
 
 # ============================================================================
-# Reload
+# RELOAD
 # ============================================================================
 
 @router.get("/gdrive_crossduplicates_reload")
 async def gdrive_crossduplicates_reload():
-    global CROSSFOLDER_RESULTS
+    global CROSSFOLDER_RESULTS, CROSSFOLDER_CACHE
     CROSSFOLDER_RESULTS = []
+    CROSSFOLDER_CACHE = None
     reset_progress()
     return RedirectResponse("/gallery/gdrive_crossduplicates")
 
 
 # ============================================================================
-# Löschen (Simulation)
+# DELETE – **Dry-Run + Cache-Update**
 # ============================================================================
 
 @router.post("/gdrive_crossduplicates_delete", response_class=HTMLResponse)
 async def gdrive_crossduplicates_delete(request: Request,
                                         delete_ids: list[str] = Form(default=[])):
+    """
+    NICHT LÖSCHEN — nur simulieren.
+    ABER: Aus Tabelle und Cache entfernen.
+    """
+    global CROSSFOLDER_RESULTS, CROSSFOLDER_CACHE
+
+    delete_ids = set(delete_ids)
+
+    def filter_md5_groups(groups):
+        new_groups = []
+        for g in groups:
+            new_files = [f for f in g["files"] if f["id"] not in delete_ids]
+            if new_files:
+                new_groups.append({"md5": g["md5"], "files": new_files})
+        return new_groups
+
+    CROSSFOLDER_RESULTS = filter_md5_groups(CROSSFOLDER_RESULTS)
+
+    if CROSSFOLDER_CACHE:
+        CROSSFOLDER_CACHE = filter_md5_groups(CROSSFOLDER_CACHE)
+
     return templates.TemplateResponse(
         "gdrive_crossduplicates_done.j2",
-        {"request": request, "deleted": delete_ids, "errors": []}
+        {
+            "request": request,
+            "deleted": list(delete_ids),
+            "errors": [],
+            "dry_run": True
+        }
     )
