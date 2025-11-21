@@ -29,8 +29,7 @@
             background: #f8f8f8;
             text-align: left;
         }
-        .warn { color: #d9534f; font-weight: bold; }
-        .ok   { color: #5cb85c; font-weight: bold; }
+        .ok   { color: #5cb85c; font-weight: bold; text-align: left;}
         .count {
             color: #777;
             font-size: 14px;
@@ -46,13 +45,73 @@
             border-radius: 4px;
             object-fit: cover;
         }
+
+        /* Bild-Ausrichtung */
+        .thumb-right { text-align: right; }
+        .thumb-left  { text-align: left; }
+
+        .center { text-align: center; }
+        .left   { text-align: left; }
+
+        /* ---------- STICKY BUTTON BAR ---------- */
+        .sticky-bar {
+            position: sticky;
+            top: 0;
+            background: white;
+            padding: 10px 0;
+            border-bottom: 2px solid #ddd;
+            z-index: 100;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        .submit-btn {
+            padding: 10px 20px;
+            background: #d9534f;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .submit-btn:hover {
+            background: #c9302c;
+        }
+
+        .reload-btn {
+            padding: 10px 20px;
+            background: #f0ad4e;
+            color: black;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .reload-btn:hover {
+            background: #ec971f;
+        }
+        /* ---------- END STICKY ---------- */
     </style>
 </head>
 
 <body>
 <h1>Google Drive – Case-Duplicate Cleanup</h1>
 
-<p class="dry">Dies ist ein Dry Run. Es wurde nichts gelöscht.</p>
+<form action="/gallery/gdrive_cleanup_delete" method="post">
+
+    <!-- Sticky Button Bar -->
+    <div class="sticky-bar">
+        <button type="button"
+                class="reload-btn"
+                onclick="window.location.href='/gallery/gdrive_cleanup_reload'">
+            🔄 Neu laden
+        </button>
+
+        <button class="submit-btn" type="submit">
+            🗑 Ausgewählte löschen
+        </button>
+    </div>
 
 {% for c in categories %}
 
@@ -67,42 +126,37 @@
 
         <table>
             <thead>
-                <tr>
-                    <th>Löschen?</th>
-                    <th>Uppercase-Datei</th>
-                    <th>Thumbnail<br>Uppercase</th>
-                    <th>Thumbnail<br>Lowercase</th>
-                    <th>Behaltene Datei</th>
-                </tr>
+            <tr>
+                <th class="thumb-right">Bild (gross)</th>
+                <th class="center">Löschen?</th>
+                <th class="thumb-left">Bild (richtig)</th>
+                <th class="left">Dateiname</th>
+            </tr>
             </thead>
 
             <tbody>
             {% for r in c.results %}
                 <tr>
-
-                    <!-- Uppercase-Datei -->
-                    <td class="warn">{{ r.delete }}</td>
-
-                    <!-- Thumbnail der Datei, die gelöscht werden soll -->
-                    <td>
+                    <!-- Uppercase Thumbnail -->
+                    <td class="thumb-right">
                         <img class="thumb"
                              src="https://drive.google.com/thumbnail?id={{ r.delete_id }}&sz=w200"
                              alt="delete">
                     </td>
 
                     <!-- Checkbox -->
-                    <td>
+                    <td class="center">
                         <input type="checkbox" name="delete_ids" value="{{ r.delete_id }}">
                     </td>
 
-                    <!-- Thumbnail der Datei, die behalten wird -->
-                    <td>
+                    <!-- Lowercase Thumbnail -->
+                    <td class="thumb-left">
                         <img class="thumb"
                              src="https://drive.google.com/thumbnail?id={{ r.keep_id }}&sz=w200"
                              alt="keep">
                     </td>
 
-                    <!-- Lowercase-Datei -->
+                    <!-- Lowercase-Dateiname -->
                     <td class="ok">{{ r.keep }}</td>
 
                 </tr>
@@ -113,6 +167,8 @@
     {% endif %}
 
 {% endfor %}
+
+</form>
 
 </body>
 </html>

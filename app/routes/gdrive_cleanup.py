@@ -1,6 +1,6 @@
 import os
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -15,6 +15,11 @@ router = APIRouter()
 templates = Jinja2Templates(
     directory=os.path.join(os.path.dirname(__file__), "../templates")
 )
+
+# ============================================================
+#  GLOBALER CACHE → kein erneuter Scan nach "Zurück"
+# ============================================================
+GDRIVE_CLEANUP_CACHE = None
 
 
 # =====================================================================
@@ -46,7 +51,7 @@ async def gdrive_list_folder(service, folder_id: str):
 
 
 # =====================================================================
-#  FINDE CASE-DUPLIKATE (Uppercase löschen → lowercase behalten)
+#  FINDE CASE-DUPLIKATE
 # =====================================================================
 async def find_case_duplicates(service, folder_name: str):
     folder_id = folder_id_by_name(folder_name)
@@ -66,7 +71,6 @@ async def find_case_duplicates(service, folder_name: str):
     md5_groups = {}
     name_groups = {}
 
-    # === gruppieren ===
     for f in files:
         name = f["name"]
         size = int(f.get("size", 0)) if f.get("size") else None
@@ -79,14 +83,13 @@ async def find_case_duplicates(service, folder_name: str):
 
     results = []
 
-    # === 1. MD5-basierte Duplikate ===
+    # MD5-basierte Duplikate
     for md5, group in md5_groups.items():
         if len(group) < 2:
             continue
 
         lowercase_versions = [g for g in group if g["name"] == g["name"].lower()]
         if not lowercase_versions:
-            # Keine lowercase-Version → nix löschen
             continue
 
         keep = lowercase_versions[0]
@@ -104,14 +107,14 @@ async def find_case_duplicates(service, folder_name: str):
                     "keep_id": keep["id"],
                 })
 
-    # === 2. Name/Größe Fallback für Dateien ohne MD5 ===
+    # Fallback: Name + Größe
     for key, group in name_groups.items():
         if len(group) < 2:
             continue
 
         sizes = {g.get("size") for g in group}
         if len(sizes) != 1:
-            continue  # Verschiedene Dateien
+            continue
 
         lowercase_versions = [g for g in group if g["name"] == g["name"].lower()]
         if not lowercase_versions:
@@ -141,11 +144,26 @@ async def find_case_duplicates(service, folder_name: str):
 
 
 # =====================================================================
-#  FASTAPI ENDPOINT: Pro Kategorie GENAU EINEN Ordner scannen
+#  GET → Seite anzeigen (mit Cache)
 # =====================================================================
 @router.get("/gdrive_cleanup", response_class=HTMLResponse)
 async def gdrive_cleanup(request: Request):
+    global GDRIVE_CLEANUP_CACHE
 
+    # Cache verwenden
+    if GDRIVE_CLEANUP_CACHE is not None:
+        logger.info("➡ Verwende GDrive-Cache (kein Scan)")
+        return templates.TemplateResponse(
+            "gdrive_cleanup.j2",
+            {
+                "request": request,
+                "categories": GDRIVE_CLEANUP_CACHE,
+                "dry_run": True,
+            }
+        )
+
+    # Kein Cache → scannen
+    logger.info("➡ Scanne GDrive (erster Aufruf)")
     service = load_drive_service()
     categories_output = []
 
@@ -154,21 +172,28 @@ async def gdrive_cleanup(request: Request):
         label = k["label"]
         icon = k["icon"]
 
-        if(key == "real"):
+        if key == "real":
             continue
 
-        logger.info(f"Scanne GDrive-Ordner für Kategorie: {label} ({key})")
+        res = await find_case_duplicates(service, key)
 
-        folder_results = await find_case_duplicates(service, key)
+        # ❗ NUR EINTRAGEN, WENN WIRKLICH DUPLIKATE GEFUNDEN
+        if res["num_results"] > 0:
+            categories_output.append({
+                "key": key,
+                "label": label,
+                "icon": icon,
+                "folder_id": res["folder_id"],
+                "num_results": res["num_results"],
+                "results": res["results"],
+            })
 
-        categories_output.append({
-            "key": key,
-            "label": label,
-            "icon": icon,
-            "folder_id": folder_results["folder_id"],
-            "num_results": folder_results["num_results"],
-            "results": folder_results["results"],
-        })
+    # ❗ NUR CACHEN, WENN MINDESTENS EINE KATEGORIE EIN PAAR DUPLIKATE HAT
+    if categories_output:
+        GDRIVE_CLEANUP_CACHE = categories_output
+        logger.info("➡ Cache gespeichert (%d Kategorien)", len(categories_output))
+    else:
+        logger.info("➡ Keine Duplikate gefunden → KEIN Cache gespeichert")
 
     return templates.TemplateResponse(
         "gdrive_cleanup.j2",
@@ -176,5 +201,63 @@ async def gdrive_cleanup(request: Request):
             "request": request,
             "categories": categories_output,
             "dry_run": True,
+        }
+    )
+
+
+# =====================================================================
+#  GET → Cache leeren & neu scannen (Reload-Button)
+# =====================================================================
+from fastapi.responses import RedirectResponse
+
+
+@router.get("/gdrive_cleanup_reload")
+async def gdrive_cleanup_reload():
+    global GDRIVE_CLEANUP_CACHE
+
+    logger.info("🔄 GDrive-Cleanup: Cache wird geleert und neu eingelesen")
+    GDRIVE_CLEANUP_CACHE = None
+
+    # zurück zur Übersicht → neuer Scan wird ausgeführt
+    return RedirectResponse("/gallery/gdrive_cleanup", status_code=302)
+
+
+# =====================================================================
+#  POST → wirklich löschen (UND Cache updaten!)
+# =====================================================================
+@router.post("/gdrive_cleanup_delete", response_class=HTMLResponse)
+async def gdrive_cleanup_delete(request: Request,
+                                delete_ids: list[str] = Form(default=[])):
+    global GDRIVE_CLEANUP_CACHE
+
+    service = load_drive_service()
+
+    deleted = []
+    errors = []
+
+    for file_id in delete_ids:
+        try:
+            service.files().delete(fileId=file_id).execute()
+            deleted.append(file_id)
+        except Exception as e:
+            errors.append({"id": file_id, "error": str(e)})
+
+    # =============================
+    # Cache aktualisieren
+    # =============================
+    if GDRIVE_CLEANUP_CACHE:
+        for cat in GDRIVE_CLEANUP_CACHE:
+            cat["results"] = [
+                r for r in cat["results"]
+                if r["delete_id"] not in deleted
+            ]
+            cat["num_results"] = len(cat["results"])
+
+    return templates.TemplateResponse(
+        "gdrive_cleanup_done.j2",
+        {
+            "request": request,
+            "deleted": deleted,
+            "errors": errors,
         }
     )
