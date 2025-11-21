@@ -134,22 +134,40 @@
         </div>
 
         <!-- Tools -->
+        <!-- Tools -->
         <div class="bg-white rounded-xl shadow p-4">
             <h2 class="text-lg font-semibold mb-2">Tools</h2>
-            <ul class="space-y-2 text-lg">
-                {% for link in help_links %}
-                    <a href="{{ link.url }}" target="_blank"
-                       rel="noopener noreferrer">{{ link.icon }} {{ link.label }}</a>
-                {% endfor %}
-                <br>
+
+            <ul class="space-y-1 text-sm">
+                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 text-sm">
+                    {% for link in help_links %}
+                        <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer"
+                           class="icon-link-sm text-blue-600 hover:underline flex items-center gap-1">
+                            <span class="icon-sm">{{ link.icon }}</span>
+                            {{ link.label }}
+                        </a>
+                    {% endfor %}
+                </div>
+
+                <hr class="my-2">
+
                 {% for link in tool_links %}
-                    {% if "dashboard/what" in link.url %}
-                        <a href="#"
-                           onclick="openWhatModal('{{ link.url }}'); return false;">{{ link.icon }} {{ link.label }}</a>
-                        <br>
-                    {% else %}
-                        <a href="{{ link.url }}">{{ link.icon }} {{ link.label }}</a><br>
-                    {% endif %}
+                    <li>
+                        {% if "dashboard/what" in link.url %}
+                            <a href="#"
+                               onclick="openWhatModal('{{ link.url }}'); return false;"
+                               class="icon-link-sm text-blue-600 hover:underline">
+                                <span class="icon-sm">{{ link.icon }}</span>
+                                {{ link.label }}
+                            </a>
+                        {% else %}
+                            <a href="{{ link.url }}"
+                               class="icon-link-sm text-blue-600 hover:underline">
+                                <span class="icon-sm">{{ link.icon }}</span>
+                                {{ link.label }}
+                            </a>
+                        {% endif %}
+                    </li>
                 {% endfor %}
             </ul>
         </div>

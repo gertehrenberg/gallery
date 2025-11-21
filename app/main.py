@@ -39,6 +39,7 @@ from .routes.auth import SCOPES
 from .routes.auth import TOKEN_FILE
 
 from .routes import gdrive_cleanup
+from .routes import gdrive_crossduplicates
 
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
 from .services.google_drive import verify_folders_exist
@@ -101,6 +102,7 @@ app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(n8nlock.router)
 app.include_router(gdrive_cleanup.router)
+app.include_router(gdrive_crossduplicates.router)
 
 # Add this at the top level of the file, after the other imports
 background_task = None
