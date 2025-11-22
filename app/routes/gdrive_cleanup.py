@@ -20,6 +20,17 @@ templates = Jinja2Templates(
 # ============================================================
 GDRIVE_CLEANUP_CACHE = None
 
+# ============================================================
+#  GLOBALER Google-Drive-Service (neu)
+# ============================================================
+DRIVE_SERVICE = None
+
+def get_drive_service():
+    global DRIVE_SERVICE
+    if DRIVE_SERVICE is None:
+        DRIVE_SERVICE = load_drive_service()
+    return DRIVE_SERVICE
+
 
 # =====================================================================
 #  GOOGLE DRIVE: ALLE DATEIEN EINES ORDNER LADEN (KEINE UNTERORDNER)
@@ -163,7 +174,7 @@ async def gdrive_cleanup(request: Request):
 
     # Kein Cache → scannen
     logger.info("➡ Scanne GDrive (erster Aufruf)")
-    service = load_drive_service()
+    service = get_drive_service()
     categories_output = []
 
     for k in Settings.kategorien():
@@ -176,7 +187,7 @@ async def gdrive_cleanup(request: Request):
 
         res = await find_case_duplicates(service, key)
 
-        # ❗ NUR EINTRAGEN, WENN WIRKLICH DUPLIKATE GEFUNDEN
+        # ❗ nur Kategorien mit Ergebnissen
         if res["num_results"] > 0:
             categories_output.append({
                 "key": key,
@@ -187,12 +198,9 @@ async def gdrive_cleanup(request: Request):
                 "results": res["results"],
             })
 
-    # ❗ NUR CACHEN, WENN MINDESTENS EINE KATEGORIE EIN PAAR DUPLIKATE HAT
     if categories_output:
         GDRIVE_CLEANUP_CACHE = categories_output
         logger.info("➡ Cache gespeichert (%d Kategorien)", len(categories_output))
-    else:
-        logger.info("➡ Keine Duplikate gefunden → KEIN Cache gespeichert")
 
     return templates.TemplateResponse(
         "gdrive_cleanup.j2",
@@ -205,7 +213,7 @@ async def gdrive_cleanup(request: Request):
 
 
 # =====================================================================
-#  GET → Cache leeren & neu scannen (Reload-Button)
+#  GET → Cache leeren & neu scannen (Reload)
 # =====================================================================
 from fastapi.responses import RedirectResponse
 
@@ -213,24 +221,20 @@ from fastapi.responses import RedirectResponse
 @router.get("/gdrive_cleanup_reload")
 async def gdrive_cleanup_reload():
     global GDRIVE_CLEANUP_CACHE
-
-    logger.info("🔄 GDrive-Cleanup: Cache wird geleert und neu eingelesen")
+    logger.info("🔄 Cache geleert → neuer Scan")
     GDRIVE_CLEANUP_CACHE = None
-
-    # zurück zur Übersicht → neuer Scan wird ausgeführt
     return RedirectResponse("/gallery/gdrive_cleanup", status_code=302)
 
 
 # =====================================================================
-#  POST → wirklich löschen (UND Cache updaten!)
+#  POST → echtes Löschen + Cache-Update
 # =====================================================================
 @router.post("/gdrive_cleanup_delete", response_class=HTMLResponse)
 async def gdrive_cleanup_delete(request: Request,
                                 delete_ids: list[str] = Form(default=[])):
     global GDRIVE_CLEANUP_CACHE
 
-    service = load_drive_service()
-
+    service = get_drive_service()
     deleted = []
     errors = []
 
@@ -241,9 +245,7 @@ async def gdrive_cleanup_delete(request: Request,
         except Exception as e:
             errors.append({"id": file_id, "error": str(e)})
 
-    # =============================
     # Cache aktualisieren
-    # =============================
     if GDRIVE_CLEANUP_CACHE:
         for cat in GDRIVE_CLEANUP_CACHE:
             cat["results"] = [

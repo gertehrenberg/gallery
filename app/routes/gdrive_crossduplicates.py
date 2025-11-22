@@ -20,14 +20,28 @@ templates = Jinja2Templates(
 # Globale Variablen
 # ============================================================================
 
-CROSSFOLDER_RESULTS = []     # [{md5, files:[...]}]
-CROSSFOLDER_CACHE = None     # optionaler Cache (analog zu cleanup)
+CROSSFOLDER_RESULTS = []  # [{md5, files:[...]}]
+CROSSFOLDER_CACHE = None  # optionaler Cache (analog zu cleanup)
 CROSSFOLDER_PROGRESS = {
     "status": "Bereit",
     "progress": 0,
     "details": {"status": "-", "progress": 0}
 }
 PROGRESS_LOCK = asyncio.Lock()
+
+# Neuer globaler Drive-Service
+DRIVE_SERVICE = None
+
+
+# ============================================================================
+# Drive-Service nur EINMAL laden
+# ============================================================================
+
+def get_drive_service():
+    global DRIVE_SERVICE
+    if DRIVE_SERVICE is None:
+        DRIVE_SERVICE = load_drive_service()
+    return DRIVE_SERVICE
 
 
 # ============================================================================
@@ -100,9 +114,10 @@ async def load_drive_folders_and_md5():
     await set_progress("Verbinde mit Google Drive…", 5, "Initialisiere…", 0)
     await asyncio.sleep(0.2)
 
-    service = load_drive_service()
+    service = get_drive_service()
 
-    categories = [k for k in Settings.kategorien() if k["key"] != "real"]
+    categories = Settings.kategorien()
+
     total = len(categories)
 
     md5_groups = {}
@@ -149,7 +164,7 @@ async def load_drive_folders_and_md5():
 
     global CROSSFOLDER_RESULTS, CROSSFOLDER_CACHE
     CROSSFOLDER_RESULTS = results
-    CROSSFOLDER_CACHE = results.copy()   # Cache speichern
+    CROSSFOLDER_CACHE = results.copy()  # Cache speichern
 
     await set_progress("Fertig", 100, "MD5 analysiert", 20)
 
@@ -203,39 +218,56 @@ async def gdrive_crossduplicates_reload():
 
 
 # ============================================================================
-# DELETE – **Dry-Run + Cache-Update**
+# DELETE – echtes Löschen + Cache-Update
 # ============================================================================
 
 @router.post("/gdrive_crossduplicates_delete", response_class=HTMLResponse)
 async def gdrive_crossduplicates_delete(request: Request,
                                         delete_ids: list[str] = Form(default=[])):
-    """
-    NICHT LÖSCHEN — nur simulieren.
-    ABER: Aus Tabelle und Cache entfernen.
-    """
     global CROSSFOLDER_RESULTS, CROSSFOLDER_CACHE
 
-    delete_ids = set(delete_ids)
+    service = get_drive_service()
 
-    def filter_md5_groups(groups):
-        new_groups = []
-        for g in groups:
-            new_files = [f for f in g["files"] if f["id"] not in delete_ids]
-            if new_files:
-                new_groups.append({"md5": g["md5"], "files": new_files})
-        return new_groups
+    deleted = []
+    errors = []
 
-    CROSSFOLDER_RESULTS = filter_md5_groups(CROSSFOLDER_RESULTS)
+    # ------------------------------
+    # 1) Wirklich löschen
+    # ------------------------------
+    for file_id in delete_ids:
+        try:
+            service.files().delete(fileId=file_id).execute()
+            deleted.append(file_id)
+        except Exception as e:
+            errors.append({"id": file_id, "error": str(e)})
+
+    deleted_set = set(deleted)
+
+    # ------------------------------
+    # 2) MD5s herausfinden, die gelöscht wurden
+    # ------------------------------
+    md5_to_remove = set()
+
+    for g in CROSSFOLDER_RESULTS:
+        for f in g["files"]:
+            if f["id"] in deleted_set:
+                md5_to_remove.add(g["md5"])
+
+    # ------------------------------
+    # 3) Neue Liste: komplette MD5-Gruppen rauswerfen
+    # ------------------------------
+    def filter_groups(groups):
+        return [g for g in groups if g["md5"] not in md5_to_remove]
+
+    CROSSFOLDER_RESULTS = filter_groups(CROSSFOLDER_RESULTS)
 
     if CROSSFOLDER_CACHE:
-        CROSSFOLDER_CACHE = filter_md5_groups(CROSSFOLDER_CACHE)
+        CROSSFOLDER_CACHE = filter_groups(CROSSFOLDER_CACHE)
 
+    # ------------------------------
+    # 4) Ergebnis-Seite anzeigen
+    # ------------------------------
     return templates.TemplateResponse(
         "gdrive_crossduplicates_done.j2",
-        {
-            "request": request,
-            "deleted": list(delete_ids),
-            "errors": [],
-            "dry_run": True
-        }
+        {"request": request, "deleted": deleted, "errors": errors}
     )
