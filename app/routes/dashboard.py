@@ -149,6 +149,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
 
     # Tool Links Definition
     tool_links = [
+        {"label": "Local Drive Clean (gross/klein)", "url": "/gallery/local_cleanup", "icon": "🧹"},
         {"label": "Google Drive Clean (gross/klein)", "url": "/gallery/gdrive_cleanup", "icon": "🧹"},
         {"label": "Google Drive Clean (cross)", "url": "/gallery/gdrive_crossduplicates", "icon": "🧹"},
         {"label": 'Sync mit "Save" (GDrive)', "url": f"{_BASE}/test?folder=save&direction=manage_save", "icon": "🔄"},

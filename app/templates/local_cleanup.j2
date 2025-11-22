@@ -9,16 +9,23 @@
             font-family: Arial, sans-serif;
             padding: 20px;
         }
+
         table {
             width: 100%;
             border-collapse: collapse;
             margin-top: 12px;
         }
+
         th, td {
             padding: 8px 10px;
             border-bottom: 1px solid #ddd;
+            vertical-align: middle;
         }
-        th { background: #f8f8f8; }
+
+        th {
+            background: #f8f8f8;
+            text-align: left;
+        }
 
         img.thumb {
             height: 60px;
@@ -27,14 +34,12 @@
             object-fit: cover;
         }
 
-        .thumb-right { text-align:right; }
-        .thumb-left { text-align:left; }
+        .warn { color:#d9534f; font-weight:bold; }
+        .warn1 { color:#5bc0de; font-weight:bold; }
+        .ok   { color:#5cb85c; font-weight:bold; }
+
         .center { text-align:center; }
 
-        .ok   { color:#5cb85c; font-weight:bold; }
-        .warn { color:#d9534f; font-weight:bold; }
-
-        /* Buttons */
         .btn {
             padding: 8px 16px;
             border-radius: 6px;
@@ -51,14 +56,12 @@
         .sticky-bar {
             position: sticky;
             top: 0;
-            background: #ffffffdd;
+            background: #ffffffee;
             padding: 10px 0;
             border-bottom: 1px solid #ddd;
             margin-bottom: 10px;
             backdrop-filter: blur(4px);
         }
-
-        h2 { margin-top: 40px; }
     </style>
 </head>
 
@@ -71,109 +74,93 @@
 
 <form action="/gallery/local_cleanup_delete" method="post">
 
-    <!-- Sticky Buttons -->
-    <div class="sticky-bar">
-        <button type="button" class="btn btn-blue"
-                onclick="window.location.href='/gallery/dashboard'">📊 Dashboard</button>
+<div class="sticky-bar">
+    <button type="button" class="btn btn-blue"
+            onclick="window.location.href='/gallery/dashboard'">📊 Dashboard</button>
 
-        <button type="button" class="btn btn-orange"
-                onclick="window.location.href='/gallery/local_cleanup_reload'">🔄 Neu laden</button>
+    <button type="button" class="btn btn-orange"
+            onclick="window.location.href='/gallery/local_cleanup_reload'">🔄 Neu laden</button>
 
-        <button type="button" class="btn btn-cyan"
-                onclick="selectFirst50()">✔️ Erste 50 auswählen</button>
+    <button type="button" class="btn btn-cyan"
+            onclick="selectFirst50()">✔️ Erste 50 auswählen</button>
 
-        <button class="btn btn-red" type="submit">🗑 Ausgewählte löschen</button>
-    </div>
+    <button class="btn btn-red" type="submit">🗑 Ausgewählte löschen</button>
+</div>
 
+<!-- ======================================================= -->
+<!--              EINE EINZIGE MEGA–TABELLE                  -->
+<!-- ======================================================= -->
 
+<table>
+<thead>
+<tr>
+    <th>Kategorie</th>
+    <th class="center">Löschen-Bild</th>
+    <th class="center">✔</th>
+    <th class="center">Behalten-Bild</th>
+    <th>Löschen/Umbenennen</th>
+    <th>Ergebnis</th>
+</tr>
+</thead>
 
-    {% for c in categories %}
-        <h2>{{ c.label }} ({{ c.key }})</h2>
+<tbody>
 
-        <!-- ========================= -->
-        <!--    NORMAL DUPE RESULTS    -->
-        <!-- ========================= -->
+{% for c in categories %}
 
-        {% if c.results|length > 0 %}
-        <h3>{{ c.results|length }} Duplikate gefunden</h3>
+    <!-- ======================= -->
+    <!--   DUPLICATE RESULTS     -->
+    <!-- ======================= -->
+    {% for r in c.results %}
+        <tr>
 
-        <table>
-            <thead>
-            <tr>
-                <th class="thumb-right">Löschen (gross)</th>
-                <th class="center">✔</th>
-                <th class="thumb-left">Behalten (richtig)</th>
-                <th>delete</th>
-                <th>keep</th>
-            </tr>
-            </thead>
+            <td><b>{{ c.label }}</b></td>
 
-            <tbody>
-            {% for r in c.results %}
-                <tr>
+            <!-- DELETE IMG -->
+            <td class="center">
+                <img class="thumb"
+                     src="/static/imagefiles/{{ r.folder }}/{{ r.delete }}">
+            </td>
 
-                    <!-- DELETE img -->
-                    <td class="thumb-right">
-                        <img class="thumb"
-                             src="/static/imagefiles/{{ r.folder }}/{{ r.delete }}">
-                    </td>
+            <!-- Checkbox -->
+            <td class="center">
+                <input type="checkbox" name="delete_ids" value="{{ r.delete_id }}">
+            </td>
 
-                    <!-- Checkbox -->
-                    <td class="center">
-                        <input type="checkbox" name="delete_ids" value="{{ r.delete_id }}">
-                    </td>
+            <!-- KEEP IMG -->
+            <td class="center">
+                <img class="thumb"
+                     src="/static/imagefiles/{{ r.folder }}/{{ r.keep }}">
+            </td>
 
-                    <!-- KEEP img -->
-                    <td class="thumb-left">
-                        <img class="thumb"
-                             src="/static/imagefiles/{{ r.folder }}/{{ r.keep }}">
-                    </td>
-
-                    <td class="warn">{{ r.delete }}</td>
-                    <td class="ok">{{ r.keep }}</td>
-
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-        {% endif %}
-
-
-
-        <!-- ========================= -->
-        <!--    WEIRD CASES LISTE     -->
-        <!-- ========================= -->
-
-        {% if c.weird|length > 0 %}
-        <h3 style="margin-top:25px; color:#d9534f;">
-            {{ c.weird|length }} ungewöhnliche Dateien (keine lowercase-Version)
-        </h3>
-
-        <table>
-            <thead>
-            <tr>
-                <th>Dateiname</th>
-                <th>Sanitized</th>
-                <th>Bild</th>
-            </tr>
-            </thead>
-
-            <tbody>
-            {% for w in c.weird %}
-                <tr>
-                    <td class="warn">{{ w.name }}</td>
-                    <td class="ok">{{ w.sanitized }}</td>
-                    <td>
-                        <img class="thumb"
-                             src="/static/imagefiles/{{ w.folder }}/{{ w.name }}">
-                    </td>
-                </tr>
-            {% endfor %}
-            </tbody>
-        </table>
-        {% endif %}
-
+            <td class="warn">{{ r.delete }}</td>
+            <td class="ok">{{ r.keep }}</td>
+        </tr>
     {% endfor %}
+
+    <!-- ======================= -->
+    <!--       WEIRD CASES       -->
+    <!-- ======================= -->
+    {% for w in c.weird %}
+        <tr>
+            <td><b>{{ c.label }}</b></td>
+
+            <td></td>
+            <td></td>
+            <td class="center">
+                <img class="thumb"
+                     src="/static/imagefiles/{{ w.folder }}/{{ w.name }}">
+            </td>
+
+            <td class="warn1">{{ w.name }}</td>
+            <td class="ok">{{ w.sanitized }}</td>
+
+        </tr>
+    {% endfor %}
+
+{% endfor %}
+
+</tbody>
+</table>
 
 </form>
 
