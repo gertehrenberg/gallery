@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Löschvorgang abgeschlossen</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 25px;
+            background: #fafafa;
+        }
+        h1 {
+            color: #d9534f;
+            margin-bottom: 10px;
+        }
+        h3 {
+            margin-top: 25px;
+            color: #333;
+        }
+        ul {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 6px;
+            border: 1px solid #ddd;
+        }
+        li {
+            margin-bottom: 6px;
+        }
+        .ok {
+            color: #5cb85c;
+        }
+        .error {
+            color: #d9534f;
+        }
+        .back {
+            display: inline-block;
+            margin-top: 25px;
+            padding: 10px 16px;
+            background: #0275d8;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+        }
+        .back:hover {
+            background: #025aa5;
+        }
+    </style>
+</head>
+
+<body>
+
+<h1>🗑️ Löschvorgang abgeschlossen</h1>
+
+<a class="back" href="/gallery/local_cleanup">⬅ Zurück</a>
+
+<h3>Gelöschte Dateien</h3>
+<ul>
+{% if deleted %}
+    {% for d in deleted %}
+        <li class="ok">✔ {{ d }}</li>
+    {% endfor %}
+{% else %}
+    <li>Keine Dateien wurden gelöscht.</li>
+{% endif %}
+</ul>
+
+{% if errors %}
+<h3>Fehler</h3>
+<ul>
+    {% for e in errors %}
+        <li class="error">⚠ {{ e.id }} – {{ e.error }}</li>
+    {% endfor %}
+</ul>
+{% endif %}
+
+</body>
+</html>

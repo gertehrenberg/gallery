@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Lokaler Duplikat-Cleanup</title>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            line-height: 1.5;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+        th, td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        th { background: #f8f8f8; }
+
+        img.thumb {
+            height: 60px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .thumb-right { text-align:right; }
+        .thumb-left { text-align:left; }
+        .center { text-align:center; }
+        .ok { color:#5cb85c; font-weight:bold; }
+
+        /* Buttons */
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            margin-right: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        .btn-blue   { background:#0275d8; color:white; }
+        .btn-orange { background:#f0ad4e; color:white; }
+        .btn-red    { background:#d9534f; color:white; }
+        .btn-cyan   { background:#5bc0de; color:white; }
+
+        .sticky-bar {
+            position: sticky;
+            top: 0;
+            background: #ffffffdd;
+            border-bottom: 1px solid #ddd;
+            padding: 10px 0;
+            margin-bottom: 10px;
+            backdrop-filter: blur(4px);
+        }
+    </style>
+</head>
+
+<body>
+
+<h1 style="display:flex; justify-content:space-between; align-items:center;">
+    <span>Lokaler Duplikat-Cleanup (v{{ version }})</span>
+</h1>
+
+<form action="/gallery/local_cleanup_delete" method="post">
+
+    <!-- Sticky Buttons -->
+    <div class="sticky-bar">
+        <button type="button" class="btn btn-blue"
+                onclick="window.location.href='/gallery/dashboard'">
+            📊 Dashboard
+        </button>
+
+        <button type="button" class="btn btn-orange"
+                onclick="window.location.href='/gallery/local_cleanup_reload'">
+            🔄 Neu laden
+        </button>
+
+        <button type="button" class="btn btn-cyan"
+                onclick="selectFirst50()">
+            ✔️ Erste 50 auswählen
+        </button>
+
+        <button class="btn btn-red" type="submit">
+            🗑 Ausgewählte löschen
+        </button>
+    </div>
+
+    {% for c in categories %}
+        <h2>{{ c.label }} ({{ c.key }})
+            <span style="color:#777;font-size:14px;">
+                {{ c.num_results }} Duplikate gefunden
+            </span>
+        </h2>
+
+        {% if c.num_results == 0 %}
+            <p>Keine Duplikate in diesem Ordner.</p>
+        {% else %}
+
+        <table>
+            <thead>
+            <tr>
+                <th class="thumb-right">Bild (nicht klein)</th>
+                <th class="center">Löschen?</th>
+                <th class="thumb-left">Bild (richtig)</th>
+                <th>delete</th>
+                <th>keep</th>
+            </tr>
+            </thead>
+
+            <tbody>
+            {% for r in c.results %}
+                <tr>
+
+                    <!-- DELETE-Bild -->
+                    <td class="thumb-right">
+                        <img class="thumb"
+                             src="/static/imagefiles/{{ r.folder }}/{{ r.delete }}"
+                             alt="delete">
+                    </td>
+
+                    <!-- Checkbox -->
+                    <td class="center">
+                        <input type="checkbox" name="delete_ids" value="{{ r.delete_id }}">
+                    </td>
+
+                    <!-- KEEP-Bild -->
+                    <td class="thumb-left">
+                        <img class="thumb"
+                             src="/static/imagefiles/{{ r.folder }}/{{ r.keep }}"
+                             alt="keep">
+                    </td>
+
+                    <!-- DELETE/KEEP Namen -->
+                    <td class="ok">{{ r.delete }}</td>
+                    <td class="ok">{{ r.keep }}</td>
+
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+
+        {% endif %}
+    {% endfor %}
+
+</form>
+
+<script>
+function selectFirst50() {
+    const boxes = document.querySelectorAll("input[type='checkbox'][name='delete_ids']");
+    let count = 0;
+    boxes.forEach(box => {
+        if (count < 50) {
+            box.checked = true;
+            count++;
+        }
+    });
+}
+</script>
+
+</body>
+</html>

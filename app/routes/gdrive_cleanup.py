@@ -182,9 +182,6 @@ async def gdrive_cleanup(request: Request):
         label = k["label"]
         icon = k["icon"]
 
-        if key == "real":
-            continue
-
         res = await find_case_duplicates(service, key)
 
         # ❗ nur Kategorien mit Ergebnissen
