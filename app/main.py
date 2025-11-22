@@ -38,6 +38,7 @@ from .routes import static
 from .routes.auth import SCOPES
 from .routes.auth import TOKEN_FILE
 
+from .routes import local_cleanup
 from .routes import gdrive_cleanup
 from .routes import gdrive_crossduplicates
 
@@ -101,6 +102,8 @@ app.include_router(static.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(n8nlock.router)
+
+app.include_router(local_cleanup.router)
 app.include_router(gdrive_cleanup.router)
 app.include_router(gdrive_crossduplicates.router)
 

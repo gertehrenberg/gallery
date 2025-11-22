@@ -8,7 +8,6 @@
         body {
             font-family: Arial, sans-serif;
             padding: 20px;
-            line-height: 1.5;
         }
         table {
             width: 100%;
@@ -31,7 +30,9 @@
         .thumb-right { text-align:right; }
         .thumb-left { text-align:left; }
         .center { text-align:center; }
-        .ok { color:#5cb85c; font-weight:bold; }
+
+        .ok   { color:#5cb85c; font-weight:bold; }
+        .warn { color:#d9534f; font-weight:bold; }
 
         /* Buttons */
         .btn {
@@ -51,18 +52,21 @@
             position: sticky;
             top: 0;
             background: #ffffffdd;
-            border-bottom: 1px solid #ddd;
             padding: 10px 0;
+            border-bottom: 1px solid #ddd;
             margin-bottom: 10px;
             backdrop-filter: blur(4px);
         }
+
+        h2 { margin-top: 40px; }
     </style>
 </head>
 
 <body>
 
 <h1 style="display:flex; justify-content:space-between; align-items:center;">
-    <span>Lokaler Duplikat-Cleanup (v{{ version }})</span>
+    <span>Lokaler Duplikat-Cleanup</span>
+    <span style="font-size:14px; color:#777;">v{{ version }}</span>
 </h1>
 
 <form action="/gallery/local_cleanup_delete" method="post">
@@ -70,42 +74,35 @@
     <!-- Sticky Buttons -->
     <div class="sticky-bar">
         <button type="button" class="btn btn-blue"
-                onclick="window.location.href='/gallery/dashboard'">
-            📊 Dashboard
-        </button>
+                onclick="window.location.href='/gallery/dashboard'">📊 Dashboard</button>
 
         <button type="button" class="btn btn-orange"
-                onclick="window.location.href='/gallery/local_cleanup_reload'">
-            🔄 Neu laden
-        </button>
+                onclick="window.location.href='/gallery/local_cleanup_reload'">🔄 Neu laden</button>
 
         <button type="button" class="btn btn-cyan"
-                onclick="selectFirst50()">
-            ✔️ Erste 50 auswählen
-        </button>
+                onclick="selectFirst50()">✔️ Erste 50 auswählen</button>
 
-        <button class="btn btn-red" type="submit">
-            🗑 Ausgewählte löschen
-        </button>
+        <button class="btn btn-red" type="submit">🗑 Ausgewählte löschen</button>
     </div>
 
-    {% for c in categories %}
-        <h2>{{ c.label }} ({{ c.key }})
-            <span style="color:#777;font-size:14px;">
-                {{ c.num_results }} Duplikate gefunden
-            </span>
-        </h2>
 
-        {% if c.num_results == 0 %}
-            <p>Keine Duplikate in diesem Ordner.</p>
-        {% else %}
+
+    {% for c in categories %}
+        <h2>{{ c.label }} ({{ c.key }})</h2>
+
+        <!-- ========================= -->
+        <!--    NORMAL DUPE RESULTS    -->
+        <!-- ========================= -->
+
+        {% if c.results|length > 0 %}
+        <h3>{{ c.results|length }} Duplikate gefunden</h3>
 
         <table>
             <thead>
             <tr>
-                <th class="thumb-right">Bild (nicht klein)</th>
-                <th class="center">Löschen?</th>
-                <th class="thumb-left">Bild (richtig)</th>
+                <th class="thumb-right">Löschen (gross)</th>
+                <th class="center">✔</th>
+                <th class="thumb-left">Behalten (richtig)</th>
                 <th>delete</th>
                 <th>keep</th>
             </tr>
@@ -115,11 +112,10 @@
             {% for r in c.results %}
                 <tr>
 
-                    <!-- DELETE-Bild -->
+                    <!-- DELETE img -->
                     <td class="thumb-right">
                         <img class="thumb"
-                             src="/static/imagefiles/{{ r.folder }}/{{ r.delete }}"
-                             alt="delete">
+                             src="/static/imagefiles/{{ r.folder }}/{{ r.delete }}">
                     </td>
 
                     <!-- Checkbox -->
@@ -127,23 +123,56 @@
                         <input type="checkbox" name="delete_ids" value="{{ r.delete_id }}">
                     </td>
 
-                    <!-- KEEP-Bild -->
+                    <!-- KEEP img -->
                     <td class="thumb-left">
                         <img class="thumb"
-                             src="/static/imagefiles/{{ r.folder }}/{{ r.keep }}"
-                             alt="keep">
+                             src="/static/imagefiles/{{ r.folder }}/{{ r.keep }}">
                     </td>
 
-                    <!-- DELETE/KEEP Namen -->
-                    <td class="ok">{{ r.delete }}</td>
+                    <td class="warn">{{ r.delete }}</td>
                     <td class="ok">{{ r.keep }}</td>
 
                 </tr>
             {% endfor %}
             </tbody>
         </table>
-
         {% endif %}
+
+
+
+        <!-- ========================= -->
+        <!--    WEIRD CASES LISTE     -->
+        <!-- ========================= -->
+
+        {% if c.weird|length > 0 %}
+        <h3 style="margin-top:25px; color:#d9534f;">
+            {{ c.weird|length }} ungewöhnliche Dateien (keine lowercase-Version)
+        </h3>
+
+        <table>
+            <thead>
+            <tr>
+                <th>Dateiname</th>
+                <th>Sanitized</th>
+                <th>Bild</th>
+            </tr>
+            </thead>
+
+            <tbody>
+            {% for w in c.weird %}
+                <tr>
+                    <td class="warn">{{ w.name }}</td>
+                    <td class="ok">{{ w.sanitized }}</td>
+                    <td>
+                        <img class="thumb"
+                             src="/static/imagefiles/{{ w.folder }}/{{ w.name }}">
+                    </td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+
     {% endfor %}
 
 </form>
