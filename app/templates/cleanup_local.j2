@@ -5,46 +5,122 @@
     <title>Lokaler Duplikat-Cleanup</title>
 
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { padding: 8px 10px; border-bottom: 1px solid #ddd; vertical-align: middle; }
-        th { background: #f8f8f8; text-align: left; }
-
-        img.thumb {
-            height: 60px; border: 1px solid #ccc;
-            border-radius: 4px; object-fit: cover;
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
         }
 
-        .warn  { color:#d9534f; font-weight:bold; }
-        .warn1 { color:#5bc0de; font-weight:bold; }
-        .ok    { color:#5cb85c; font-weight:bold; }
-        .center { text-align:center; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
 
-        .btn { padding:8px 16px; border-radius:6px; margin-right:6px; border:none; cursor:pointer; font-weight:600; }
-        .btn-blue { background:#0275d8; color:white; }
-        .btn-orange { background:#f0ad4e; color:white; }
-        .btn-red { background:#d9534f; color:white; }
-        .btn-cyan { background:#5bc0de; color:white; }
+        th, td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #ddd;
+            vertical-align: middle;
+        }
+
+        th {
+            background: #f8f8f8;
+            text-align: left;
+        }
+
+        img.thumb {
+            height: 60px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .warn {
+            color: #d9534f;
+            font-weight: bold;
+        }
+
+        .warn1 {
+            color: #5bc0de;
+            font-weight: bold;
+        }
+
+        .ok {
+            color: #5cb85c;
+            font-weight: bold;
+        }
+
+        .center {
+            text-align: center;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            margin-right: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-blue {
+            background: #0275d8;
+            color: white;
+        }
+
+        .btn-orange {
+            background: #f0ad4e;
+            color: white;
+        }
+
+        .btn-red {
+            background: #d9534f;
+            color: white;
+        }
+
+        .btn-cyan {
+            background: #5bc0de;
+            color: white;
+        }
 
         .sticky-bar {
-            position: sticky; top: 0; background:#ffffffee; padding:10px 0;
-            border-bottom:1px solid #ddd; margin-bottom:10px; backdrop-filter:blur(4px);
+            position: sticky;
+            top: 0;
+            background: #ffffffee;
+            padding: 10px 0;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 10px;
+            backdrop-filter: blur(4px);
         }
 
         /* PROGRESS BOX */
-        #progressBox { display:none; background:#fff; padding:20px; border-radius:8px; margin:20px 0;
-                       box-shadow:0 0 8px rgba(0,0,0,0.1); }
+        #progressBox {
+            display: none;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.1);
+        }
 
         .progress-bar-bg {
-            width:100%; height:22px; background:#ddd; border-radius:10px;
-            overflow:hidden; margin:6px 0;
+            width: 100%;
+            height: 22px;
+            background: #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 6px 0;
         }
 
         .progress-bar {
-            height:22px; width:0%; background:#0275d8;
-            transition:width .3s ease;
+            height: 22px;
+            width: 0%;
+            background: #0275d8;
+            transition: width .3s ease;
         }
-        .detail-bar { background:#5cb85c; }
+
+        .detail-bar {
+            background: #5cb85c;
+        }
     </style>
 </head>
 
@@ -57,135 +133,141 @@
 
 <form action="/gallery/cleanup_local_delete" method="post">
 
-<div class="sticky-bar">
-    <button type="button" class="btn btn-blue"
-            onclick="window.location.href='/gallery/dashboard'">📊 Dashboard</button>
+    <div class="sticky-bar">
+        <button type="button" class="btn btn-blue"
+                onclick="window.location.href='/gallery/dashboard'">📊 Dashboard
+        </button>
 
-    <button id="reloadBtn" type="button" class="btn btn-orange"
-            onclick="startReload()">🔄 Neu laden</button>
+        <button id="reloadBtn" type="button" class="btn btn-orange"
+                onclick="startReload()">🔄 Neu laden
+        </button>
 
-    <button type="button" class="btn btn-cyan"
-            onclick="selectFirst50()">✔️ 50 🗑</button>
+        <button type="button" class="btn btn-cyan"
+                onclick="selectFirst50()">✔️ 50 🗑
+        </button>
 
-    <button id="deleteBtn" class="btn btn-red" type="submit">🗑/✏️</button>
-</div>
-
-<!-- PROGRESS -->
-<div id="progressBox">
-    <div id="progressText" style="font-weight:bold;">Starte…</div>
-
-    <div class="progress-bar-bg">
-        <div id="mainBar" class="progress-bar"></div>
+        <button id="deleteBtn" class="btn btn-red" type="submit">🗑/✏️</button>
     </div>
 
-    <div id="detailText" style="font-size:14px; margin-top:10px;">–</div>
+    <!-- PROGRESS -->
+    <div id="progressBox">
+        <div id="progressText" style="font-weight:bold;">Starte…</div>
 
-    <div class="progress-bar-bg">
-        <div id="detailBar" class="progress-bar detail-bar"></div>
+        <div class="progress-bar-bg">
+            <div id="mainBar" class="progress-bar"></div>
+        </div>
+
+        <div id="detailText" style="font-size:14px; margin-top:10px;">–</div>
+
+        <div class="progress-bar-bg">
+            <div id="detailBar" class="progress-bar detail-bar"></div>
+        </div>
     </div>
-</div>
 
 
-<!-- TABLE -->
-<table>
-<thead>
-<tr>
-    <th>Kategorie</th>
-    <th class="center">Löschen-Bild</th>
-    <th class="center">🗑️</th>
-    <th class="center">✏️</th>
-    <th class="center">Behalten-Bild</th>
-    <th>NAME (alt)</th>
-    <th>NAME (neu)</th>
-</tr>
-</thead>
-
-<tbody>
-
-{% for c in (categories or []) %}
-    {% for r in c.results %}
+    <!-- TABLE -->
+    <table>
+        <thead>
         <tr>
-            <td><b>{{ c.label }}</b></td>
-
-            <!-- DELETE IMAGE -->
-            <td class="center">
-                <img class="thumb" src="/static/imagefiles/{{ r.folder }}/{{ r.delete }}">
-            </td>
-
-            <!-- DELETE CHECKBOX -->
-            <td class="center">
-                <input type="checkbox" name="delete_ids" value="{{ r.delete_id }}">
-            </td>
-
-            <!-- LOWER RENAME CHECKBOX -->
-            <td class="center">
-                {% if r.type == "weird" %}
-                    <input type="checkbox" name="lower_ids" value="{{ r.delete_id }}">
-                {% endif %}
-            </td>
-
-            <!-- KEEP PREVIEW -->
-            <td class="center">
-                <img class="thumb" src="/static/imagefiles/{{ r.folder }}/{{ r.keep }}">
-            </td>
-
-            <!-- OLD NAME -->
-            <td class="{% if r.type=='weird' %}warn1{% else %}warn{% endif %}">
-                {{ r.delete }}
-            </td>
-
-            <!-- NEW NAME -->
-            <td class="ok">{{ r.keep }}</td>
+            <th>Kategorie</th>
+            <th class="center">Löschen-Bild</th>
+            <th class="center">🗑️</th>
+            <th class="center">✏️</th>
+            <th class="center">Behalten-Bild</th>
+            <th>NAME (alt)</th>
+            <th>NAME (neu)</th>
         </tr>
-    {% endfor %}
-{% endfor %}
+        </thead>
 
-</tbody>
-</table>
+        <tbody>
+
+        {% for c in (categories or []) %}
+            {% for r in c.results %}
+                <tr>
+                    <td><b>{{ c.label }}</b></td>
+
+                    <!-- DELETE IMAGE -->
+                    <td class="center">
+                        <img class="thumb" src="/static/imagefiles/{{ r.folder }}/{{ r.delete }}">
+                    </td>
+
+                    <!-- DELETE CHECKBOX -->
+                    <td class="center">
+                        <input type="checkbox" name="delete_ids" value="{{ r.delete_id }}">
+                    </td>
+
+                    <!-- LOWER RENAME CHECKBOX -->
+                    <td class="center">
+                        {% if r.type == "weird" %}
+                            <input type="checkbox" name="lower_ids" value="{{ r.delete_id }}">
+                        {% endif %}
+                    </td>
+
+                    <!-- KEEP PREVIEW -->
+                    <td class="center">
+                        <img class="thumb" src="/static/imagefiles/{{ r.folder }}/{{ r.keep }}">
+                    </td>
+
+                    <!-- OLD NAME -->
+                    <td class="{% if r.type=='weird' %}warn1{% else %}warn{% endif %}">
+                        {{ r.delete }}
+                    </td>
+
+                    <!-- NEW NAME -->
+                    <td class="ok">{{ r.keep }}</td>
+                </tr>
+            {% endfor %}
+        {% endfor %}
+
+        </tbody>
+    </table>
 
 </form>
 
 <script>
-let progressTimer = null;
+    let progressTimer = null;
 
-function updateProgress() {
-    fetch("/gallery/cleanup_local_progress")
-        .then(r => r.json())
-        .then(p => {
-            document.getElementById("progressText").innerText = p.status;
-            document.getElementById("mainBar").style.width = p.progress + "%";
-            document.getElementById("detailText").innerText = p.details.status || "-";
-            document.getElementById("detailBar").style.width = (p.details.progress * 5) + "%";
+    function updateProgress() {
+        fetch("/gallery/cleanup_local_progress")
+            .then(r => r.json())
+            .then(p => {
+                document.getElementById("progressText").innerText = p.status;
+                document.getElementById("mainBar").style.width = p.progress + "%";
+                document.getElementById("detailText").innerText = p.details.status || "";
+                document.getElementById("detailBar").style.width = p.details.progress + "%";
 
-            if (p.progress >= 100) {
-                clearInterval(progressTimer);
-                progressTimer = null;
+                if (p.progress >= 100) {
+                    clearInterval(progressTimer);
+                    progressTimer = null;
 
-                document.getElementById("progressBox").style.display = "none";
-                setTimeout(() => location.reload(), 400);
+                    document.getElementById("progressBox").style.display = "none";
+                    setTimeout(() => location.reload(), 400);
+                }
+            });
+    }
+
+    function startReload() {
+        document.getElementById("progressBox").style.display = "block";
+        document.getElementById("reloadBtn").disabled = true;
+        document.getElementById("deleteBtn").disabled = true;
+
+        fetch("/gallery/cleanup_local_start", {method: "POST"})
+            .then(() => {
+                if (!progressTimer)
+                    progressTimer = setInterval(updateProgress, 350);
+            });
+    }
+
+    function selectFirst50() {
+        const boxes = document.querySelectorAll("input[name='delete_ids']");
+        let count = 0;
+        boxes.forEach(box => {
+            if (count < 50) {
+                box.checked = true;
+                count++;
             }
         });
-}
-
-function startReload() {
-    document.getElementById("progressBox").style.display = "block";
-    document.getElementById("reloadBtn").disabled = true;
-    document.getElementById("deleteBtn").disabled = true;
-
-    fetch("/gallery/cleanup_local_start", {method: "POST"})
-        .then(() => {
-            if (!progressTimer)
-                progressTimer = setInterval(updateProgress, 350);
-        });
-}
-
-function selectFirst50() {
-    const boxes = document.querySelectorAll("input[name='delete_ids']");
-    let count = 0;
-    boxes.forEach(box => {
-        if (count < 50) { box.checked = true; count++; }
-    });
-}
+    }
 </script>
 
 </body>

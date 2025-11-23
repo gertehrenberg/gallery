@@ -61,7 +61,7 @@ async def set_progress(status, progress, detail_status=None, detail_progress=Non
 def reset_progress():
     PROGRESS["status"] = "Bereit"
     PROGRESS["progress"] = 0
-    PROGRESS["details"] = {"status": "-", "progress": 0}
+    PROGRESS["details"] = {"status": "", "progress": 0}
 
 
 # ============================================================
@@ -207,22 +207,42 @@ async def run_full_scan():
 # ============================================================
 
 def update_cache(delete_ids, lower_ids):
-    """Aktualisiert SCAN_CACHE nach Löschung oder Umbenennung."""
+    """
+    Aktualisiert SCAN_CACHE:
+    - entfernt nur wirklich gelöschte Einträge
+    - aktualisiert umbenannte Einträge statt sie zu entfernen
+    """
     global SCAN_CACHE
     if not SCAN_CACHE:
         return
 
+    # Umbenennungen vorbereiten: Mapping alt → neu
+    rename_map = {}
+    for fid in lower_ids:
+        folder, fname = fid.split("/", 1)
+        new_name = sanitize_filename(fname)
+        rename_map[fid] = f"{folder}/{new_name}"
+
     for cat in SCAN_CACHE:
         new_results = []
         for r in cat["results"]:
-            # Löschen?
+
+            # 1️⃣ komplett entfernen, wenn gelöscht
             if r["delete_id"] in delete_ids:
                 continue
 
-            # Umbenennen: wenn delete_id in lower_ids → Skip
-            if r["delete_id"] in lower_ids:
+            # 2️⃣ bei Umbenennung: Eintrag updaten
+            if r["delete_id"] in rename_map:
+                new_id = rename_map[r["delete_id"]]
+
+                r["delete"] = r["keep"]  # neue Basiswerte setzen
+                r["delete_id"] = new_id
+
+                # keep_id muss bleiben wie gehabt
+                new_results.append(r)
                 continue
 
+            # 3️⃣ sonst unverändertes Ergebnis übernehmen
             new_results.append(r)
 
         cat["results"] = new_results
@@ -263,9 +283,9 @@ async def cleanup_local_reload():
 
 @router.post("/cleanup_local_delete", response_class=HTMLResponse)
 async def cleanup_local_delete(
-    request: Request,
-    delete_ids: list[str] = Form(default=[]),
-    lower_ids: list[str] = Form(default=[]),
+        request: Request,
+        delete_ids: list[str] = Form(default=[]),
+        lower_ids: list[str] = Form(default=[]),
 ):
     errors = []
     deleted = []
