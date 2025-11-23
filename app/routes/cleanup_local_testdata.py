@@ -12,6 +12,7 @@ LOCAL_BASE = Settings.IMAGE_FILE_CACHE_DIR
 
 # ---------------------------------------------------------
 # Hilfsfunktionen
+# find . -type f -newermt "today 00:00" -delete
 # ---------------------------------------------------------
 
 def random_filename(ext="jpg"):
