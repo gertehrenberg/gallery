@@ -6,14 +6,13 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-
 from ..config import Settings
 from ..config_gdrive import sanitize_filename
 from ..utils.logger_config import setup_logger
 
-VERSION = 111
+VERSION = 120
 logger = setup_logger(__name__)
-logger.info(f"🟦 Starte cleanup_local.py (VARIANTE C – Cache-Update) v{VERSION}")
+logger.info(f"🟦 Starte cleanup_local.py (Unified Model) v{VERSION}")
 
 router = APIRouter()
 templates = Jinja2Templates(
@@ -30,7 +29,7 @@ EXECUTOR = ThreadPoolExecutor(max_workers=8)
 
 
 def compute_md5_file(path: str):
-    """MD5-Berechnung im ThreadPool."""
+    """MD5 Berechnung über ThreadPool."""
     hasher = hashlib.md5()
     try:
         with open(path, "rb") as fp:
@@ -45,11 +44,7 @@ def compute_md5_file(path: str):
 # PROGRESS SYSTEM
 # ============================================================
 
-PROGRESS = {
-    "status": "Bereit",
-    "progress": 0,
-    "details": {"status": "-", "progress": 0}
-}
+PROGRESS = {"status": "Bereit", "progress": 0, "details": {"status": "-", "progress": 0}}
 LOCK = asyncio.Lock()
 
 
@@ -70,7 +65,7 @@ def reset_progress():
 
 
 # ============================================================
-# LOKALE DATEIEN LADEN
+# DATEIEN LADEN
 # ============================================================
 
 async def local_list_folder(folder_name: str):
@@ -87,16 +82,16 @@ async def local_list_folder(folder_name: str):
                 "folder": folder_name,
                 "name": filename,
                 "path": full,
-                "size": os.path.getsize(full)
+                "size": os.path.getsize(full),
             })
     return result
 
 
 # ============================================================
-# DUPE-SUCHE
+# CASE-DUPLIKATE / WEIRD → EINHEITLICHES MODELL
 # ============================================================
 
-async def find_case_duplicates(folder_name: str, folder_idx: int, folder_total: int):
+async def find_case_duplicates(folder_name: str, idx: int, total: int):
     logger.info(f"🔍 Starte Duplikatscan: {folder_name}")
 
     loop = asyncio.get_running_loop()
@@ -116,73 +111,73 @@ async def find_case_duplicates(folder_name: str, folder_idx: int, folder_total: 
 
         processed += 1
         percent = int((processed / total_files) * 100)
-
         await set_progress(
             f"Scanne {folder_name}",
-            int((folder_idx / folder_total) * 100),
+            int((idx / total) * 100),
             f"MD5 {processed}/{total_files}",
             percent
         )
 
     results = []
-    weird = []
 
-    # Gruppierung auswerten
     for md5, group in md5_groups.items():
-
-        # Nur ein File mit diesem MD5
+        # FALL A: nur 1 Datei → kann weird sein
         if len(group) == 1:
             f = group[0]
             if f["name"] != f["name"].lower():
-                weird.append({
+                # weird = Datei hat theoretisch eine lowercase-Version
+                lower_name = sanitize_filename(f["name"])
+                results.append({
                     "folder": folder_name,
-                    "name": f["name"],
-                    "sanitized": sanitize_filename(f["name"]),
+                    "delete": f["name"],
+                    "delete_id": f["id"],
+                    "keep": lower_name,
+                    "keep_id": f"{folder_name}/{lower_name}",
+                    "type": "weird",
                 })
             continue
 
-        # KEEP bestimmen (kleingeschrieben + alphabetisch)
+        # FALL B: mehrere Dateien mit gleichem MD5 → Duplikate
         lower = [g for g in group if g["name"] == g["name"].lower()]
-
-        if lower:
-            keep = sorted(lower, key=lambda x: x["name"])[0]
-        else:
-            # kein lowercase → weird
+        if not lower:
+            # alle Upper/Weird → alle erzeugen weird-Einträge
             for f in group:
-                weird.append({
+                lower_name = sanitize_filename(f["name"])
+                results.append({
                     "folder": folder_name,
-                    "name": f["name"],
-                    "sanitized": sanitize_filename(f["name"]),
+                    "delete": f["name"],
+                    "delete_id": f["id"],
+                    "keep": lower_name,
+                    "keep_id": f"{folder_name}/{lower_name}",
+                    "type": "weird",
                 })
             continue
 
-        # DELETE-Liste bestimmen
-        delete_list = sorted(
-            [f for f in group if f["id"] != keep["id"]],
-            key=lambda x: x["name"].lower()
-        )
+        # echten keep bestimmen (alphabetisch)
+        keep = sorted(lower, key=lambda x: x["name"])[0]
 
-        for f in delete_list:
+        for f in group:
+            if f["id"] == keep["id"]:
+                continue
             results.append({
                 "folder": folder_name,
                 "delete": f["name"],
                 "delete_id": f["id"],
                 "keep": keep["name"],
                 "keep_id": keep["id"],
+                "type": "delete",
             })
 
     return {
         "key": folder_name,
         "label": folder_name,
         "folder_id": folder_name,
-        "num_results": len(results),
         "results": results,
-        "weird": weird,
     }
 
 
 # ============================================================
-# BACKGROUND-SCAN
+# BACKGROUND SCAN
 # ============================================================
 
 SCAN_CACHE = None
@@ -198,57 +193,39 @@ async def run_full_scan():
 
     idx = 0
     for cat in categories:
+        r = await find_case_duplicates(cat["key"], idx, total)
+        out.append(r)
         idx += 1
 
-        await set_progress(
-            f"Starte {cat['key']}",
-            int(((idx - 1) / total) * 100),
-            "Warte…", 0
-        )
-
-        r = await find_case_duplicates(cat["key"], idx - 1, total)
-        out.append(r)
-
     SCAN_CACHE = out
-
     await set_progress("Fertig", 100, "Complete", 20)
     logger.info("🟢 Lokaler Scan abgeschlossen!")
 
 
 # ============================================================
-# CACHE UPDATE NACH LÖSCHEN
+# CACHE-AKTUALISIERUNG
 # ============================================================
 
-def update_cache_after_delete(delete_ids: list[str]):
-    """Entfernt gelöschte Dateien aus SCAN_CACHE."""
+def update_cache(delete_ids, lower_ids):
+    """Aktualisiert SCAN_CACHE nach Löschung oder Umbenennung."""
     global SCAN_CACHE
     if not SCAN_CACHE:
         return
 
-    remaining = []
-
     for cat in SCAN_CACHE:
-        folder = cat["key"]
+        new_results = []
+        for r in cat["results"]:
+            # Löschen?
+            if r["delete_id"] in delete_ids:
+                continue
 
-        # Results aktualisieren
-        new_results = [
-            r for r in cat["results"]
-            if r["delete_id"] not in delete_ids
-        ]
+            # Umbenennen: wenn delete_id in lower_ids → Skip
+            if r["delete_id"] in lower_ids:
+                continue
 
-        # Weird aktualisieren
-        new_weird = [
-            w for w in cat["weird"]
-            if f"{folder}/{w['name']}" not in delete_ids
-        ]
+            new_results.append(r)
 
         cat["results"] = new_results
-        cat["weird"] = new_weird
-        cat["num_results"] = len(new_results)
-
-        remaining.append(cat)
-
-    SCAN_CACHE = remaining
 
 
 # ============================================================
@@ -259,20 +236,14 @@ def update_cache_after_delete(delete_ids: list[str]):
 async def cleanup_local(request: Request):
     return templates.TemplateResponse(
         "cleanup_local.j2",
-        {
-            "request": request,
-            "categories": SCAN_CACHE,
-            "version": VERSION,
-            "dry_run": True,
-        }
+        {"request": request, "categories": SCAN_CACHE, "version": VERSION}
     )
 
 
 @router.post("/cleanup_local_start")
 async def cleanup_local_start():
     reset_progress()
-    loop = asyncio.get_running_loop()
-    loop.create_task(run_full_scan())
+    asyncio.get_running_loop().create_task(run_full_scan())
     return JSONResponse({"started": True})
 
 
@@ -283,33 +254,46 @@ async def cleanup_local_progress():
 
 @router.get("/cleanup_local_reload")
 async def cleanup_local_reload():
-    global SCAN_CACHE
-    SCAN_CACHE = None
-    reset_progress()
     return RedirectResponse("/gallery/cleanup_local")
 
 
 # ============================================================
-# DELETE
+# DELETE + LOWERCASE UMBENENNEN
 # ============================================================
 
 @router.post("/cleanup_local_delete", response_class=HTMLResponse)
-async def cleanup_local_delete(request: Request, delete_ids: list[str] = Form(default=[])):
+async def cleanup_local_delete(
+    request: Request,
+    delete_ids: list[str] = Form(default=[]),
+    lower_ids: list[str] = Form(default=[]),
+):
     errors = []
     deleted = []
+    renamed = []
 
+    # --- löschen ---
     for file_id in delete_ids:
         folder, fname = file_id.split("/", 1)
-        path = os.path.join(LOCAL_BASE, folder, fname)
-
         try:
-            os.remove(path)
+            os.remove(os.path.join(LOCAL_BASE, folder, fname))
             deleted.append(file_id)
         except Exception as e:
             errors.append({"id": file_id, "error": str(e)})
 
-    # Cache nur aktualisieren, nicht löschen!
-    update_cache_after_delete(delete_ids)
+    # --- umbenennen ---
+    for file_id in lower_ids:
+        folder, fname = file_id.split("/", 1)
+        src = os.path.join(LOCAL_BASE, folder, fname)
+        dst_name = sanitize_filename(fname)
+        dst = os.path.join(LOCAL_BASE, folder, dst_name)
+        try:
+            os.rename(src, dst)
+            renamed.append({"from": file_id, "to": f"{folder}/{dst_name}"})
+        except Exception as e:
+            errors.append({"id": file_id, "error": str(e)})
+
+    # Cache aktualisieren
+    update_cache(delete_ids, lower_ids)
 
     return templates.TemplateResponse(
         "cleanup_local_done.j2",
@@ -317,6 +301,7 @@ async def cleanup_local_delete(request: Request, delete_ids: list[str] = Form(de
             "request": request,
             "version": VERSION,
             "deleted": deleted,
+            "renamed": renamed,
             "errors": errors,
         }
     )
@@ -334,8 +319,5 @@ async def cleanup_local_test():
         logger.info("🧪 Testdaten erfolgreich erzeugt!")
     except Exception as e:
         logger.error(f"Fehler beim Erzeugen der Testdaten: {e}")
-
-    global SCAN_CACHE
-    SCAN_CACHE = None
 
     return RedirectResponse("/gallery/cleanup_local", status_code=302)

@@ -2,77 +2,113 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Löschvorgang abgeschlossen</title>
+    <title>Cleanup – Ergebnis</title>
 
     <style>
         body {
             font-family: Arial, sans-serif;
             padding: 25px;
-            background: #fafafa;
+            background: #f6f6f6;
         }
+
         h1 {
-            color: #d9534f;
-            margin-bottom: 10px;
+            margin-bottom: 20px;
         }
-        h3 {
-            margin-top: 25px;
-            color: #333;
-        }
-        ul {
-            background: white;
-            padding: 15px 20px;
-            border-radius: 6px;
+
+        .box {
+            background: #fff;
+            border-radius: 8px;
+            padding: 18px;
+            margin-bottom: 25px;
             border: 1px solid #ddd;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
+
+        .success {
+            border-left: 6px solid #5cb85c;
+        }
+
+        .rename {
+            border-left: 6px solid #0275d8;
+        }
+
+        .error {
+            border-left: 6px solid #d9534f;
+        }
+
+        ul {
+            margin-top: 10px;
+            margin-bottom: 0;
+        }
+
         li {
             margin-bottom: 6px;
+            line-height: 1.4;
+            word-break: break-all;
         }
-        .ok {
-            color: #5cb85c;
-        }
-        .error {
-            color: #d9534f;
-        }
-        .back {
-            display: inline-block;
-            margin-top: 25px;
-            padding: 10px 16px;
+
+        .back-btn {
+            padding: 10px 20px;
+            border-radius: 6px;
             background: #0275d8;
             color: white;
-            text-decoration: none;
-            border-radius: 5px;
-        }
-        .back:hover {
-            background: #025aa5;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
         }
     </style>
 </head>
 
 <body>
 
-<h1>🗑️ Löschvorgang abgeschlossen</h1>
+<h1>✔️ Cleanup abgeschlossen (v{{ version | default('?.?') }})</h1>
 
-<a class="back" href="/gallery/cleanup_local">⬅ Zurück</a>
-
-<h3>Gelöschte Dateien</h3>
-<ul>
-{% if deleted %}
-    {% for d in deleted %}
-        <li class="ok">✔ {{ d }}</li>
-    {% endfor %}
-{% else %}
-    <li>Keine Dateien wurden gelöscht.</li>
+{% if deleted and deleted|length > 0 %}
+    <div class="box success">
+        <h2>🗑️ Gelöscht</h2>
+        <ul>
+            {% for d in deleted %}
+                <li>{{ d }}</li>
+            {% endfor %}
+        </ul>
+    </div>
 {% endif %}
-</ul>
 
-{% if errors %}
-<h3>Fehler</h3>
-<ul>
-    {% for e in errors %}
-        <li class="error">⚠ {{ e.id }} – {{ e.error }}</li>
-    {% endfor %}
-</ul>
+{% if renamed and renamed|length > 0 %}
+    <div class="box rename">
+        <h2>✏️ Umbenannt</h2>
+        <ul>
+            {% for d in renamed %}
+                <li>{{ d }}</li>
+            {% endfor %}
+        </ul>
+    </div>
 {% endif %}
+
+{% if errors and errors|length > 0 %}
+    <div class="box error">
+        <h2>⚠️ Fehler</h2>
+        <ul>
+            {% for e in errors %}
+                <li>{{ e.id }} – {{ e.error }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+{% endif %}
+
+{% if (not deleted or deleted|length == 0)
+   and (not renamed or renamed|length == 0)
+   and (not errors  or errors|length  == 0) %}
+    <div class="box">
+        <h2>ℹ️ Keine Änderungen erforderlich</h2>
+        <p>Es wurden keine Dateien gelöscht, umbenannt oder mit Fehlern gefunden.</p>
+    </div>
+{% endif %}
+
+<button class="back-btn" onclick="window.location.href='/gallery/cleanup_local'">
+    🔙 Zurück
+</button>
 
 </body>
 </html>

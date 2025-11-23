@@ -102,30 +102,7 @@ def delete_imagefile_caps(base_path: str = Settings.IMAGE_FILE_CACHE_DIR) -> Lis
     """
 
     files_to_delete = [
-        "top/OHZPZASB.JPG",
-        "top/KDBMRKPZ.JPG",
-
-        "delete/LACJWKEU.JPG",
-        "delete/UMARZPPH.JPG",
-        "delete/GUJYJZOH.JPG",
-        "delete/YOTPTEBH.JPG",
-
-        "bad/PSGWEBPH.JPG",
-        "bad/FMNGTAPO.JPG",
-
-        "ki/YXJZUWVM.JPG",
-        "ki/GNPZPQZP.JPG",
-        "ki/VMAERXYD.JPG",
-        "ki/RGRRQFBA.JPG",
-
-        "document/RKQIBXBN.JPG",
-        "document/DHNSXYED.JPG",
-
-        "double/HXLVUGQF.JPG",
-        "double/RFSJIZUW.JPG",
-
-        "gemini/PCBOIATR.JPG",
-        "gemini/HQGRSGJK.JPG",
+        "bad/mehykwrl.jpg"
     ]
 
     deleted = []
