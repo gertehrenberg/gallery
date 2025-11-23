@@ -10,7 +10,7 @@ from ..config import Settings
 from ..config_gdrive import sanitize_filename
 from ..utils.logger_config import setup_logger
 
-VERSION = 120
+VERSION = 122
 logger = setup_logger(__name__)
 logger.info(f"🟦 Starte cleanup_local.py (Unified Model) v{VERSION}")
 
@@ -44,7 +44,7 @@ def compute_md5_file(path: str):
 # PROGRESS SYSTEM
 # ============================================================
 
-PROGRESS = {"status": "Bereit", "progress": 0, "details": {"status": "-", "progress": 0}}
+PROGRESS = {"status": "Bereit", "progress": 0, "details": {"status": "", "progress": 0}}
 LOCK = asyncio.Lock()
 
 
@@ -114,7 +114,7 @@ async def find_case_duplicates(folder_name: str, idx: int, total: int):
         await set_progress(
             f"Scanne {folder_name}",
             int((idx / total) * 100),
-            f"MD5 {processed}/{total_files}",
+            f"Seite {processed}/{total_files}",
             percent
         )
 
@@ -187,7 +187,7 @@ async def run_full_scan():
     global SCAN_CACHE
     reset_progress()
 
-    categories = [k for k in Settings.kategorien() if k["key"] != "real"]
+    categories = [k for k in Settings.kategorien() if k["key"] != "XXXX"]
     total = len(categories)
     out = []
 
@@ -209,43 +209,18 @@ async def run_full_scan():
 def update_cache(delete_ids, lower_ids):
     """
     Aktualisiert SCAN_CACHE:
-    - entfernt nur wirklich gelöschte Einträge
-    - aktualisiert umbenannte Einträge statt sie zu entfernen
+    - löscht delete_ids und lower_ids
+    - kein Umbenennen
     """
     global SCAN_CACHE
     if not SCAN_CACHE:
         return
 
-    # Umbenennungen vorbereiten: Mapping alt → neu
-    rename_map = {}
-    for fid in lower_ids:
-        folder, fname = fid.split("/", 1)
-        new_name = sanitize_filename(fname)
-        rename_map[fid] = f"{folder}/{new_name}"
+    # alles was raus muss
+    remove_ids = set(delete_ids) | set(lower_ids)
 
     for cat in SCAN_CACHE:
-        new_results = []
-        for r in cat["results"]:
-
-            # 1️⃣ komplett entfernen, wenn gelöscht
-            if r["delete_id"] in delete_ids:
-                continue
-
-            # 2️⃣ bei Umbenennung: Eintrag updaten
-            if r["delete_id"] in rename_map:
-                new_id = rename_map[r["delete_id"]]
-
-                r["delete"] = r["keep"]  # neue Basiswerte setzen
-                r["delete_id"] = new_id
-
-                # keep_id muss bleiben wie gehabt
-                new_results.append(r)
-                continue
-
-            # 3️⃣ sonst unverändertes Ergebnis übernehmen
-            new_results.append(r)
-
-        cat["results"] = new_results
+        cat["results"] = [r for r in cat["results"] if r["delete_id"] not in remove_ids]
 
 
 # ============================================================
@@ -255,8 +230,13 @@ def update_cache(delete_ids, lower_ids):
 @router.get("/cleanup_local", response_class=HTMLResponse)
 async def cleanup_local(request: Request):
     return templates.TemplateResponse(
-        "cleanup_local.j2",
-        {"request": request, "categories": SCAN_CACHE, "version": VERSION}
+        "cleanup.j2",
+        {
+            "request": request,
+            "categories": SCAN_CACHE,
+            "version": VERSION,
+            "mode": "local"
+        }
     )
 
 
@@ -316,13 +296,14 @@ async def cleanup_local_delete(
     update_cache(delete_ids, lower_ids)
 
     return templates.TemplateResponse(
-        "cleanup_local_done.j2",
+        "cleanup_done.j2",
         {
             "request": request,
             "version": VERSION,
             "deleted": deleted,
             "renamed": renamed,
             "errors": errors,
+            "mode": "local",
         }
     )
 
@@ -334,8 +315,10 @@ async def cleanup_local_delete(
 @router.get("/cleanup_local_test")
 async def cleanup_local_test():
     try:
-        from .cleanup_local_testdata import generate_test_data
-        generate_test_data()
+        from .cleanup_local_testdata import generate_local_test_data
+        from .cleanup_local_testdata import delete_imagefile_caps
+        delete_imagefile_caps()
+        #generate_local_test_data()
         logger.info("🧪 Testdaten erfolgreich erzeugt!")
     except Exception as e:
         logger.error(f"Fehler beim Erzeugen der Testdaten: {e}")

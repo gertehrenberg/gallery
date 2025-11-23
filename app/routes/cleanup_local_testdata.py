@@ -47,9 +47,7 @@ def ensure_dir(folder: str):
 # Erzeuge Testdaten für 3 zufällige Kategorien
 # ---------------------------------------------------------
 
-def generate_test_data():
-    delete_imagefile_caps()
-
+def generate_local_test_data():
     logger.info("🧪 Erstelle *kleine* Testdaten für 3 Kategorien…")
 
     # --- Kategorien aus Settings ---

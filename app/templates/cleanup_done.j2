@@ -2,7 +2,14 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Cleanup – Ergebnis</title>
+
+    <title>
+        {% if mode == "gdrive" %}
+            Google Drive Cleanup – Ergebnis
+        {% else %}
+            Lokaler Cleanup – Ergebnis
+        {% endif %}
+    </title>
 
     <style>
         body {
@@ -57,12 +64,19 @@
             font-weight: bold;
             font-size: 16px;
         }
+        .back-btn:hover {
+            background: #025aa5;
+        }
     </style>
 </head>
 
 <body>
 
-<h1>✔️ Cleanup abgeschlossen (v{{ version | default('?.?') }})</h1>
+<h1>
+    ✔️ Cleanup abgeschlossen
+    ({{ mode == "gdrive" and "Google Drive" or "Local" }})
+    – v{{ version }}
+</h1>
 
 {% if deleted and deleted|length > 0 %}
     <div class="box success">
@@ -79,8 +93,12 @@
     <div class="box rename">
         <h2>✏️ Umbenannt</h2>
         <ul>
-            {% for d in renamed %}
-                <li>{{ d }}</li>
+            {% for r in renamed %}
+                {% if r.from %}
+                    <li>{{ r.from }} → <b>{{ r.to }}</b></li>
+                {% else %}
+                    <li>{{ r }}</li>
+                {% endif %}
             {% endfor %}
         </ul>
     </div>
@@ -106,8 +124,9 @@
     </div>
 {% endif %}
 
-<button class="back-btn" onclick="window.location.href='/gallery/cleanup_local'">
-    🔙 Zurück
+<button class="back-btn"
+        onclick="window.location.href='/gallery/cleanup_{{ mode }}'">
+    🔙 Zurück zu {{ "Google Drive" if mode=="gdrive" else "Local" }}
 </button>
 
 </body>

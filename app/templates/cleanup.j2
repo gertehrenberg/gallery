@@ -2,7 +2,14 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Lokaler Duplikat-Cleanup</title>
+
+    <title>
+        {% if mode == "gdrive" %}
+            Google Drive Duplikat-Cleanup
+        {% else %}
+            Lokaler Duplikat-Cleanup
+        {% endif %}
+    </title>
 
     <style>
         body {
@@ -92,7 +99,6 @@
             backdrop-filter: blur(4px);
         }
 
-        /* PROGRESS BOX */
         #progressBox {
             display: none;
             background: #fff;
@@ -127,11 +133,17 @@
 <body>
 
 <h1 style="display:flex; justify-content:space-between; align-items:center;">
-    <span>Local Clean (gross/klein)</span>
+    <span>
+        {% if mode == "gdrive" %}
+            Google Drive Clean (gross/klein)
+        {% else %}
+            Local Clean (gross/klein)
+        {% endif %}
+    </span>
     <span style="font-size:14px; color:#777;">v{{ version }}</span>
 </h1>
 
-<form action="/gallery/cleanup_local_delete" method="post">
+<form action="/gallery/cleanup_{{ mode }}_delete" method="post">
 
     <div class="sticky-bar">
         <button type="button" class="btn btn-blue"
@@ -140,6 +152,10 @@
 
         <button id="reloadBtn" type="button" class="btn btn-orange"
                 onclick="startReload()">🔄 Neu laden
+        </button>
+
+        <button type="button" class="btn btn-cyan"
+                onclick="selectFirst50lower()">✔️ 50 ✏️
         </button>
 
         <button type="button" class="btn btn-cyan"
@@ -157,13 +173,12 @@
             <div id="mainBar" class="progress-bar"></div>
         </div>
 
-        <div id="detailText" style="font-size:14px; margin-top:10px;">–</div>
+        <div id="detailText" style="font-size:14px; margin-top:10px;">Seite</div>
 
         <div class="progress-bar-bg">
             <div id="detailBar" class="progress-bar detail-bar"></div>
         </div>
     </div>
-
 
     <!-- TABLE -->
     <table>
@@ -188,7 +203,11 @@
 
                     <!-- DELETE IMAGE -->
                     <td class="center">
-                        <img class="thumb" src="/static/imagefiles/{{ r.folder }}/{{ r.delete }}">
+                        {% if mode == "gdrive" %}
+                            <img class="thumb" src="https://drive.google.com/thumbnail?id={{ r.delete_id }}&sz=w200">
+                        {% else %}
+                            <img class="thumb" src="/static/imagefiles/{{ r.folder }}/{{ r.delete }}">
+                        {% endif %}
                     </td>
 
                     <!-- DELETE CHECKBOX -->
@@ -196,16 +215,24 @@
                         <input type="checkbox" name="delete_ids" value="{{ r.delete_id }}">
                     </td>
 
-                    <!-- LOWER RENAME CHECKBOX -->
+                    <!-- LOWERCASE CHECKBOX -->
                     <td class="center">
                         {% if r.type == "weird" %}
                             <input type="checkbox" name="lower_ids" value="{{ r.delete_id }}">
                         {% endif %}
                     </td>
 
-                    <!-- KEEP PREVIEW -->
+                    <!-- KEEP IMAGE -->
                     <td class="center">
-                        <img class="thumb" src="/static/imagefiles/{{ r.folder }}/{{ r.keep }}">
+                        {% if mode == "gdrive" %}
+                            {% if r.keep_id %}
+                                <img class="thumb" src="https://drive.google.com/thumbnail?id={{ r.keep_id }}&sz=w200">
+                            {% else %}
+                                <span style="color:#777;">(neu)</span>
+                            {% endif %}
+                        {% else %}
+                            <img class="thumb" src="/static/imagefiles/{{ r.folder }}/{{ r.keep }}">
+                        {% endif %}
                     </td>
 
                     <!-- OLD NAME -->
@@ -228,7 +255,7 @@
     let progressTimer = null;
 
     function updateProgress() {
-        fetch("/gallery/cleanup_local_progress")
+        fetch("/gallery/cleanup_{{ mode }}_progress")
             .then(r => r.json())
             .then(p => {
                 document.getElementById("progressText").innerText = p.status;
@@ -251,7 +278,7 @@
         document.getElementById("reloadBtn").disabled = true;
         document.getElementById("deleteBtn").disabled = true;
 
-        fetch("/gallery/cleanup_local_start", {method: "POST"})
+        fetch("/gallery/cleanup_{{ mode }}_start", {method: "POST"})
             .then(() => {
                 if (!progressTimer)
                     progressTimer = setInterval(updateProgress, 350);
@@ -260,6 +287,17 @@
 
     function selectFirst50() {
         const boxes = document.querySelectorAll("input[name='delete_ids']");
+        let count = 0;
+        boxes.forEach(box => {
+            if (count < 50) {
+                box.checked = true;
+                count++;
+            }
+        });
+    }
+
+    function selectFirst50lower() {
+        const boxes = document.querySelectorAll("input[name='lower_ids']");
         let count = 0;
         boxes.forEach(box => {
             if (count < 50) {
