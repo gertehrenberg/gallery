@@ -5,10 +5,9 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
-from .cleanup_gdrive import gdrive_list_folder
 from .cleanup_local import local_list_folder, compute_md5_file
 from ..config import Settings
-from ..config_gdrive import folder_name_by_id
+from ..config_gdrive import folder_name_by_id, folder_id_by_name
 from ..routes.auth import load_drive_service
 from ..utils.logger_config import setup_logger
 
@@ -36,7 +35,7 @@ def get_drive():
 # PROGRESS
 # ======================================================================
 
-PROGRESS = {"status": "Bereit", "progress": 0, "details": {"status": "", "progress": 0}}
+PROGRESS = {"status": "Bereit", "progress": 0, "details": {"status": "Bereit", "progress": 0}}
 PROGRESS_LOCK = asyncio.Lock()
 
 
@@ -50,10 +49,17 @@ async def set_progress(status, progress, detail_status=None, detail_progress=Non
             PROGRESS["details"]["progress"] = detail_progress
 
 
+async def set_progress_detail(detail_status=None, detail_progress=None):
+    async with PROGRESS_LOCK:
+        if detail_status is not None:
+            PROGRESS["details"]["status"] = detail_status
+        if detail_progress is not None:
+            PROGRESS["details"]["progress"] = detail_progress
+
 def reset_progress():
     PROGRESS["status"] = "Bereit"
     PROGRESS["progress"] = 0
-    PROGRESS["details"] = {"status": "", "progress": 0}
+    PROGRESS["details"] = {"status": "Bereit", "progress": 0}
 
 
 EXECUTOR = ThreadPoolExecutor(max_workers=8)
@@ -98,15 +104,20 @@ async def find_case_duplicates(folder_name: str, idx: int, total: int, debug: bo
     total_files = len(gdrive_map)
     processed = 0
 
+    await set_progress(
+        f"Verarbeite Dateien in GDrive Ordner: {folder_name}",
+        min(PROGRESS["progress"] + 1, 99),
+        "Bereit",
+        0
+    )
+
     # ---------------------------------------------------
     # 1) Dateien, die im GDrive existieren
     # ---------------------------------------------------
     for name, gf in gdrive_map.items():
         processed += 1
 
-        await set_progress(
-            f"Scanne {folder_name}",
-            int((idx / total) * 100),
+        await set_progress_detail(
             f"{processed}/{total_files}",
             int((processed / max(total_files, 1)) * 100)
         )
@@ -192,9 +203,58 @@ async def find_case_duplicates(folder_name: str, idx: int, total: int, debug: bo
     }
 
 
-# ======================================================================
-# FULL SCAN (inkl. globaler MD5-Index)
-# ======================================================================
+async def gdrive_list_folder(folder_name: str):
+    folder_id = folder_id_by_name(folder_name)
+    if not folder_id:
+        return []
+
+    service = get_drive()
+    query = (
+        f"'{folder_id}' in parents "
+        f"and trashed = false "
+        f"and mimeType != 'application/vnd.google-apps.folder' "
+        f"and mimeType != 'application/vnd.google-apps.shortcut'"
+    )
+
+    files = []
+    token = None
+    page = 0
+
+    await set_progress(
+        f"Lese GDrive Ordner: {folder_name}",
+        min(PROGRESS["progress"] + 1, 99),
+        "Bereit",
+        0
+    )
+
+    while True:
+        page += 1
+
+        await set_progress_detail(
+            f"Seite {page}",
+            min(page*4, 100)
+        )
+
+        resp = service.files().list(
+            q=query,
+            spaces="drive",
+            fields="nextPageToken, files(id,name,md5Checksum,size,parents)",
+            supportsAllDrives=True,
+            includeItemsFromAllDrives=True,
+            pageToken=token,
+            pageSize=Settings.PAGESIZE,
+        ).execute()
+
+        files.extend(resp.get("files", []))
+        token = resp.get("nextPageToken")
+
+        if not token:
+            break
+
+        await asyncio.sleep(0.05)
+
+    return files
+
 
 SCAN_CACHE = None
 
@@ -246,7 +306,12 @@ async def run_full_scan():
         idx += 1
 
     SCAN_CACHE = out
-    await set_progress("Fertig", 100, "Complete", 100)
+    await set_progress(
+        "Fertig",
+        100,
+        "Fertig",
+        100
+    )
     logger.info("🟢 Scan fertig")
 
 

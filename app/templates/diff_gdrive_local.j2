@@ -113,7 +113,7 @@
 
         .progress-bar {
             height: 22px;
-            width: 0%;
+            width: 100%;
             background: #0275d8;
             transition: width .3s ease;
         }
@@ -121,6 +121,16 @@
         .detail-bar {
             background: #5cb85c;
         }
+
+        /* GRÜNE Detail-Bar (zweite Progressbar) 4px kleiner → 18px */
+        #progressBox .progress-bar-bg:last-of-type {
+            height: 18px;
+        }
+
+        #progressBox .progress-bar-bg:last-of-type .progress-bar {
+            height: 18px;
+        }
+
     </style>
 </head>
 
@@ -151,7 +161,7 @@
         <div id="mainBar" class="progress-bar"></div>
     </div>
 
-    <div id="detailText" style="font-size:14px; margin-top:10px;">Seite</div>
+    <div id="detailText" style="font-size:14px; margin-top:10px;">Bereit</div>
 
     <div class="progress-bar-bg">
         <div id="detailBar" class="progress-bar detail-bar"></div>
@@ -187,7 +197,7 @@
                                 <div style="line-height:1.3;">
                                     <div>{{ r.folder }}</div>
                                     <div>{{ r.filename }}</div>
-                                    <div>{{ r.gdrive_id }}</div>
+                                    <div>lokale Datei</div>
                                 </div>
                             </div>
                         </li>
@@ -259,7 +269,7 @@
                     progressTimer = null;
 
                     document.getElementById("progressBox").style.display = "none";
-                    setTimeout(() => location.reload(), 400);
+                    setTimeout(() => location.reload(), 200);
                 }
             });
     }
@@ -271,7 +281,7 @@
         fetch("/gallery/diff_gdrive_local_start", {method: "POST"})
             .then(() => {
                 if (!progressTimer)
-                    progressTimer = setInterval(updateProgress, 350);
+                    progressTimer = setInterval(updateProgress, 200);
             });
     }
 </script>
