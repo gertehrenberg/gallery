@@ -12,14 +12,14 @@ from datetime import timedelta
 from pathlib import Path
 from typing import Dict
 
+from google.cloud import bigquery
+
 from fastapi import APIRouter
 from fastapi import Form
 from fastapi import Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from google.cloud import bigquery
 from starlette.responses import JSONResponse
-
 from . import what
 from .auth import load_drive_service
 from .auth import load_drive_service_token
@@ -149,6 +149,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
 
     # Tool Links Definition
     tool_links = [
+        {"label": "Diff GDrive/Local", "url": "/gallery/diff_gdrive_local", "icon": "🧹"},
         {"label": "Local Clean (gross/klein)", "url": "/gallery/cleanup_local", "icon": "🧹"},
         {"label": "GDrive Clean (gross/klein)", "url": "/gallery/cleanup_gdrive", "icon": "🧹"},
         {"label": "GDrive Clean (cross)", "url": "/gallery/crossduplicates_gdrive", "icon": "🧹"},
@@ -1071,7 +1072,8 @@ def localp2():
     Settings.PAIR_CACHE_PATH = "/home/ubuntu/gallery/cache/pair_cache_local.json"
     Settings.IMAGE_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/imagefiles"
     Settings.TEXT_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/textfiles"
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ubuntu/gallery/secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
+    os.environ[
+        "GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ubuntu/gallery/secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
     return load_drive_service_token(os.path.abspath(os.path.join("/home/ubuntu/gallery/secrets", "token.json")))
 
 
@@ -1094,7 +1096,8 @@ def localp3():
     Settings.IMAGE_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/imagefiles"
     Settings.TEXT_FILE_CACHE_DIR = "/home/ubuntu/gallery/cache/textfiles"
     Settings.SAVE_LOG_FILE = "/home/ubuntu/gallery/cache/from_save_"
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ubuntu/gallery/secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
+    os.environ[
+        "GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ubuntu/gallery/secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
     SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("/home/ubuntu/gallery/cache/gdrive_folders.pkl")
     return load_drive_service_token(os.path.abspath(os.path.join("/home/ubuntu/gallery/secrets", "token.json")))
 

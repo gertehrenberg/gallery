@@ -88,7 +88,7 @@ async def gdrive_list_folder(folder_name: str):
         resp = service.files().list(
             q=query,
             spaces="drive",
-            fields="nextPageToken, files(id,name,md5Checksum,size)",
+            fields="nextPageToken, files(id,name,md5Checksum,size,parents)",
             supportsAllDrives=True,
             includeItemsFromAllDrives=True,
             pageToken=token,

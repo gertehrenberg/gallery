@@ -112,9 +112,9 @@
 
 <body>
 
-<h1>Cross-Folder – MD5-Duplikate</h1>
+<h1>GDrive Clean (cross)</h1>
 
-<form action="/gallery/gdrive_crossduplicates_delete" method="post">
+<form action="/gallery/crossduplicates_gdrive_delete" method="post">
 
     <!-- STICKY BUTTON BAR -->
     <div class="sticky-bar">
@@ -210,7 +210,7 @@
 let progressTimer = null;
 
 function updateProgress() {
-    fetch("/gallery/gdrive_crossduplicates_progress")
+    fetch("/gallery/crossduplicates_gdrive_progress")
         .then(r => r.json())
         .then(p => {
             document.getElementById("progressText").innerText = p.status;
@@ -227,7 +227,7 @@ function updateProgress() {
                 document.getElementById("progressBox").style.display = "none";
 
                 setTimeout(() => {
-                    window.location.href = "/gallery/gdrive_crossduplicates";
+                    window.location.href = "/gallery/crossduplicates_gdrive";
                 }, 400);
             }
         });
@@ -239,7 +239,7 @@ function startReload() {
     document.getElementById("reloadBtn").disabled = true;
     document.getElementById("deleteBtn").disabled = true;
 
-    fetch("/gallery/gdrive_crossduplicates_start", { method: "POST" })
+    fetch("/gallery/crossduplicates_gdrive_start", { method: "POST" })
         .then(() => {
             if (!progressTimer)
                 progressTimer = setInterval(updateProgress, 350);

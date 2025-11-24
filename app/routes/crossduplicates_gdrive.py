@@ -1,13 +1,13 @@
-import os
 import asyncio
+import os
+
 from fastapi import APIRouter, Request, Form
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-
-from ..utils.logger_config import setup_logger
 from ..config import Settings
-from ..routes.auth import load_drive_service
 from ..config_gdrive import folder_id_by_name
+from ..routes.auth import load_drive_service
+from ..utils.logger_config import setup_logger
 
 logger = setup_logger(__name__)
 router = APIRouter()
@@ -89,7 +89,7 @@ async def load_drive_files_for_folder(service, folder_name, folder_id):
             q=query,
             spaces="drive",
             fields="nextPageToken, files(id,name,md5Checksum,size)",
-            pageSize=1000,
+            pageSize=Settings.PAGESIZE,
             pageToken=page,
             supportsAllDrives=True,
             includeItemsFromAllDrives=True
@@ -173,8 +173,8 @@ async def load_drive_folders_and_md5():
 # START
 # ============================================================================
 
-@router.post("/gdrive_crossduplicates_start")
-async def gdrive_crossduplicates_start():
+@router.post("/crossduplicates_gdrive_start")
+async def crossduplicates_gdrive_start():
     reset_progress()
     global CROSSFOLDER_RESULTS
     CROSSFOLDER_RESULTS = []
@@ -187,8 +187,8 @@ async def gdrive_crossduplicates_start():
 # PROGRESS
 # ============================================================================
 
-@router.get("/gdrive_crossduplicates_progress")
-async def gdrive_crossduplicates_progress():
+@router.get("/crossduplicates_gdrive_progress")
+async def crossduplicates_gdrive_progress():
     return JSONResponse(CROSSFOLDER_PROGRESS)
 
 
@@ -196,10 +196,10 @@ async def gdrive_crossduplicates_progress():
 # PAGE
 # ============================================================================
 
-@router.get("/gdrive_crossduplicates", response_class=HTMLResponse)
-async def gdrive_crossduplicates(request: Request):
+@router.get("/crossduplicates_gdrive", response_class=HTMLResponse)
+async def crossduplicates_gdrive(request: Request):
     return templates.TemplateResponse(
-        "gdrive_crossduplicates.j2",
+        "crossduplicates_gdrive.j2",
         {"request": request, "results": CROSSFOLDER_RESULTS}
     )
 
@@ -208,21 +208,21 @@ async def gdrive_crossduplicates(request: Request):
 # RELOAD
 # ============================================================================
 
-@router.get("/gdrive_crossduplicates_reload")
-async def gdrive_crossduplicates_reload():
+@router.get("/crossduplicates_gdrive_reload")
+async def crossduplicates_gdrive_reload():
     global CROSSFOLDER_RESULTS, CROSSFOLDER_CACHE
     CROSSFOLDER_RESULTS = []
     CROSSFOLDER_CACHE = None
     reset_progress()
-    return RedirectResponse("/gallery/gdrive_crossduplicates")
+    return RedirectResponse("/gallery/crossduplicates_gdrive")
 
 
 # ============================================================================
 # DELETE – echtes Löschen + Cache-Update
 # ============================================================================
 
-@router.post("/gdrive_crossduplicates_delete", response_class=HTMLResponse)
-async def gdrive_crossduplicates_delete(request: Request,
+@router.post("/crossduplicates_gdrive_delete", response_class=HTMLResponse)
+async def crossduplicates_gdrive_delete(request: Request,
                                         delete_ids: list[str] = Form(default=[])):
     global CROSSFOLDER_RESULTS, CROSSFOLDER_CACHE
 
@@ -268,6 +268,6 @@ async def gdrive_crossduplicates_delete(request: Request,
     # 4) Ergebnis-Seite anzeigen
     # ------------------------------
     return templates.TemplateResponse(
-        "gdrive_crossduplicates_done.j2",
+        "crossduplicates_gdrive_done.j2",
         {"request": request, "deleted": deleted, "errors": errors}
     )
