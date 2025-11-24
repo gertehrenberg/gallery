@@ -7,8 +7,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from .cleanup_local import local_list_folder, compute_md5_file
-from ..config import Settings
-from ..config_gdrive import folder_id_by_name
+from ..config import Settings, UserType
+from ..config_gdrive import folder_id_by_name, sanitize_filename
 from ..routes.auth import load_drive_service
 from ..utils.logger_config import setup_logger
 
@@ -61,7 +61,11 @@ EXECUTOR = ThreadPoolExecutor(max_workers=8)
 
 # GLOBAL INDEX
 global SCAN_CACHE
-SCAN_CACHE = {"categories": [], "invalid_md5": []}
+SCAN_CACHE = {
+    "categories": [],
+    "invalid_md5": [],
+    "invalid_names": []      # <--- NEU
+}
 GLOBAL_MD5_INDEX = {}  # md5 -> {"local": [...], "gdrive": [...]}
 
 
@@ -123,13 +127,27 @@ async def find_case_duplicates(folder_name: str, idx: int, total: int):
 
         folder_id = (f.get("parents") or ["?"])[0]
 
+        clean = sanitize_filename(f["name"])              # <--- NEU
+        invalid_name = (clean != f["name"])               # <--- NEU
+
         GLOBAL_MD5_INDEX.setdefault(md5, {"local": [], "gdrive": []})
         GLOBAL_MD5_INDEX[md5]["gdrive"].append({
             "folder": folder_name,
             "folder_id": folder_id,
             "name": f["name"],
             "id": f["id"],
+            "sanitized_name": clean,                     # <--- NEU
+            "is_invalid_name": invalid_name              # <--- NEU
         })
+
+        if invalid_name:                                  # <--- NEU
+            SCAN_CACHE["invalid_names"].append({
+                "source": "gdrive",
+                "folder": folder_name,
+                "orig_name": f["name"],
+                "clean_name": clean,
+                "id": f["id"]
+            })
 
     g_insert_after = sum(len(v.get("gdrive", [])) for v in GLOBAL_MD5_INDEX.values())
     logger.info(f"📥 GDRIVE Insert: vorher={g_insert_before}, nachher={g_insert_after}")
@@ -145,12 +163,26 @@ async def find_case_duplicates(folder_name: str, idx: int, total: int):
             continue
         md5 = await loop.run_in_executor(EXECUTOR, compute_md5_file, lf["path"])
 
+        clean = sanitize_filename(lf["name"])             # <--- NEU
+        invalid_name = (clean != lf["name"])              # <--- NEU
+
         GLOBAL_MD5_INDEX.setdefault(md5, {"local": [], "gdrive": []})
         GLOBAL_MD5_INDEX[md5]["local"].append({
             "folder": folder_name,
             "path": lf["path"],
             "name": lf["name"],
+            "sanitized_name": clean,                     # <--- NEU
+            "is_invalid_name": invalid_name              # <--- NEU
         })
+
+        if invalid_name:                                  # <--- NEU
+            SCAN_CACHE["invalid_names"].append({
+                "source": "local",
+                "folder": folder_name,
+                "orig_name": lf["name"],
+                "clean_name": clean,
+                "path": lf["path"]
+            })
 
     l_insert_after = sum(len(v.get("local", [])) for v in GLOBAL_MD5_INDEX.values())
     logger.info(f"📥 LOCAL Insert: vorher={l_insert_before}, nachher={l_insert_after}")
@@ -164,6 +196,14 @@ async def run_full_scan():
     reset_progress()
     GLOBAL_MD5_INDEX = {}
 
+    # <--- wichtig: invalid_names zurücksetzen
+    SCAN_CACHE = {
+        "categories": [],
+        "invalid_md5": [],
+        "invalid_names": []     # <--- NEU
+    }
+
+    Settings._user_type = UserType.ADMIN
     categories = [c["key"] for c in Settings.kategorien() if c["key"] != "real"]
     total = len(categories)
 
@@ -191,7 +231,9 @@ async def run_full_scan():
     logger.info(f"❗ Ungueltige MD5 Eintraege: {len(invalid_md5)}")
     logger.info(f"📊 Gesamtindex: {len(GLOBAL_MD5_INDEX)} MD5-Hashes")
 
-    SCAN_CACHE = {"categories": out, "invalid_md5": invalid_md5}
+    SCAN_CACHE["categories"] = out
+    SCAN_CACHE["invalid_md5"] = invalid_md5
+
     await set_progress("Fertig", 100, "Fertig", 100)
     logger.info("🟢 Globaler MD5-Scan abgeschlossen")
 
@@ -205,6 +247,7 @@ async def diff_gdrive_local(request: Request):
             "request": request,
             "categories": SCAN_CACHE.get("categories", []),
             "invalid_md5": SCAN_CACHE.get("invalid_md5", []),
+            "invalid_names": SCAN_CACHE.get("invalid_names", []),   # <--- NEU
             "version": VERSION,
         },
     )

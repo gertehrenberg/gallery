@@ -48,7 +48,7 @@
         }
 
         .btn-orange {
-            background: #f0ad4e;
+           	background: #f0ad4e;
             color: white;
         }
 
@@ -129,14 +129,12 @@
         </thead>
         <tbody>
         {% for m in invalid_md5 %}
-            <!-- MD5 Header Row -->
             <tr style="background:#f4f4f4;">
                 <td colspan="3" style="font-weight:bold; padding-top:12px; padding-bottom:12px;">
                     MD5: {{ m.md5 }} — {{ m.status }}
                 </td>
             </tr>
 
-            <!-- GDrive Einträge -->
             {% for g in m.gdrive %}
                 <tr>
                     <td>
@@ -151,16 +149,15 @@
                 </tr>
             {% endfor %}
 
-            <!-- Lokale Einträge -->
             {% for l in m.local %}
                 <tr>
                     <td>
                         <img
-                                alt="{{ l.name }}"
-                                class="thumb"
-                                src="/gallery/static/thumbnails/{{ m.md5 }}.png"
-                                onclick="openModal('{{ l.folder }}/{{ l.name }}')"
-                                style="cursor:pointer; max-width:100%;"
+                            alt="{{ l.name }}"
+                            class="thumb"
+                            src="/gallery/static/thumbnails/{{ m.md5 }}.png"
+                            onclick="openModal('{{ l.folder }}/{{ l.name }}')"
+                            style="cursor:pointer; max-width:100%;"
                         >
                     </td>
                     <td>
@@ -171,11 +168,37 @@
                     <td>Lokal</td>
                 </tr>
             {% endfor %}
-
         {% endfor %}
         </tbody>
     </table>
 {% endif %}
+
+<!-- ★★★★★ NEW BLOCK: UNGÜLTIGE DATEINAMEN ★★★★★ -->
+{% if invalid_names %}
+    <h2>Ungültige Dateinamen ({{ invalid_names|length }})</h2>
+
+    <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+        <thead>
+        <tr>
+            <th>Quelle</th>
+            <th>Ordner</th>
+            <th>Originalname</th>
+            <th>Sanitisiert</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for n in invalid_names %}
+            <tr style="background:#fff3cd;">
+                <td>{{ n.source }}</td>
+                <td>{{ n.folder }}</td>
+                <td>{{ n.orig_name }}</td>
+                <td>{{ n.clean_name }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+{% endif %}
+<!-- ★★★★★ END NEW BLOCK ★★★★★ -->
 
 <script>
     let progressTimer = null;
@@ -210,7 +233,6 @@
 <!-- Modal-Container -->
 <div id="meinModal"
      style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.8); z-index:1000;">
-    <!-- statt: <span onclick="closeModal" ... -->
     <button class="close" onclick="closeModal()">×</button>
     <div id="panzoomContainer"
          style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; position:relative; overflow:hidden;">
@@ -222,7 +244,6 @@
 </div>
 
 <script>
-
     function closeModal() {
         const modal = document.getElementById("meinModal");
         const img = document.getElementById("zoomImage");
