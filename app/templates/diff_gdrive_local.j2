@@ -2,138 +2,25 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-
     <title>Diff GDrive/Local</title>
 
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 12px;
-        }
-
-        th, td {
-            padding: 8px 10px;
-            border-bottom: 1px solid #ddd;
-        }
-
-        th {
-            background: #f8f8f8;
-            text-align: left;
-        }
-
-        img.thumb {
-            height: 60px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-            object-fit: cover;
-        }
-
-        .center {
-            text-align: center;
-        }
-
-        /* Buttons */
-        .btn {
-            padding: 8px 16px;
-            border-radius: 6px;
-            margin-right: 6px;
-            border: none;
-            cursor: pointer;
-            font-weight: 600;
-        }
-
-        .btn-blue {
-            background: #0275d8;
-            color: white;
-        }
-
-        .btn-orange {
-            background: #f0ad4e;
-            color: white;
-        }
-
-        .btn-red {
-            background: #d9534f;
-            color: white;
-        }
-
-        .btn-cyan {
-            background: #5bc0de;
-            color: white;
-        }
-
-        /* Sticky Bar */
-        .sticky-bar {
-            position: sticky;
-            top: 0;
-            background: #ffffff;
-            padding: 10px 0;
-            border-bottom: 1px solid #ddd;
-            margin-bottom: 10px;
-            backdrop-filter: blur(4px);
-            z-index: 50;
-        }
-
-        /* Typ-Farben */
-        .only-gdrive {
-            color: #0275d8;
-            font-weight: bold;
-        }
-
-        .only-local {
-            color: #5cb85c;
-            font-weight: bold;
-        }
-
-        .diff {
-            color: #d9534f;
-            font-weight: bold;
-        }
-
-        .md5match {
-            color: #f0ad4e;
-            font-weight: bold;
-        }
-
-        /* Progressbars */
-        .progress-bar-bg {
-            width: 100%;
-            height: 22px;
-            background: #ddd;
-            border-radius: 10px;
-            overflow: hidden;
-            margin: 6px 0;
-        }
-
-        .progress-bar {
-            height: 22px;
-            width: 100%;
-            background: #0275d8;
-            transition: width .3s ease;
-        }
-
-        .detail-bar {
-            background: #5cb85c;
-        }
-
-        /* GRÜNE Detail-Bar (zweite Progressbar) 4px kleiner → 18px */
-        #progressBox .progress-bar-bg:last-of-type {
-            height: 18px;
-        }
-
-        #progressBox .progress-bar-bg:last-of-type .progress-bar {
-            height: 18px;
-        }
-
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+        th, td { padding: 8px 10px; border-bottom: 1px solid #ddd; }
+        th { background: #f8f8f8; text-align: left; }
+        img.thumb { height: 60px; border: 1px solid #ccc; border-radius: 4px; object-fit: cover; }
+        .btn { padding: 8px 16px; border-radius: 6px; margin-right: 6px; border: none; cursor: pointer; font-weight: 600; }
+        .btn-blue { background: #0275d8; color: white; }
+        .btn-orange { background: #f0ad4e; color: white; }
+        .sticky-bar { position: sticky; top: 0; background: #ffffff; padding: 10px 0; border-bottom: 1px solid #ddd; margin-bottom: 10px; backdrop-filter: blur(4px); z-index: 50; }
+        .progress-bar-bg { width: 100%; height: 22px; background: #ddd; border-radius: 10px; overflow: hidden; margin: 6px 0; }
+        .progress-bar { height: 22px; width: 100%; background: #0275d8; transition: width .3s ease; }
+        .detail-bar { background: #5cb85c; }
+        #progressBox .progress-bar-bg:last-of-type { height: 18px; }
+        #progressBox .progress-bar-bg:last-of-type .progress-bar { height: 18px; }
     </style>
 </head>
-
 <body>
 
 <h1 style="display:flex; justify-content:space-between; align-items:center;">
@@ -142,148 +29,97 @@
 </h1>
 
 <div class="sticky-bar">
-
-    <button type="button" class="btn btn-blue"
-            onclick="window.location.href='/gallery/dashboard'">📊 Dashboard
-    </button>
-
-    <button id="reloadBtn" type="button" class="btn btn-orange"
-            onclick="startReload()">🔄 Neu laden
-    </button>
-
+    <button type="button" class="btn btn-blue" onclick="window.location.href='/gallery/dashboard'">📊 Dashboard</button>
+    <button id="reloadBtn" type="button" class="btn btn-orange" onclick="startReload()">🔄 Neu laden</button>
 </div>
 
 <!-- PROGRESS -->
 <div id="progressBox" style="display:none;">
     <div id="progressText" style="font-weight:bold;">Starte…</div>
-
-    <div class="progress-bar-bg">
-        <div id="mainBar" class="progress-bar"></div>
-    </div>
-
+    <div class="progress-bar-bg"><div id="mainBar" class="progress-bar"></div></div>
     <div id="detailText" style="font-size:14px; margin-top:10px;">Bereit</div>
-
-    <div class="progress-bar-bg">
-        <div id="detailBar" class="progress-bar detail-bar"></div>
-    </div>
+    <div class="progress-bar-bg"><div id="detailBar" class="progress-bar detail-bar"></div></div>
 </div>
 
-
-<!-- TABLE -->
-<table>
+<!-- MD5 BLOCK ABOVE TABLE -->
+{% if invalid_md5 %}
+<h2>Ungültige MD5 Einträge ({{ invalid_md5|length }})</h2>
+<table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
     <thead>
-    <tr>
-        <th>Bild</th>
-        <th>Typ</th>
-        <th>Pfad / ID</th>
-    </tr>
+        <tr>
+            <th style="width:140px;">Bild</th>
+            <th>Info</th>
+            <th>Typ</th>
+        </tr>
     </thead>
-
     <tbody>
+    {% for m in invalid_md5 %}
+        <!-- MD5 Header Row -->
+        <tr style="background:#f4f4f4;">
+            <td colspan="3" style="font-weight:bold; padding-top:12px; padding-bottom:12px;">
+                MD5: {{ m.md5 }} — {{ m.status }}
+            </td>
+        </tr>
 
-    {% for c in (categories or []) %}
-        {% for r in c.results %}
-            <tr>
-                <td>
-                    {% if r.gdrive_id %}
-                        <li style="margin-bottom:12px; list-style:none;">
-                            <div style="display:flex; gap:12px; align-items:flex-start;">
-                                <!-- LEFT: Thumbnail -->
-                                <div>
-                                    <img class="thumb"
-                                         src="https://drive.google.com/thumbnail?id={{ r.gdrive_id }}&sz=w200">
-                                </div>
-                                <!-- RIGHT: Details -->
-                                <div style="line-height:1.3;">
-                                    <div>{{ r.folder }}</div>
-                                    <div>{{ r.filename }}</div>
-                                    <div>lokale Datei</div>
-                                </div>
-                            </div>
-                        </li>
-                    {% else %}
-                        <img class="thumb" src="/static/imagefiles/{{ r.folder }}/{{ r.filename }}">
-                    {% endif %}
-                </td>
-
-                <!-- TYPE CELL -->
-                <td class="
-                    {% if r.type == 'nur_gdrive' %}only-gdrive{% endif %}
-                    {% if r.type == 'nur_local' %}only-local{% endif %}
-                    {% if r.type == 'md5_unterschied' %}diff{% endif %}
-                    {% if r.type == 'nur_local_md5_match' %}md5match{% endif %}
-                ">
-                    {{ r.type }}
-                </td>
-                <td>
-                    {% if r.type == 'nur_gdrive' %}
-                        {{ r.gdrive_id }}
-                    {% elif r.type == 'nur_local_md5_match' %}
-                        <ul style="margin:4px 0 0 12px; padding:0;">
-                            {% for m in r.match_info %}
-                                <li style="margin-bottom:12px; list-style:none;">
-                                    <div style="display:flex; gap:12px; align-items:flex-start;">
-                                        <!-- LEFT: Thumbnail -->
-                                        <div>
-                                            <img class="thumb"
-                                                 src="https://drive.google.com/thumbnail?id={{ m.id }}&sz=w200">
-                                        </div>
-                                        <!-- RIGHT: Details -->
-                                        <div style="line-height:1.3;">
-                                            <div>{{ m.folder }}</div>
-                                            <div>{{ m.name }}</div>
-                                            <div>{{ m.id }}</div>
-                                        </div>
-                                    </div>
-                                </li>
-                            {% endfor %}
-                        </ul>
-
-                    {% else %}
-                        {{ r.local_path }}
-                    {% endif %}
-
-                </td>
-            </tr>
+        <!-- GDrive Einträge -->
+        {% for g in m.gdrive %}
+        <tr>
+            <td>
+                <img class="thumb" src="https://drive.google.com/thumbnail?id={{ g.id }}&sz=w200">
+            </td>
+            <td>
+                <div>{{ g.folder }}</div>
+                <div>{{ g.name }}</div>
+                <div>{{ g.id }}</div>
+            </td>
+            <td>GDrive</td>
+        </tr>
         {% endfor %}
-    {% endfor %}
 
+        <!-- Lokale Einträge -->
+        {% for l in m.local %}
+        <tr>
+            <td>
+                <img class="thumb" src="/static/imagefiles/{{ l.folder }}/{{ l.name }}">
+            </td>
+            <td>
+                <div>{{ l.folder }}</div>
+                <div>{{ l.name }}</div>
+                <div>{{ l.path }}</div>
+            </td>
+            <td>Lokal</td>
+        </tr>
+        {% endfor %}
+
+    {% endfor %}
     </tbody>
 </table>
-
+{% endif %}
 
 <script>
-    let progressTimer = null;
-
-    function updateProgress() {
-        fetch("/gallery/diff_gdrive_local_progress")
-            .then(r => r.json())
-            .then(p => {
-                document.getElementById("progressText").innerText = p.status;
-                document.getElementById("mainBar").style.width = p.progress + "%";
-                document.getElementById("detailText").innerText = p.details.status || "";
-                document.getElementById("detailBar").style.width = p.details.progress + "%";
-
-                if (p.progress >= 100) {
-                    clearInterval(progressTimer);
-                    progressTimer = null;
-
-                    document.getElementById("progressBox").style.display = "none";
-                    setTimeout(() => location.reload(), 200);
-                }
-            });
-    }
-
-    function startReload() {
-        document.getElementById("progressBox").style.display = "block";
-        document.getElementById("reloadBtn").disabled = true;
-
-        fetch("/gallery/diff_gdrive_local_start", {method: "POST"})
-            .then(() => {
-                if (!progressTimer)
-                    progressTimer = setInterval(updateProgress, 200);
-            });
-    }
+let progressTimer = null;
+function updateProgress() {
+    fetch("/gallery/diff_gdrive_local_progress")
+        .then(r => r.json())
+        .then(p => {
+            document.getElementById("progressText").innerText = p.status;
+            document.getElementById("mainBar").style.width = p.progress + "%";
+            document.getElementById("detailText").innerText = p.details.status || "";
+            document.getElementById("detailBar").style.width = p.details.progress + "%";
+            if (p.progress >= 100) {
+                clearInterval(progressTimer);
+                progressTimer = null;
+                document.getElementById("progressBox").style.display = "none";
+                setTimeout(() => location.reload(), 200);
+            }
+        });
+}
+function startReload() {
+    document.getElementById("progressBox").style.display = "block";
+    document.getElementById("reloadBtn").disabled = true;
+    fetch("/gallery/diff_gdrive_local_start", {method: "POST"})
+        .then(() => { if (!progressTimer) progressTimer = setInterval(updateProgress, 200); });
+}
 </script>
 
 </body>
