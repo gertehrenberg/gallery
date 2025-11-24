@@ -5,20 +5,91 @@
     <title>Diff GDrive/Local</title>
 
     <style>
-        body { font-family: Arial, sans-serif; padding: 20px; }
-        table { width: 100%; border-collapse: collapse; margin-top: 12px; }
-        th, td { padding: 8px 10px; border-bottom: 1px solid #ddd; }
-        th { background: #f8f8f8; text-align: left; }
-        img.thumb { height: 60px; border: 1px solid #ccc; border-radius: 4px; object-fit: cover; }
-        .btn { padding: 8px 16px; border-radius: 6px; margin-right: 6px; border: none; cursor: pointer; font-weight: 600; }
-        .btn-blue { background: #0275d8; color: white; }
-        .btn-orange { background: #f0ad4e; color: white; }
-        .sticky-bar { position: sticky; top: 0; background: #ffffff; padding: 10px 0; border-bottom: 1px solid #ddd; margin-bottom: 10px; backdrop-filter: blur(4px); z-index: 50; }
-        .progress-bar-bg { width: 100%; height: 22px; background: #ddd; border-radius: 10px; overflow: hidden; margin: 6px 0; }
-        .progress-bar { height: 22px; width: 100%; background: #0275d8; transition: width .3s ease; }
-        .detail-bar { background: #5cb85c; }
-        #progressBox .progress-bar-bg:last-of-type { height: 18px; }
-        #progressBox .progress-bar-bg:last-of-type .progress-bar { height: 18px; }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+        }
+
+        th, td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        th {
+            background: #f8f8f8;
+            text-align: left;
+        }
+
+        img.thumb {
+            height: 60px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            object-fit: cover;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 6px;
+            margin-right: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .btn-blue {
+            background: #0275d8;
+            color: white;
+        }
+
+        .btn-orange {
+            background: #f0ad4e;
+            color: white;
+        }
+
+        .sticky-bar {
+            position: sticky;
+            top: 0;
+            background: #ffffff;
+            padding: 10px 0;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 10px;
+            backdrop-filter: blur(4px);
+            z-index: 50;
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 22px;
+            background: #ddd;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 6px 0;
+        }
+
+        .progress-bar {
+            height: 22px;
+            width: 100%;
+            background: #0275d8;
+            transition: width .3s ease;
+        }
+
+        .detail-bar {
+            background: #5cb85c;
+        }
+
+        #progressBox .progress-bar-bg:last-of-type {
+            height: 18px;
+        }
+
+        #progressBox .progress-bar-bg:last-of-type .progress-bar {
+            height: 18px;
+        }
     </style>
 </head>
 <body>
@@ -36,90 +107,155 @@
 <!-- PROGRESS -->
 <div id="progressBox" style="display:none;">
     <div id="progressText" style="font-weight:bold;">Starte…</div>
-    <div class="progress-bar-bg"><div id="mainBar" class="progress-bar"></div></div>
+    <div class="progress-bar-bg">
+        <div id="mainBar" class="progress-bar"></div>
+    </div>
     <div id="detailText" style="font-size:14px; margin-top:10px;">Bereit</div>
-    <div class="progress-bar-bg"><div id="detailBar" class="progress-bar detail-bar"></div></div>
+    <div class="progress-bar-bg">
+        <div id="detailBar" class="progress-bar detail-bar"></div>
+    </div>
 </div>
 
 <!-- MD5 BLOCK ABOVE TABLE -->
 {% if invalid_md5 %}
-<h2>Ungültige MD5 Einträge ({{ invalid_md5|length }})</h2>
-<table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
-    <thead>
+    <h2>Ungültige MD5 Einträge ({{ invalid_md5|length }})</h2>
+    <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+        <thead>
         <tr>
             <th style="width:140px;">Bild</th>
             <th>Info</th>
             <th>Typ</th>
         </tr>
-    </thead>
-    <tbody>
-    {% for m in invalid_md5 %}
-        <!-- MD5 Header Row -->
-        <tr style="background:#f4f4f4;">
-            <td colspan="3" style="font-weight:bold; padding-top:12px; padding-bottom:12px;">
-                MD5: {{ m.md5 }} — {{ m.status }}
-            </td>
-        </tr>
+        </thead>
+        <tbody>
+        {% for m in invalid_md5 %}
+            <!-- MD5 Header Row -->
+            <tr style="background:#f4f4f4;">
+                <td colspan="3" style="font-weight:bold; padding-top:12px; padding-bottom:12px;">
+                    MD5: {{ m.md5 }} — {{ m.status }}
+                </td>
+            </tr>
 
-        <!-- GDrive Einträge -->
-        {% for g in m.gdrive %}
-        <tr>
-            <td>
-                <img class="thumb" src="https://drive.google.com/thumbnail?id={{ g.id }}&sz=w200">
-            </td>
-            <td>
-                <div>{{ g.folder }}</div>
-                <div>{{ g.name }}</div>
-                <div>{{ g.id }}</div>
-            </td>
-            <td>GDrive</td>
-        </tr>
+            <!-- GDrive Einträge -->
+            {% for g in m.gdrive %}
+                <tr>
+                    <td>
+                        <img class="thumb" src="https://drive.google.com/thumbnail?id={{ g.id }}&sz=w200">
+                    </td>
+                    <td>
+                        <div>{{ g.folder }}</div>
+                        <div>{{ g.name }}</div>
+                        <div>{{ g.id }}</div>
+                    </td>
+                    <td>GDrive</td>
+                </tr>
+            {% endfor %}
+
+            <!-- Lokale Einträge -->
+            {% for l in m.local %}
+                <tr>
+                    <td>
+                        <img
+                                alt="{{ l.name }}"
+                                class="thumb"
+                                src="/gallery/static/thumbnails/{{ m.md5 }}.png"
+                                onclick="openModal('{{ l.folder }}/{{ l.name }}')"
+                                style="cursor:pointer; max-width:100%;"
+                        >
+                    </td>
+                    <td>
+                        <div>{{ l.folder }}</div>
+                        <div>{{ l.name }}</div>
+                        <div>{{ l.path }}</div>
+                    </td>
+                    <td>Lokal</td>
+                </tr>
+            {% endfor %}
+
         {% endfor %}
-
-        <!-- Lokale Einträge -->
-        {% for l in m.local %}
-        <tr>
-            <td>
-                <img class="thumb" src="/static/imagefiles/{{ l.folder }}/{{ l.name }}">
-            </td>
-            <td>
-                <div>{{ l.folder }}</div>
-                <div>{{ l.name }}</div>
-                <div>{{ l.path }}</div>
-            </td>
-            <td>Lokal</td>
-        </tr>
-        {% endfor %}
-
-    {% endfor %}
-    </tbody>
-</table>
+        </tbody>
+    </table>
 {% endif %}
 
 <script>
-let progressTimer = null;
-function updateProgress() {
-    fetch("/gallery/diff_gdrive_local_progress")
-        .then(r => r.json())
-        .then(p => {
-            document.getElementById("progressText").innerText = p.status;
-            document.getElementById("mainBar").style.width = p.progress + "%";
-            document.getElementById("detailText").innerText = p.details.status || "";
-            document.getElementById("detailBar").style.width = p.details.progress + "%";
-            if (p.progress >= 100) {
-                clearInterval(progressTimer);
-                progressTimer = null;
-                document.getElementById("progressBox").style.display = "none";
-                setTimeout(() => location.reload(), 200);
-            }
-        });
-}
-function startReload() {
-    document.getElementById("progressBox").style.display = "block";
-    document.getElementById("reloadBtn").disabled = true;
-    fetch("/gallery/diff_gdrive_local_start", {method: "POST"})
-        .then(() => { if (!progressTimer) progressTimer = setInterval(updateProgress, 200); });
-}
+    let progressTimer = null;
+
+    function updateProgress() {
+        fetch("/gallery/diff_gdrive_local_progress")
+            .then(r => r.json())
+            .then(p => {
+                document.getElementById("progressText").innerText = p.status;
+                document.getElementById("mainBar").style.width = p.progress + "%";
+                document.getElementById("detailText").innerText = p.details.status || "";
+                document.getElementById("detailBar").style.width = p.details.progress + "%";
+                if (p.progress >= 100) {
+                    clearInterval(progressTimer);
+                    progressTimer = null;
+                    document.getElementById("progressBox").style.display = "none";
+                    setTimeout(() => location.reload(), 200);
+                }
+            });
+    }
+
+    function startReload() {
+        document.getElementById("progressBox").style.display = "block";
+        document.getElementById("reloadBtn").disabled = true;
+        fetch("/gallery/diff_gdrive_local_start", {method: "POST"})
+            .then(() => {
+                if (!progressTimer) progressTimer = setInterval(updateProgress, 200);
+            });
+    }
+</script>
+
+<!-- Modal-Container -->
+<div id="meinModal"
+     style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.8); z-index:1000;">
+    <!-- statt: <span onclick="closeModal" ... -->
+    <button class="close" onclick="closeModal()">×</button>
+    <div id="panzoomContainer"
+         style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; position:relative; overflow:hidden;">
+        <div id="zoomWrapper">
+            <img id="zoomImage" src="" style="display: block; max-width: 90vw; max-height: 90vh;"/>
+        </div>
+        <div id="spinner"></div>
+    </div>
+</div>
+
+<script>
+
+    function closeModal() {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        modal.style.display = "none";
+        img.src = "";
+        if (panzoomInstance) panzoomInstance.destroy();
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === "Escape") closeModal();
+    });
+
+    let panzoomInstance;
+
+    function openModal(image_name) {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        const spinner = document.getElementById("spinner");
+        spinner.style.display = "block";
+        img.onload = () => {
+            spinner.style.display = "none";
+            modal.style.display = "flex";
+            if (panzoomInstance) panzoomInstance.destroy();
+            panzoomInstance = Panzoom(img, {
+                maxScale: 5,
+                minScale: 1,
+                contain: 'outside'
+            });
+            img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+            img.addEventListener('dblclick', () => panzoomInstance.reset());
+        };
+        img.src = "/gallery/static/imagefiles/" + image_name;
+    }
 </script>
 
 </body>

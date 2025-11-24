@@ -152,7 +152,6 @@ async def dashboard(request: Request, year: int = None, month: int = None):
         {"label": "Diff GDrive/Local", "url": "/gallery/diff_gdrive_local", "icon": "🧹"},
         {"label": "Local Clean (gross/klein)", "url": "/gallery/cleanup_local", "icon": "🧹"},
         {"label": "GDrive Clean (gross/klein)", "url": "/gallery/cleanup_gdrive", "icon": "🧹"},
-        {"label": "GDrive Clean (cross)", "url": "/gallery/crossduplicates_gdrive", "icon": "🧹"},
         {"label": 'Sync mit "Save" (GDrive)', "url": f"{_BASE}/test?folder=save&direction=manage_save", "icon": "🔄"},
         {"label": "Reload pair & File-hashes", "url": f"{_BASE}/test?direction=reloadcache", "icon": "🔄"},
         {"label": "Lösche File Cache(s)", "url": f"{_BASE}/what?what=reloadfilecache", "icon": "🗑️"},

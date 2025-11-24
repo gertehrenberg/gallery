@@ -164,7 +164,7 @@ async def run_full_scan():
     reset_progress()
     GLOBAL_MD5_INDEX = {}
 
-    categories = [c["key"] for c in Settings.kategorien() if c["key"] != "XXXX"]
+    categories = [c["key"] for c in Settings.kategorien() if c["key"] != "real"]
     total = len(categories)
 
     out = []
