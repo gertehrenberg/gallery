@@ -1,0 +1,96 @@
+<script>
+    function selectFirst50() {
+        const boxes = document.querySelectorAll("input[name='delete_ids']");
+        let count = 0;
+        boxes.forEach(box => {
+            if (count < 50) {
+                box.checked = true;
+                count++;
+            }
+        });
+    }
+
+    let progressTimer = null;
+
+    function updateProgress() {
+        fetch("/gallery/diff_gdrive_local_progress")
+            .then(r => r.json())
+            .then(p => {
+                document.getElementById("progressText").innerText = p.status;
+                document.getElementById("mainBar").style.width = p.progress + "%";
+                document.getElementById("detailText").innerText = p.details.status || "";
+                document.getElementById("detailBar").style.width = p.details.progress + "%";
+
+                if (p.progress >= 100) {
+                    clearInterval(progressTimer);
+                    progressTimer = null;
+                    document.getElementById("progressBox").style.display = "none";
+                    setTimeout(() => location.reload(), 200);
+                }
+            });
+    }
+
+    function startReload() {
+        document.getElementById("progressBox").style.display = "block";
+        document.getElementById("reloadBtn").disabled = true;
+
+        fetch("/gallery/diff_gdrive_local_start", {method: "POST"})
+            .then(() => {
+                if (!progressTimer)
+                    progressTimer = setInterval(updateProgress, 200);
+            });
+    }
+</script>
+
+<div id="meinModal"
+     style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.8); z-index:1000;">
+    <button class="close" onclick="closeModal()">×</button>
+    <div id="panzoomContainer"
+         style="width:100%; height:100%; display:flex; justify-content:center; align-items:center; position:relative; overflow:hidden;">
+        <div id="zoomWrapper">
+            <img id="zoomImage" src="" style="display: block; max-width: 90vw; max-height: 90vh;"/>
+        </div>
+        <div id="spinner"></div>
+    </div>
+</div>
+
+<script>
+    function closeModal() {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        modal.style.display = "none";
+        img.src = "";
+        if (panzoomInstance) panzoomInstance.destroy();
+    }
+
+    document.addEventListener('keydown', function (e) {
+        if (e.key === "Escape") closeModal();
+    });
+
+    let panzoomInstance;
+
+    function openModal(image_name) {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        const spinner = document.getElementById("spinner");
+
+        spinner.style.display = "block";
+
+        img.onload = () => {
+            spinner.style.display = "none";
+            modal.style.display = "flex";
+
+            if (panzoomInstance) panzoomInstance.destroy();
+            panzoomInstance = Panzoom(img, {
+                maxScale: 5,
+                minScale: 1,
+                contain: 'outside'
+            });
+
+            img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+            img.addEventListener('dblclick', () => panzoomInstance.reset());
+        };
+
+        img.src = "/gallery/static/imagefiles/" + image_name;
+    }
+</script>

@@ -3,13 +3,7 @@
 <head>
     <meta charset="UTF-8">
 
-    <title>
-        {% if mode == "gdrive" %}
-            Google Drive Cleanup – Ergebnis
-        {% else %}
-            Lokaler Cleanup – Ergebnis
-        {% endif %}
-    </title>
+    <title>Diff GDrive/Local – Ergebnis</title>
 
     <style>
         body {
@@ -33,10 +27,6 @@
 
         .success {
             border-left: 6px solid #5cb85c;
-        }
-
-        .rename {
-            border-left: 6px solid #0275d8;
         }
 
         .error {
@@ -72,33 +62,25 @@
 
 <body>
 
-<h1>
-    ✔️ Cleanup abgeschlossen
-    ({{ mode == "gdrive" and "Google Drive" or "Local" }})
-    – v{{ version }}
-</h1>
+<h1>✔️ Diff GDrive/Local – Cleanup abgeschlossen – v{{ version }}</h1>
 
-{% if deleted and deleted|length > 0 %}
+{% if deleted_local and deleted_local|length > 0 %}
     <div class="box success">
-        <h2>🗑️ Gelöscht</h2>
+        <h2>🗑️ Gelöscht – Lokale Dateien</h2>
         <ul>
-            {% for d in deleted %}
+            {% for d in deleted_local %}
                 <li>{{ d }}</li>
             {% endfor %}
         </ul>
     </div>
 {% endif %}
 
-{% if renamed and renamed|length > 0 %}
-    <div class="box rename">
-        <h2>✏️ Umbenannt</h2>
+{% if deleted_gdrive and deleted_gdrive|length > 0 %}
+    <div class="box success">
+        <h2>🗑️ Gelöscht – Google Drive Dateien</h2>
         <ul>
-            {% for r in renamed %}
-                {% if r.from %}
-                    <li>{{ r.from }} → <b>{{ r.to }}</b></li>
-                {% else %}
-                    <li>{{ r }}</li>
-                {% endif %}
+            {% for d in deleted_gdrive %}
+                <li>{{ d }}</li>
             {% endfor %}
         </ul>
     </div>
@@ -109,24 +91,24 @@
         <h2>⚠️ Fehler</h2>
         <ul>
             {% for e in errors %}
-                <li>{{ e.id }} – {{ e.error }}</li>
+                <li>{{ e }}</li>
             {% endfor %}
         </ul>
     </div>
 {% endif %}
 
-{% if (not deleted or deleted|length == 0)
-   and (not renamed or renamed|length == 0)
-   and (not errors  or errors|length  == 0) %}
+{% if (not deleted_local or deleted_local|length == 0)
+   and (not deleted_gdrive or deleted_gdrive|length == 0)
+   and (not errors or errors|length == 0) %}
     <div class="box">
         <h2>ℹ️ Keine Änderungen erforderlich</h2>
-        <p>Es wurden keine Dateien gelöscht, umbenannt oder mit Fehlern gefunden.</p>
+        <p>Es wurden keine Dateien gelöscht oder Fehler gefunden.</p>
     </div>
 {% endif %}
 
 <button class="back-btn"
-        onclick="window.location.href='/gallery/cleanup_{{ mode }}'">
-    🔙 Zurück zu {{ "Google Drive" if mode=="gdrive" else "Local" }}
+        onclick="window.location.href='/gallery/diff_gdrive_local'">
+    🔙 Zurück zur Übersicht
 </button>
 
 </body>

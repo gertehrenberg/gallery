@@ -38,8 +38,6 @@ from .routes import static
 from .routes.auth import SCOPES
 from .routes.auth import TOKEN_FILE
 
-from .routes import cleanup_local
-from .routes import cleanup_gdrive
 from .routes import diff_gdrive_local
 
 # Importiere die Google Drive Funktionen aus app/services/google_drive.py
@@ -102,9 +100,6 @@ app.include_router(static.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
 app.include_router(n8nlock.router)
-
-app.include_router(cleanup_local.router)
-app.include_router(cleanup_gdrive.router)
 app.include_router(diff_gdrive_local.router)
 
 # Add this at the top level of the file, after the other imports
