@@ -2,7 +2,6 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-
     <title>Diff GDrive/Local – Ergebnis</title>
 
     <style>
@@ -12,9 +11,7 @@
             background: #f6f6f6;
         }
 
-        h1 {
-            margin-bottom: 20px;
-        }
+        h1 { margin-bottom: 20px; }
 
         .box {
             background: #fff;
@@ -22,27 +19,14 @@
             padding: 18px;
             margin-bottom: 25px;
             border: 1px solid #ddd;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         }
 
-        .success {
-            border-left: 6px solid #5cb85c;
-        }
+        .success { border-left: 6px solid #5cb85c; }
+        .error   { border-left: 6px solid #d9534f; }
 
-        .error {
-            border-left: 6px solid #d9534f;
-        }
-
-        ul {
-            margin-top: 10px;
-            margin-bottom: 0;
-        }
-
-        li {
-            margin-bottom: 6px;
-            line-height: 1.4;
-            word-break: break-all;
-        }
+        ul { margin-top: 10px; margin-bottom: 0; }
+        li { margin-bottom: 6px; line-height: 1.4; word-break: break-all; }
 
         .back-btn {
             padding: 10px 20px;
@@ -55,9 +39,7 @@
             font-size: 16px;
         }
 
-        .back-btn:hover {
-            background: #025aa5;
-        }
+        .back-btn:hover { background: #025aa5; }
     </style>
 </head>
 
@@ -65,47 +47,121 @@
 
 <h1>✔️ Diff GDrive/Local – Cleanup abgeschlossen – v{{ version }}</h1>
 
+<!-- ========================================================= -->
+<!--  1) UMBENENNUNGEN                                         -->
+<!-- ========================================================= -->
+
+{% if renamed_local and renamed_local|length > 0 %}
+<div class="box success">
+    <h2>✏️ Umbenannt – Lokale Dateien</h2>
+    <ul>
+        {% for r in renamed_local %}
+            <li>{{ r.old }} → <strong>{{ r.new }}</strong></li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if renamed_gdrive and renamed_gdrive|length > 0 %}
+<div class="box success">
+    <h2>✏️ Umbenannt – Google Drive Dateien</h2>
+    <ul>
+        {% for r in renamed_gdrive %}
+            <li>ID {{ r.id }} → <strong>{{ r.new }}</strong></li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- ========================================================= -->
+<!--  2) SYNC-ERGEBNISSE                                       -->
+<!-- ========================================================= -->
+
+{% if synced_local and synced_local|length > 0 %}
+<div class="box success">
+    <h2>⬇️ Synchronisiert – GDrive → Lokal</h2>
+    <ul>
+        {% for s in synced_local %}
+            <li>{{ s }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if synced_gdrive and synced_gdrive|length > 0 %}
+<div class="box success">
+    <h2>⬆️ Synchronisiert – Lokal → GDrive</h2>
+    <ul>
+        {% for s in synced_gdrive %}
+            <li>{{ s }}</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+<!-- ========================================================= -->
+<!--  3) LÖSCHUNGEN                                            -->
+<!-- ========================================================= -->
+
 {% if deleted_local and deleted_local|length > 0 %}
-    <div class="box success">
-        <h2>🗑️ Gelöscht – Lokale Dateien</h2>
-        <ul>
-            {% for d in deleted_local %}
-                <li>{{ d }}</li>
-            {% endfor %}
-        </ul>
-    </div>
+<div class="box success">
+    <h2>🗑️ Gelöscht – Lokale Dateien</h2>
+    <ul>
+        {% for d in deleted_local %}
+            <li>{{ d }}</li>
+        {% endfor %}
+    </ul>
+</div>
 {% endif %}
 
 {% if deleted_gdrive and deleted_gdrive|length > 0 %}
-    <div class="box success">
-        <h2>🗑️ Gelöscht – Google Drive Dateien</h2>
-        <ul>
-            {% for d in deleted_gdrive %}
-                <li>{{ d }}</li>
-            {% endfor %}
-        </ul>
-    </div>
+<div class="box success">
+    <h2>🗑️ Gelöscht – Google Drive Dateien</h2>
+    <ul>
+        {% for d in deleted_gdrive %}
+            <li>{{ d }}</li>
+        {% endfor %}
+    </ul>
+</div>
 {% endif %}
+
+<!-- ========================================================= -->
+<!--  4) FEHLER                                                -->
+<!-- ========================================================= -->
 
 {% if errors and errors|length > 0 %}
-    <div class="box error">
-        <h2>⚠️ Fehler</h2>
-        <ul>
-            {% for e in errors %}
-                <li>{{ e }}</li>
-            {% endfor %}
-        </ul>
-    </div>
+<div class="box error">
+    <h2>⚠️ Fehler</h2>
+    <ul>
+        {% for e in errors %}
+            <li>{{ e }}</li>
+        {% endfor %}
+    </ul>
+</div>
 {% endif %}
 
-{% if (not deleted_local or deleted_local|length == 0)
+<!-- ========================================================= -->
+<!--  5) KEINE ÄNDERUNGEN                                      -->
+<!-- ========================================================= -->
+
+{% if (not renamed_local or renamed_local|length == 0)
+   and (not renamed_gdrive or renamed_gdrive|length == 0)
+   and (not synced_local or synced_local|length == 0)
+   and (not synced_gdrive or synced_gdrive|length == 0)
+   and (not deleted_local or deleted_local|length == 0)
    and (not deleted_gdrive or deleted_gdrive|length == 0)
    and (not errors or errors|length == 0) %}
-    <div class="box">
-        <h2>ℹ️ Keine Änderungen erforderlich</h2>
-        <p>Es wurden keine Dateien gelöscht oder Fehler gefunden.</p>
-    </div>
+
+<div class="box">
+    <h2>ℹ️ Keine Änderungen erforderlich</h2>
+    <p>Es wurden keine Dateien synchronisiert, gelöscht oder umbenannt.</p>
+</div>
+
 {% endif %}
+
+<!-- ========================================================= -->
+<!--  6) ZURÜCK                                                -->
+<!-- ========================================================= -->
 
 <button class="back-btn"
         onclick="window.location.href='/gallery/diff_gdrive_local'">

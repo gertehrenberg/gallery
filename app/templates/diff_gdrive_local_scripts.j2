@@ -69,68 +69,87 @@
 
     let panzoomInstance;
 
-function openModalGdrive(file_id) {
+    function openModalGdrive(file_id) {
 
-    const modal = document.getElementById("meinModal");
-    const img = document.getElementById("zoomImage");
-    const spinner = document.getElementById("spinner");
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        const spinner = document.getElementById("spinner");
 
-    modal.style.display = "flex";
-    spinner.style.display = "block";
+        modal.style.display = "flex";
+        spinner.style.display = "block";
 
-    // funktioniert IMMER (Drive-Thumbnail!)
-    const fullUrl = `https://drive.google.com/thumbnail?id=${file_id}&sz=w2000`;
+        // funktioniert IMMER (Drive-Thumbnail!)
+        const fullUrl = `https://drive.google.com/thumbnail?id=${file_id}&sz=w2000`;
 
-    img.onload = () => {
-        spinner.style.display = "none";
+        img.onload = () => {
+            spinner.style.display = "none";
 
-        if (panzoomInstance) panzoomInstance.destroy();
+            if (panzoomInstance) panzoomInstance.destroy();
 
-        panzoomInstance = Panzoom(img, {
-            maxScale: 5,
-            minScale: 1,
-            contain: 'outside'
-        });
+            panzoomInstance = Panzoom(img, {
+                maxScale: 5,
+                minScale: 1,
+                contain: 'outside'
+            });
 
-        img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
-        img.addEventListener('dblclick', () => panzoomInstance.reset());
-    };
+            img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+            img.addEventListener('dblclick', () => panzoomInstance.reset());
+        };
 
-    img.onerror = () => {
-        spinner.innerText = "❌ Bild konnte nicht geladen werden";
-    };
+        img.onerror = () => {
+            spinner.innerText = "❌ Bild konnte nicht geladen werden";
+        };
 
-    img.src = fullUrl;
-}
+        img.src = fullUrl;
+    }
 
 
-function openModal(imageRef) {
+    function openModal(imageRef) {
 
-    const modal = document.getElementById("meinModal");
-    const img = document.getElementById("zoomImage");
-    const spinner = document.getElementById("spinner");
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        const spinner = document.getElementById("spinner");
 
-    modal.style.display = "flex";
-    spinner.style.display = "block";
+        modal.style.display = "flex";
+        spinner.style.display = "block";
 
-    img.onload = () => {
-        spinner.style.display = "none";
+        img.onload = () => {
+            spinner.style.display = "none";
 
-        if (panzoomInstance) panzoomInstance.destroy();
-        panzoomInstance = Panzoom(img, {
-            maxScale: 5,
-            minScale: 1,
-            contain: 'outside'
-        });
+            if (panzoomInstance) panzoomInstance.destroy();
+            panzoomInstance = Panzoom(img, {
+                maxScale: 5,
+                minScale: 1,
+                contain: 'outside'
+            });
 
-        img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
-        img.addEventListener('dblclick', () => panzoomInstance.reset());
-    };
+            img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
+            img.addEventListener('dblclick', () => panzoomInstance.reset());
+        };
 
-    img.onerror = () => {
-        spinner.innerText = "❌ Bild konnte nicht geladen werden";
-    };
+        img.onerror = () => {
+            spinner.innerText = "❌ Bild konnte nicht geladen werden";
+        };
 
-    img.src = "/gallery/static/imagefiles/" + imageRef;
-}
+        img.src = "/gallery/static/imagefiles/" + imageRef;
+    }
+
+    function checkAndSubmit() {
+        const form = document.getElementById("diffForm");
+
+        // Alle Checkboxen einsammeln
+        const renames = form.querySelectorAll('input[name="rename_ids"]:checked');
+        const deletes = form.querySelectorAll('input[name="delete_ids"]:checked');
+        const syncs = form.querySelectorAll('input[name="sync_ids"]:checked');
+
+        // Prüfen, ob überhaupt etwas angehakt ist
+        if (renames.length === 0 && deletes.length === 0 && syncs.length === 0) {
+            alert("Keine Aktion ausgewählt.\nBitte mindestens eine Datei ankreuzen.");
+            return;
+        }
+
+        // OK → Formular absenden
+        form.submit();
+    }
+
 </script>

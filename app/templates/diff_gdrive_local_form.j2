@@ -1,12 +1,9 @@
 <form id="diffForm" action="/gallery/diff_gdrive_local_delete" method="post">
 
     <div class="sticky-bar">
-        <button type="button" class="btn btn-blue" onclick="window.location.href='/gallery/dashboard'">📊 Dashboard
-        </button>
+        <button type="button" class="btn btn-blue" onclick="window.location.href='/gallery/dashboard'">📊 Dashboard</button>
         <button id="reloadBtn" type="button" class="btn btn-orange" onclick="startReload()">🔄 Neu laden</button>
-
-        <!-- ⭐ DELETE / SYNC / RENAME -->
-        <button id="deleteBtn" class="btn btn-red" type="submit">🗑/🔁/✏️ Ausführen</button>
+        <button id="deleteBtn" type="button" class="btn btn-red" onclick="checkAndSubmit()">🗑/🔁/✏️ Ausführen</button>
     </div>
 
     <!-- PROGRESS -->
@@ -42,50 +39,56 @@
         <!-- ========================================================= -->
         {% for n in invalid_names %}
             <tr style="background:#fff3cd;">
-
                 <!-- ✏️ rename -->
-                <td class="center">
-                    <input type="checkbox"
-                           name="rename_ids"
-                           value="{{ n.path if n.source == 'local' else n.id }}">
-                </td>
-
-                <!-- 🔁 kein sync -->
-                <td class="center"></td>
-
-                <!-- 🗑 delete -->
-                <td class="center">
-                    <input type="checkbox"
-                           name="delete_ids"
-                           value="{{ n.path if n.source == 'local' else n.id }}">
-                </td>
-
-                <!-- Bild -->
-                <td>
-                    {% if n.source == "local" %}
+                {% if n.source == "local" %}
+                    <td class="center">
+                        <input type="checkbox"
+                               name="rename_ids"
+                               value="{{ n.uid }}">
+                    </td>
+                    <td class="center"></td>
+                    <td class="center">
+                        <input type="checkbox"
+                               name="delete_ids"
+                               value="{{ n.path }}">
+                    </td>
+                    <td>
                         <img class="thumb"
                              src="/gallery/static/thumbnails/{{ n.md5 }}.png"
                              onclick="openModal('{{ n.folder }}/{{ n.orig_name }}')"
                              style="cursor:pointer;">
-                    {% else %}
+                    </td>
+                    <td>
+                        <div>{{ n.folder }}</div>
+                        <div>{{ n.path }}</div>
+                        <div style="color:#d9534f;"><b>Ungültig:</b> {{ n.orig_name | tojson }}</div>
+                        <div><b>Neu:</b> {{ n.clean_name }}</div>
+                    </td>
+                {% else %}
+                    <td class="center">
+                        <input type="checkbox"
+                               name="rename_ids"
+                               value="{{ n.id }}">
+                    </td>
+                    <td class="center"></td>
+                    <td class="center">
+                        <input type="checkbox"
+                               name="delete_ids"
+                               value="{{ n.id }}">
+                    </td>
+                    <td>
                         <img class="thumb"
                              src="https://drive.google.com/thumbnail?id={{ n.id }}&sz=w200"
                              style="cursor:pointer;"
                              onclick="openModalGdrive('{{ n.id }}')">
-                    {% endif %}
-                </td>
-
-                <td>
-                    <div>{{ n.folder }}</div>
-                    {% if n.source == "local" %}
-                        <div>{{ n.path }}</div>
-                    {% else %}
+                    </td>
+                    <td>
+                        <div>{{ n.folder }}</div>
                         <div>{{ n.id }}</div>
-                    {% endif %}
-                    <div style="color:#d9534f;"><b>Ungültig:</b> {{ n.orig_name }}</div>
-                    <div><b>Neu:</b> {{ n.clean_name }}</div>
-                </td>
-
+                        <div style="color:#d9534f;"><b>Ungültig:</b> {{ n.orig_name | tojson }}</div>
+                        <div><b>Neu:</b> {{ n.clean_name }}</div>
+                    </td>
+                {% endif %}
                 <td>{{ n.source|capitalize }}</td>
             </tr>
         {% endfor %}
@@ -105,14 +108,7 @@
             {% for g in m.gdrive %}
                 <tr>
 
-                    <!-- ✏️ rename falls invalid_names -->
-                    <td class="center">
-                        {% for n in invalid_names %}
-                            {% if n.source == 'gdrive' and n.id == g.id %}
-                                <input type="checkbox" name="rename_ids" value="{{ g.id }}">
-                            {% endif %}
-                        {% endfor %}
-                    </td>
+                    <td class="center"></td>
 
                     <!-- 🔁 sync wenn keine local Datei -->
                     <td class="center">
@@ -137,13 +133,7 @@
                     <td>
                         <div>{{ g.folder }}</div>
                         <div>{{ g.id }}</div>
-
-                        {% for n in invalid_names %}
-                            {% if n.source == 'gdrive' and n.id == g.id %}
-                                <div style="color:#d9534f;"><b>Ungültig:</b> {{ n.orig_name }}</div>
-                                <div><b>Neu:</b> {{ n.clean_name }}</div>
-                            {% endif %}
-                        {% endfor %}
+                        <div>{{ g.name }}</div>
                     </td>
 
                     <td>GDrive</td>
@@ -155,13 +145,7 @@
                 <tr>
 
                     <!-- ✏️ rename falls invalid -->
-                    <td class="center">
-                        {% for n in invalid_names %}
-                            {% if n.source == 'local' and n.path == l.path %}
-                                <input type="checkbox" name="rename_ids" value="{{ l.path }}">
-                            {% endif %}
-                        {% endfor %}
-                    </td>
+                    <td class="center"></td>
 
                     <!-- 🔁 sync wenn kein gdrive -->
                     <td class="center">
@@ -186,13 +170,7 @@
                     <td>
                         <div>{{ l.folder }}</div>
                         <div>{{ l.path }}</div>
-
-                        {% for n in invalid_names %}
-                            {% if n.source == 'local' and n.path == l.path %}
-                                <div style="color:#d9534f;"><b>Ungültig:</b> {{ n.orig_name }}</div>
-                                <div><b>Neu:</b> {{ n.clean_name }}</div>
-                            {% endif %}
-                        {% endfor %}
+                        <div>{{ l.name }}</div>
                     </td>
 
                     <td>Lokal</td>

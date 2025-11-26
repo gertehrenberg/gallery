@@ -1,20 +1,20 @@
 # Refactored diff_gdrive_local.py with full logging
 import asyncio
-import hashlib
 import io
 import os
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from ..config import Settings, UserType
+from ..config_gdrive import calculate_md5
 from ..config_gdrive import folder_id_by_name, sanitize_filename
 from ..routes.auth import load_drive_service
 from ..utils.logger_config import setup_logger
-from ..config_gdrive import calculate_md5
 
 VERSION = 201
 logger = setup_logger(__name__)
@@ -36,11 +36,15 @@ SCAN_CACHE = {
     "invalid_names": []  # <--- NEU
 }
 
+UID_CACHE = {}
+
+
 def get_drive():
     global _DRIVE
     if _DRIVE is None:
         _DRIVE = load_drive_service()
     return _DRIVE
+
 
 async def local_list_folder(folder_name: str):
     folder_path = os.path.join(LOCAL_BASE, folder_name)
@@ -59,6 +63,7 @@ async def local_list_folder(folder_name: str):
                 "size": os.path.getsize(full),
             })
     return result
+
 
 def compute_md5_file(path: str):
     return calculate_md5(Path(path))
@@ -196,6 +201,17 @@ async def find_case_duplicates(folder_name: str, idx: int, total: int):
         })
 
         if invalid_name:  # <--- NEU
+
+            uid = uuid4().hex
+            UID_CACHE[uid] = {
+                "source": "local",
+                "folder": folder_name,
+                "path": lf["path"],
+                "orig_name": lf["name"],
+                "clean_name": clean,
+                "md5": md5,
+            }
+
             SCAN_CACHE["invalid_names"].append({
                 "source": "local",
                 "folder": folder_name,
@@ -203,6 +219,7 @@ async def find_case_duplicates(folder_name: str, idx: int, total: int):
                 "clean_name": clean,
                 "path": lf["path"],
                 "md5": md5,
+                "uid": uid,
             })
 
     l_insert_after = sum(len(v.get("local", [])) for v in GLOBAL_MD5_INDEX.values())
@@ -215,7 +232,9 @@ async def run_full_scan():
     global SCAN_CACHE, GLOBAL_MD5_INDEX
 
     reset_progress()
-    GLOBAL_MD5_INDEX = {}
+
+    GLOBAL_MD5_INDEX.clear()
+    UID_CACHE.clear()
 
     # <--- wichtig: invalid_names zurücksetzen
     SCAN_CACHE = {
@@ -261,13 +280,21 @@ async def run_full_scan():
 
 @router.get("/diff_gdrive_local", response_class=HTMLResponse)
 async def diff_gdrive_local(request: Request):
+    categories = SCAN_CACHE.get("categories", [])
+    invalid_md5 = SCAN_CACHE.get("invalid_md5", [])
+    invalid_names = SCAN_CACHE.get("invalid_names", [])
+
+    logger.info(f"categories   : {len(categories)}")
+    logger.info(f"invalid_md5  : {len(invalid_md5)}")
+    logger.info(f"invalid_names: {len(invalid_names)}")
+
     return templates.TemplateResponse(
         "diff_gdrive_local.j2",
         {
             "request": request,
-            "categories": SCAN_CACHE.get("categories", []),
-            "invalid_md5": SCAN_CACHE.get("invalid_md5", []),
-            "invalid_names": SCAN_CACHE.get("invalid_names", []),  # <--- NEU
+            "categories": categories,
+            "invalid_md5": invalid_md5,
+            "invalid_names": invalid_names,
             "version": VERSION,
         },
     )
@@ -289,6 +316,122 @@ async def diff_gdrive_local_progress():
 async def diff_gdrive_local_reload():
     return RedirectResponse("/gallery/diff_gdrive_local")
 
+
+def resolve_drive_path(drive, path_segments):
+    """
+    Gibt die ID des Zielordners zurück.
+    Legt NIE Ordner an.
+    """
+    try:
+        parent_id = folder_id_by_name("imagefiles")
+    except Exception:
+        raise Exception("Drive Basisordner 'imagefiles' nicht gefunden!")
+
+    for seg in path_segments:
+        query = (
+            f"name='{seg}' and mimeType='application/vnd.google-apps.folder' "
+            f"and '{parent_id}' in parents and trashed=false"
+        )
+        res = drive.files().list(q=query, fields="files(id)").execute()
+        folders = res.get("files", [])
+
+        if not folders:
+            raise Exception(f"GDrive Unterordner fehlt: {seg}")
+
+        parent_id = folders[0]["id"]
+
+    return parent_id
+
+
+async def sync_from_gdrive(file_id: str):
+    """GDrive → Local (Ordner muss existieren!)"""
+
+    drive = get_drive()
+
+    try:
+        meta = drive.files().get(fileId=file_id, fields="name").execute()
+        filename = meta["name"]
+
+        # Ordner über GLOBAL_MD5_INDEX finden
+        target_folder = None
+        for md5, entry in GLOBAL_MD5_INDEX.items():
+            for g in entry["gdrive"]:
+                if g["id"] == file_id:
+                    target_folder = g["folder"]
+                    break
+
+        if target_folder is None:
+            raise Exception(f"Kein Ordner für GDrive-ID {file_id} im MD5-Index!")
+
+        local_target_dir = os.path.join(LOCAL_BASE, target_folder)
+
+        if not os.path.isdir(local_target_dir):
+            raise Exception(f"Lokaler Ordner fehlt: {local_target_dir}")
+
+        local_target = os.path.join(local_target_dir, filename)
+
+        # Download
+        request_dl = drive.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request_dl)
+        done = False
+        while not done:
+            _, done = downloader.next_chunk()
+
+        fh.seek(0)
+
+        with open(local_target, "wb") as f:
+            f.write(fh.read())
+
+        logger.info(f"⬇️ Sync GDrive → Local: {file_id} → {local_target}")
+        return local_target
+
+    except Exception as e:
+        msg = f"Fehler Sync GDrive→Local {file_id}: {e}"
+        logger.error(msg)
+        return None
+
+
+async def sync_to_gdrive(local_path: str):
+    """Local → GDrive (Ordner muss existieren im GDrive!)"""
+
+    drive = get_drive()
+
+    try:
+        # relativer Pfad unter imagefiles
+        rel = os.path.relpath(local_path, LOCAL_BASE)
+        parts = rel.split("/")
+        folder_parts = parts[:-1]
+        filename = parts[-1]
+
+        # GDrive-Ordner nachschlagen
+        parent_id = resolve_drive_path(drive, folder_parts)
+
+        metadata = {
+            "name": filename,
+            "parents": [parent_id],
+        }
+
+        media = MediaFileUpload(local_path, resumable=True)
+
+        new_file = drive.files().create(
+            body=metadata,
+            media_body=media,
+            fields="id"
+        ).execute()
+
+        new_id = new_file["id"]
+        logger.info(
+            f"⬆️ Sync Local → GDrive: {local_path} → {new_id} (Ordner: {'/'.join(folder_parts)})"
+        )
+        return new_id
+
+    except Exception as e:
+        msg = f"Fehler Sync Local→GDrive {local_path}: {e}"
+        logger.error(msg)
+        return None
+
+
 @router.post("/diff_gdrive_local_delete")
 async def diff_gdrive_local_delete(request: Request):
     """
@@ -299,6 +442,91 @@ async def diff_gdrive_local_delete(request: Request):
     """
 
     form = await request.form()
+    drive = get_drive()
+
+    rename_ids = form.getlist("rename_ids")
+    renamed_local = []
+    renamed_gdrive = []
+
+    for source_id in rename_ids:
+        # ----------------------------------------------------------
+        # A) LOCAL rename (source_id = UID!)
+        # ----------------------------------------------------------
+        if source_id in UID_CACHE:
+            info = UID_CACHE[source_id]
+
+            real_path = info["path"]  # absoluter echter Dateipfad
+            new_name = info["clean_name"]
+            folder = os.path.dirname(real_path)
+            new_path = os.path.join(folder, new_name)
+
+            try:
+                os.rename(real_path, new_path)
+                renamed_local.append({"old": real_path, "new": new_path})
+                logger.info(f"✏️ Lokal umbenannt: {real_path} → {new_path}")
+            except Exception as e:
+                logger.error(f"Fehler beim lokalen Umbenennen: {real_path}: {e}")
+                continue
+
+            del UID_CACHE[source_id]
+
+            SCAN_CACHE["invalid_names"] = [
+                x for x in SCAN_CACHE["invalid_names"]
+                if not (x["source"] == "local" and x.get("uid") == source_id)
+            ]
+
+            # MD5-Index aktualisieren
+            for md5, entry in GLOBAL_MD5_INDEX.items():
+                for item in entry["local"]:
+                    if item.get("path") == real_path:
+                        item["name"] = new_name
+                        item["path"] = new_path
+                        item["sanitized_name"] = sanitize_filename(new_name)
+                        item["is_invalid_name"] = (item["sanitized_name"] != new_name)
+
+        # ----------------------------------------------------------
+        # B) GDRIVE rename
+        # ----------------------------------------------------------
+        else:
+            match = next(
+                (x for x in SCAN_CACHE["invalid_names"]
+                 if x["source"] == "gdrive" and x["id"] == source_id),
+                None
+            )
+
+            if not match:
+                logger.error(f"Kein clean_name für GDrive-ID {source_id} gefunden!")
+                continue
+
+            new_name = match["clean_name"]
+            try:
+                drive.files().update(
+                    fileId=source_id,
+                    body={"name": new_name},
+                    fields="id,name"
+                ).execute()
+
+                renamed_gdrive.append({"id": source_id, "new": new_name})
+                logger.info(f"✏️ GDrive umbenannt: {source_id} → {new_name}")
+
+            except Exception as e:
+                logger.error(f"GDrive-Umbenennfehler bei {source_id}: {e}")
+                continue
+
+            # SCAN_CACHE invalid_names aktualisieren
+            SCAN_CACHE["invalid_names"] = [
+                x for x in SCAN_CACHE["invalid_names"]
+                if not (x["source"] == "gdrive" and x["id"] == source_id)
+            ]
+
+            # MD5-Index aktualisieren
+            for md5, entry in GLOBAL_MD5_INDEX.items():
+                for item in entry["gdrive"]:
+                    if item.get("id") == source_id:
+                        item["name"] = new_name
+                        item["sanitized_name"] = sanitize_filename(new_name)
+                        item["is_invalid_name"] = (item["sanitized_name"] != new_name)
+
     delete_ids = form.getlist("delete_ids")
     sync_ids = form.getlist("sync_ids")
 
@@ -307,120 +535,6 @@ async def diff_gdrive_local_delete(request: Request):
     synced_local = []
     synced_gdrive = []
     errors = []
-
-    drive = get_drive()
-
-    # ======================================================
-    # 0) HILFSFUNKTIONEN
-    # ======================================================
-
-    def resolve_drive_path(drive, path_segments):
-        """
-        Gibt die ID des Zielordners zurück.
-        Legt NIE Ordner an.
-        """
-        try:
-            parent_id = folder_id_by_name("imagefiles")
-        except Exception:
-            raise Exception("Drive Basisordner 'imagefiles' nicht gefunden!")
-
-        for seg in path_segments:
-            query = (
-                f"name='{seg}' and mimeType='application/vnd.google-apps.folder' "
-                f"and '{parent_id}' in parents and trashed=false"
-            )
-            res = drive.files().list(q=query, fields="files(id)").execute()
-            folders = res.get("files", [])
-
-            if not folders:
-                raise Exception(f"GDrive Unterordner fehlt: {seg}")
-
-            parent_id = folders[0]["id"]
-
-        return parent_id
-
-    async def sync_from_gdrive(file_id: str):
-        """GDrive → Local (Ordner muss existieren!)"""
-        try:
-            meta = drive.files().get(fileId=file_id, fields="name").execute()
-            filename = meta["name"]
-
-            # Ordner über GLOBAL_MD5_INDEX finden
-            target_folder = None
-            for md5, entry in GLOBAL_MD5_INDEX.items():
-                for g in entry["gdrive"]:
-                    if g["id"] == file_id:
-                        target_folder = g["folder"]
-                        break
-
-            if target_folder is None:
-                raise Exception(f"Kein Ordner für GDrive-ID {file_id} im MD5-Index!")
-
-            local_target_dir = os.path.join(LOCAL_BASE, target_folder)
-
-            if not os.path.isdir(local_target_dir):
-                raise Exception(f"Lokaler Ordner fehlt: {local_target_dir}")
-
-            local_target = os.path.join(local_target_dir, filename)
-
-            # Download
-            request_dl = drive.files().get_media(fileId=file_id)
-            fh = io.BytesIO()
-            downloader = MediaIoBaseDownload(fh, request_dl)
-            done = False
-            while not done:
-                _, done = downloader.next_chunk()
-
-            fh.seek(0)
-
-            with open(local_target, "wb") as f:
-                f.write(fh.read())
-
-            logger.info(f"⬇️ Sync GDrive → Local: {file_id} → {local_target}")
-            return local_target
-
-        except Exception as e:
-            msg = f"Fehler Sync GDrive→Local {file_id}: {e}"
-            logger.error(msg)
-            errors.append(msg)
-            return None
-
-    async def sync_to_gdrive(local_path: str):
-        """Local → GDrive (Ordner muss existieren im GDrive!)"""
-        try:
-            # relativer Pfad unter imagefiles
-            rel = os.path.relpath(local_path, LOCAL_BASE)
-            parts = rel.split("/")
-            folder_parts = parts[:-1]
-            filename = parts[-1]
-
-            # GDrive-Ordner nachschlagen
-            parent_id = resolve_drive_path(drive, folder_parts)
-
-            metadata = {
-                "name": filename,
-                "parents": [parent_id],
-            }
-
-            media = MediaFileUpload(local_path, resumable=True)
-
-            new_file = drive.files().create(
-                body=metadata,
-                media_body=media,
-                fields="id"
-            ).execute()
-
-            new_id = new_file["id"]
-            logger.info(
-                f"⬆️ Sync Local → GDrive: {local_path} → {new_id} (Ordner: {'/'.join(folder_parts)})"
-            )
-            return new_id
-
-        except Exception as e:
-            msg = f"Fehler Sync Local→GDrive {local_path}: {e}"
-            logger.error(msg)
-            errors.append(msg)
-            return None
 
     # ======================================================
     # 1) SYNC verarbeiten
@@ -541,6 +655,8 @@ async def diff_gdrive_local_delete(request: Request):
         {
             "request": request,
             "version": VERSION,
+            "renamed_local": renamed_local,
+            "renamed_gdrive": renamed_gdrive,
             "deleted_local": deleted_local,
             "deleted_gdrive": deleted_gdrive,
             "synced_local": synced_local,

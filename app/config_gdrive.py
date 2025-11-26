@@ -20,6 +20,7 @@ _cached_folder_dict = None
 def sanitize_filename(name: str) -> str:
     name = name.strip().lower()
     name = re.sub(r'[\\/:*?"<>|\n\r\t]', '_', name)
+    name = re.sub(r'[\u200B-\u200D\uFEFF\u00A0]', '', name)
     return name
 
 
