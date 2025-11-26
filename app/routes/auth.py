@@ -1,9 +1,10 @@
 import os
 
+from google.oauth2.credentials import Credentials
+
 from fastapi import APIRouter
 from fastapi import Request
 from fastapi.responses import RedirectResponse
-from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 
@@ -60,8 +61,14 @@ def auth_callback(request: Request):
     return RedirectResponse("/gallery?page=1&count=1&folder=real")
 
 
+_DRIVE = None
+
+
 def load_drive_service():
-    return load_drive_service_token(TOKEN_FILE)
+    global _DRIVE
+    if _DRIVE is None:
+        _DRIVE = load_drive_service_token(TOKEN_FILE)
+    return _DRIVE
 
 
 def load_drive_service_token(token):

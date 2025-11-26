@@ -1,14 +1,14 @@
 import os
 from pathlib import Path
 
-from logger_config import setup_logger
+from .logger_config import setup_logger
 from ..config import Settings
 from ..config_gdrive import SettingsGdrive
 from ..config_gdrive import collect_all_folders
 from ..config_gdrive import folder_id_by_name
 from ..config_gdrive import folder_name_by_id
 from ..config_gdrive import save_dict
-from ..routes.auth import load_drive_service_token
+from ..routes.auth import load_drive_service
 
 logger = setup_logger(__name__)
 
@@ -52,11 +52,11 @@ def log_folder_ids():
 
 
 if __name__ == "__main__":
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
-    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("../../cache/gdrive_folders.pkl")
-    service = load_drive_service_token(os.path.abspath(os.path.join("../../secrets", "token.json")))
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/ubuntu/gallery/secrets/innate-setup-454010-i9-f92b1b6a1c44.json"
+    SettingsGdrive.GDRIVE_FOLDERS_PKL = Path("/home/ubuntu/gallery/cache/gdrive_folders.pkl")
 
-    update_folder_cache(service)
+    service = load_drive_service()
+
     folder_id = folder_id_by_name('real')
     folder_name = folder_name_by_id(folder_id)
     logger.info(f"{folder_name} : {folder_id}")

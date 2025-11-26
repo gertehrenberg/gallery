@@ -1,7 +1,8 @@
 <form id="diffForm" action="/gallery/diff_gdrive_local_delete" method="post">
 
     <div class="sticky-bar">
-        <button type="button" class="btn btn-blue" onclick="window.location.href='/gallery/dashboard'">📊 Dashboard</button>
+        <button type="button" class="btn btn-blue" onclick="window.location.href='/gallery/dashboard'">📊 Dashboard
+        </button>
         <button id="reloadBtn" type="button" class="btn btn-orange" onclick="startReload()">🔄 Neu laden</button>
         <button id="deleteBtn" type="button" class="btn btn-red" onclick="checkAndSubmit()">🗑/🔁/✏️ Ausführen</button>
     </div>
@@ -33,6 +34,70 @@
         </thead>
 
         <tbody>
+
+        <!-- ========================================================= -->
+        <!--  🔥 DATEINAMEN-KONFLIKTE (new feature)                     -->
+        <!-- ========================================================= -->
+        {% if filename_collisions and filename_collisions|length > 0 %}
+            {% for col in filename_collisions %}
+                <tr style="background:#ffe0e0;">
+                    <td colspan="6" style="padding:10px;">
+                        <b>🔥 Konflikt: Varianten: {{ col.md5_list|length }} — {{ col.local|length }}x
+                            local, {{ col.gdrive|length }}x gdrive
+                        </b>
+                    </td>
+                </tr>
+
+                <!-- Lokale Versionen -->
+                {% for l in col.local %}
+                    <tr>
+                        <td class="center">
+                            <input type="checkbox" name="unique_filename_ids" value="{{ l.path }}">
+                        </td>
+                        <td class="center"></td>
+                        <td class="center">
+                            <input type="checkbox" name="delete_ids" value="{{ l.path }}">
+                        </td>
+                        <td>
+                            <img class="thumb"
+                                 src="/gallery/static/thumbnails/{{ l.md5 }}.png"
+                                 onclick="openModal('{{ l.folder }}/{{ l.name }}')">
+                        </td>
+                        <td>
+                            <div>{{ l.folder }}</div>
+                            <div>{{ l.path }}</div>
+                            <div>{{ l.name }}</div>
+                        </td>
+                        <td>Lokal</td>
+                    </tr>
+                {% endfor %}
+
+                <!-- GDrive Versionen -->
+                {% for g in col.gdrive %}
+                    <tr>
+                        <td class="center">
+                            <input type="checkbox" name="unique_filename_ids" value="{{ g.id }}">
+                        </td>
+                        <td class="center"></td>
+                        <td class="center">
+                            <input type="checkbox" name="delete_ids" value="{{ g.id }}">
+                        </td>
+                        <td>
+                            <img class="thumb"
+                                 src="https://drive.google.com/thumbnail?id={{ g.id }}&sz=w200"
+                                 onclick="openModalGdrive('{{ g.id }}')">
+                        </td>
+                        <td>
+                            <div>{{ g.folder }}</div>
+                            <div>{{ g.id }}</div>
+                            <div>{{ g.name }}</div>
+                        </td>
+                        <td>GDrive</td>
+                    </tr>
+                {% endfor %}
+
+            {% endfor %}
+        {% endif %}
 
         <!-- ========================================================= -->
         <!--   1) UNGÜLTIGE NAMEN – IMMER OBEN                         -->
@@ -97,7 +162,7 @@
         <!--   2) MD5 FEHLER                                           -->
         <!-- ========================================================= -->
         {% for m in invalid_md5 %}
-            <tr style="background:#f4f4f4;">
+            <tr style="background:#ffe0e0;">
                 <td colspan="6"
                     style="font-weight:bold; padding-top:12px; padding-bottom:12px;">
                     MD5: {{ m.md5 }} — {{ m.status }}

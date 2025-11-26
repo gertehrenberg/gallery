@@ -141,9 +141,10 @@
         const renames = form.querySelectorAll('input[name="rename_ids"]:checked');
         const deletes = form.querySelectorAll('input[name="delete_ids"]:checked');
         const syncs = form.querySelectorAll('input[name="sync_ids"]:checked');
+        const unique_filename = form.querySelectorAll('input[name="unique_filename_ids"]:checked');
 
         // Prüfen, ob überhaupt etwas angehakt ist
-        if (renames.length === 0 && deletes.length === 0 && syncs.length === 0) {
+        if (renames.length === 0 && deletes.length === 0 && syncs.length === 0 && unique_filename.length === 0) {
             alert("Keine Aktion ausgewählt.\nBitte mindestens eine Datei ankreuzen.");
             return;
         }

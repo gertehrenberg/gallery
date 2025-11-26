@@ -62,4 +62,5 @@ ENV LANG=de_DE.UTF-8 \
 USER gallery
 
 EXPOSE 8000
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--reload"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--log-level", "warning", "--no-access-log"]
+
