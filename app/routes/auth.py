@@ -7,6 +7,9 @@ from fastapi import Request
 from fastapi.responses import RedirectResponse
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
+from ..utils.logger_config import setup_logger
+
+logger = setup_logger(__name__)
 
 router = APIRouter()
 
@@ -61,14 +64,27 @@ def auth_callback(request: Request):
     return RedirectResponse("/gallery?page=1&count=1&folder=real")
 
 
+import threading
+
 _DRIVE = None
+_LOCK = threading.Lock()
 
 
 def load_drive_service():
     global _DRIVE
-    if _DRIVE is None:
-        _DRIVE = load_drive_service_token(TOKEN_FILE)
-    return _DRIVE
+    with _LOCK:
+        if _DRIVE is None:
+            creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+            _DRIVE = build(
+                "drive",
+                "v3",
+                credentials=creds,
+                cache_discovery=False
+            )
+            logger.info(f"load_drive_service: init")
+        else:
+            logger.info(f"load_drive_service: cache")
+        return _DRIVE
 
 
 def load_drive_service_token(token):

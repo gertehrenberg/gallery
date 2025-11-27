@@ -1,14 +1,15 @@
 <script>
-    function selectFirst50() {
-        const boxes = document.querySelectorAll("input[name='delete_ids']");
-        let count = 0;
-        boxes.forEach(box => {
-            if (count < 50) {
-                box.checked = true;
-                count++;
-            }
-        });
-    }
+function fillGemini(countMax) {
+    const boxes = document.querySelectorAll("input[name='unique_filename_ids']");
+    let count = 0;
+
+    boxes.forEach(box => {
+        if (count < countMax && box.dataset.folder === "gemini") {
+            box.checked = true;
+            count++;
+        }
+    });
+}
 
     let progressTimer = null;
 

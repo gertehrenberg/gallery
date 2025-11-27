@@ -11,14 +11,13 @@ from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
 from ..config import Settings, UserType
-from ..config_gdrive import calculate_md5
+from ..config_gdrive import calculate_md5, folder_id_by_name
 from ..config_gdrive import sanitize_filename
 from ..routes.auth import load_drive_service
 from ..utils.logger_config import setup_logger
 
 VERSION = 201
 logger = setup_logger(__name__)
-logger.info(f"🟦 Starte diff_gdrive_local_refactor.py v{VERSION}")
 
 router = APIRouter()
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "../templates"))
@@ -40,22 +39,6 @@ UID_CACHE = {}
 # Globaler Fortschritt für Dateiscans
 processed_files = 0
 total_files = 0
-
-_cached_folder_dict = None
-
-
-def warmup_drive():
-    try:
-        logger.info("🔧 Initialisiere GDrive Client (Warm-Up)…")
-        s = load_drive_service()
-        # Kleiner Aufruf erzwingt die Verbindung:
-        s.files().list(pageSize=1, fields="files(id)").execute()
-        logger.info("🔧 GDrive Warm-Up erfolgreich")
-    except Exception as e:
-        logger.error(f"❌ GDrive Warm-Up Fehler: {e}")
-
-
-warmup_drive()
 
 
 async def prepare_total_file_count(categories):
@@ -100,22 +83,19 @@ async def set_progress(status, progress, detail_status=None, detail_progress=Non
     async with PROGRESS_LOCK:
         PROGRESS["status"] = status
         PROGRESS["progress"] = progress
+        logger.info(f"set_progress: {status} {progress}")
         if detail_status is not None:
             PROGRESS["details"]["status"] = detail_status
-            # logger.info(f"detail_status: {detail_status}")
         if detail_progress is not None:
             PROGRESS["details"]["progress"] = detail_progress
-            # logger.info(f"detail_progress: {detail_progress}")
 
 
 async def set_progress_detail(detail_status=None, detail_progress=None):
     async with PROGRESS_LOCK:
         if detail_status is not None:
             PROGRESS["details"]["status"] = detail_status
-            # logger.info(f"detail_status: {detail_status}")
         if detail_progress is not None:
             PROGRESS["details"]["progress"] = detail_progress
-            # logger.info(f"detail_progress: {detail_progress}")
 
 
 async def update_file_progress(processed_files, total_files, source):
@@ -133,34 +113,20 @@ def reset_progress():
     PROGRESS["details"] = {"status": "Bereit", "progress": 0}
 
 
-import asyncio
-
-FOLDER_MAP = {
-    "real": "1fyE_ZYoVoGZ7ehjuWrS9Kd6WW4w2UZWy",
-    "top": "1uw14kdlhFbbEfobToLCP2A-NYH6QRfXF",
-    "delete": "1wjUj6NHZ_ZHwlahQuJUbCTf_HplqePVw",
-    "recheck": "1Ub8ULCBzQI5DvcJjKQbB7wEepa52Wmmj",
-    "bad": "1EkX7TxoRJlYUyeNA10T3Gzdt5Nd7yRRf",
-    "ki": "1LWF_V26zvX-W9vRNwscmeQ6U7YeJxOuL",
-    "comfyui": "1UjmQV-dO3y8uhqmWjSIzU1t7w6-rQEqG",
-    "document": "1oKNY7jB8hEFMEn6amA6Osrbo8K9z5jAW",
-    "double": "16GyqMDHTCw-bdDjM3lYxoycn1P-pFa7s",
-    "gemini": "1dO98jTeGTbQdwbBfyGj4IYcP1TTF9kaS",
-    "sex": "1aaArEgGubDIpQJRZw3MaLWuRVDat5oWg",
-}
-
-
-async def folder_id_by_name(name: str):
-    return FOLDER_MAP.get(name)
-
-
 async def gdrive_list_folder(folder_name: str):
-    folder_id = await folder_id_by_name(folder_name)
+    folder_id = folder_id_by_name(folder_name)
     if not folder_id:
         logger.warning(f"⚠️ Kein Folder ID für Kategorie {folder_name}")
         return []
 
+    # Globalen Status setzen
+    await set_progress_detail(
+        detail_status=f"{folder_name}: lade GDrive Dateien…",
+        detail_progress=0
+    )
+
     service = load_drive_service()
+
     query = (
         f"'{folder_id}' in parents "
         f"and trashed = false "
@@ -168,32 +134,61 @@ async def gdrive_list_folder(folder_name: str):
         f"and mimeType != 'application/vnd.google-apps.shortcut'"
     )
 
-    # Die echte Arbeit kommt in einen Thread!
-    def do_request():
-        files = []
-        token = None
-        while True:
-            resp = service.files().list(
-                q=query,
-                spaces="drive",
-                fields="nextPageToken, files(id,name,md5Checksum,size,parents)",
-                supportsAllDrives=True,
-                includeItemsFromAllDrives=True,
-                pageToken=token,
-                pageSize=Settings.PAGESIZE,
-            ).execute()
+    # Ergebniscontainer
+    collected_files = []
 
-            files.extend(resp.get("files", []))
+    # Das Paging läuft im Threadpool, Fortschritt aber im Eventloop!
+    async def fetch_paged():
+        token = None
+        processed = 0
+        estimated_total = 200  # Startschätzung
+
+        while True:
+            # Blockierende Google-API im Thread-Executor
+            resp = await asyncio.get_running_loop().run_in_executor(
+                EXECUTOR,
+                lambda: service.files().list(
+                    q=query,
+                    spaces="drive",
+                    fields="nextPageToken, files(id,name,md5Checksum,size,parents)",
+                    supportsAllDrives=True,
+                    includeItemsFromAllDrives=True,
+                    pageToken=token,
+                    pageSize=Settings.PAGESIZE,
+                ).execute()
+            )
+
+            page_files = resp.get("files", [])
+            collected_files.extend(page_files)
+
+            processed = len(collected_files)
+
+            # Fortschritt aktualisieren
+            await update_file_progress(
+                processed_files=processed,
+                total_files=estimated_total,
+                source=f"GDrive {folder_name}"
+            )
+
+            # Estimate erhöhen solange Daten kommen
+            estimated_total = max(estimated_total, processed + Settings.PAGESIZE)
+
             token = resp.get("nextPageToken")
             if not token:
                 break
-        return files
 
-    loop = asyncio.get_running_loop()
-    files = await loop.run_in_executor(EXECUTOR, do_request)
+        # Finalen Wert setzen
+        await update_file_progress(
+            processed_files=processed,
+            total_files=processed,
+            source=f"GDrive {folder_name}"
+        )
 
-    logger.info(f"📁 GDrive Folder {folder_name}: {len(files)} Dateien")
-    return files
+    # Paging starten
+    await fetch_paged()
+
+    logger.info(f"📁 GDrive Folder {folder_name}: {len(collected_files)} Dateien")
+    return collected_files
 
 
 async def find_case_duplicates(folder_name: str, idx: int, total: int):
@@ -201,10 +196,9 @@ async def find_case_duplicates(folder_name: str, idx: int, total: int):
 
     logger.info(f"🔍 Scanne Kategorie: {folder_name}")
 
-    # Hauptfortschritt (Kategoriebalken)
     await set_progress(
         f"Kategorie {idx + 1}/{total}: {folder_name}",
-        int((idx / total) * 80),
+        PROGRESS["progress"],  # <-- Hauptfortschritt unverändert lassen
         detail_status="Initialisiere GDrive…",
         detail_progress=int(processed_files / total_files * 100) if total_files else 0
     )
@@ -363,7 +357,6 @@ async def filename_collision(folder_name: str):
     )
 
     # 3) Kollisionen finden
-    count = 50
     for filename, items in name_map.items():
         md5_values = {x["md5"] for x in items}
 
@@ -392,9 +385,6 @@ async def filename_collision(folder_name: str):
                 "gdrive": gdrive_entries,
                 "md5_list": list(md5_values)
             })
-            count -= 1
-            if count < 0:
-                break
 
 
 async def run_full_scan():
@@ -543,7 +533,7 @@ async def resolve_drive_path(drive, path_segments):
     Legt NIE Ordner an.
     """
     try:
-        parent_id = await folder_id_by_name("imagefiles")
+        parent_id = folder_id_by_name("imagefiles")
     except Exception:
         raise Exception("Drive Basisordner 'imagefiles' nicht gefunden!")
 
@@ -964,7 +954,8 @@ async def diff_gdrive_local_delete(request: Request):
     # ======================================================
 
     old_cols = SCAN_CACHE.get("filename_collisions", [])
-    new_cols = []
+    filename_collisions = []
+    filename_collisions_use = []
 
     # Alle IDs, die in dieser Operation angefasst wurden:
     touched_ids = set(delete_ids) | set(unique_ids) | set(rename_ids)
@@ -983,13 +974,14 @@ async def diff_gdrive_local_delete(request: Request):
                 group_ids.add(x["id"])
 
         if group_ids & touched_ids:
+            filename_collisions_use.append(item)
             logger.info(f"🧹 Filename-Kollision vollständig entfernt: {item['name']}")
             continue  # ganze Gruppe skippen → wird gelöscht
 
         # --- Falls nicht berührt, wird sie übernommen ---
-        new_cols.append(item)
+        filename_collisions.append(item)
 
-    SCAN_CACHE["filename_collisions"] = new_cols
+    SCAN_CACHE["filename_collisions"] = filename_collisions
 
     # ======================================================
     # 6) Ergebnis
@@ -1006,6 +998,7 @@ async def diff_gdrive_local_delete(request: Request):
             "deleted_gdrive": deleted_gdrive,
             "synced_local": synced_local,
             "synced_gdrive": synced_gdrive,
+            "filename_collisions": filename_collisions_use,
             "errors": errors,
         },
     )

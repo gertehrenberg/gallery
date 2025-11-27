@@ -48,6 +48,15 @@
 <h1>✔️ Diff GDrive/Local – Cleanup abgeschlossen – v{{ version }}</h1>
 
 <!-- ========================================================= -->
+<!--  6) ZURÜCK                                                -->
+<!-- ========================================================= -->
+
+<button class="back-btn"
+        onclick="window.location.href='/gallery/diff_gdrive_local'">
+    🔙 Zurück zur Übersicht
+</button>
+
+<!-- ========================================================= -->
 <!--  1) UMBENENNUNGEN                                         -->
 <!-- ========================================================= -->
 
@@ -126,6 +135,50 @@
 {% endif %}
 
 <!-- ========================================================= -->
+<!--  4b) DATEINAMEN-KOLLISIONEN                               -->
+<!-- ========================================================= -->
+
+{% if filename_collisions and filename_collisions|length > 0 %}
+<div class="box error">
+    <h2>⚠️ Dateinamen-Kollisionen (noch vorhanden)</h2>
+
+    <ul>
+        {% for col in filename_collisions %}
+            <li>
+                <strong>{{ col.name }}</strong>
+                (Ordner: {{ col.folder }})<br>
+
+                <u>Local:</u>
+                {% if col.local %}
+                    <ul>
+                    {% for item in col.local %}
+                        <li>{{ item.path }} (MD5: {{ item.md5 }})</li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    – keine lokalen Dateien –
+                {% endif %}
+
+                <u>GDrive:</u>
+                {% if col.gdrive %}
+                    <ul>
+                    {% for item in col.gdrive %}
+                        <li>ID {{ item.id }} – {{ item.name }} (MD5: {{ item.md5 }})</li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    – keine GDrive-Dateien –
+                {% endif %}
+
+                <u>Hashes:</u> {{ col.md5_list }}
+            </li>
+        {% endfor %}
+    </ul>
+
+</div>
+{% endif %}
+
+<!-- ========================================================= -->
 <!--  4) FEHLER                                                -->
 <!-- ========================================================= -->
 
@@ -150,6 +203,7 @@
    and (not synced_gdrive or synced_gdrive|length == 0)
    and (not deleted_local or deleted_local|length == 0)
    and (not deleted_gdrive or deleted_gdrive|length == 0)
+   and (not filename_collisions or filename_collisions|length == 0)
    and (not errors or errors|length == 0) %}
 
 <div class="box">
@@ -158,15 +212,6 @@
 </div>
 
 {% endif %}
-
-<!-- ========================================================= -->
-<!--  6) ZURÜCK                                                -->
-<!-- ========================================================= -->
-
-<button class="back-btn"
-        onclick="window.location.href='/gallery/diff_gdrive_local'">
-    🔙 Zurück zur Übersicht
-</button>
 
 </body>
 </html>
