@@ -1,0 +1,609 @@
+<script src="https://unpkg.com/@panzoom/panzoom/dist/panzoom.min.js"></script>
+<script>
+    const TEXTFLAG = "{{ textflag }}";
+    const PAGE = parseInt("{{ page }}");
+    const COUNT = parseInt("{{ count }}");
+    const FOLDER = "{{ folder_name }}";
+    const kategorien = {{ kategorien | tojson }};
+
+    let panzoomInstance;
+
+    // --------------------------------------------------
+    // Config-Section
+    // --------------------------------------------------
+    function toggleConfigSection() {
+        const section = document.getElementById("configSection");
+        if (!section) return;
+        section.classList.toggle("show");
+    }
+
+    // --------------------------------------------------
+    // Modal + Zoom
+    // --------------------------------------------------
+    function initPanzoom(img) {
+        if (panzoomInstance) panzoomInstance.destroy();
+        panzoomInstance = Panzoom(img, {
+            maxScale: 5,
+            minScale: 1,
+            contain: "outside",
+        });
+
+        img.addEventListener("wheel", panzoomInstance.zoomWithWheel);
+        img.addEventListener("dblclick", () => panzoomInstance.reset());
+    }
+
+    function openModal(image_name) {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        const spinner = document.getElementById("spinner");
+        if (!modal || !img || !spinner) return;
+
+        spinner.style.display = "block";
+
+        img.onload = () => {
+            spinner.style.display = "none";
+            modal.style.display = "flex";
+            initPanzoom(img);
+        };
+
+        img.src = "/gallery/static/imagefiles/" + image_name;
+    }
+
+    function openModalThumb(image_pfad) {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        const spinner = document.getElementById("spinner");
+        if (!modal || !img || !spinner) return;
+
+        spinner.style.display = "block";
+
+        img.onload = () => {
+            spinner.style.display = "none";
+            modal.style.display = "flex";
+            initPanzoom(img);
+        };
+
+        img.src = image_pfad;
+    }
+
+    function closeModal() {
+        const modal = document.getElementById("meinModal");
+        const img = document.getElementById("zoomImage");
+        if (!modal || !img) return;
+
+        modal.style.display = "none";
+        img.src = "";
+        if (panzoomInstance) panzoomInstance.destroy();
+    }
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") closeModal();
+    });
+
+    // --------------------------------------------------
+    // Speichern + Navigation
+    // --------------------------------------------------
+    function save() {
+        return Array.from(document.querySelectorAll("form.checkbox-container")).map(
+            (form) => {
+                const entry = {};
+                const idInput = form.querySelector('[name="image_id"]');
+                if (!idInput) return entry;
+
+                entry.image_id = idInput.value;
+
+                kategorien.forEach((cat) => {
+                    const box = form.querySelector(
+                        `[name="${entry.image_id}_${cat.key}"]`
+                    );
+                    entry[cat.key] = box && box.checked ? "on" : "";
+                });
+
+                entry.notiz = form.querySelector('[name="notiz"]')?.value || "";
+                return entry;
+            }
+        );
+    }
+
+    function saveAndGo(targetPage, count, folder, image_name) {
+        const data = save();
+
+        Promise.all(
+            data.map((entry) =>
+                fetch("/gallery/save", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
+                    body: new URLSearchParams(entry),
+                })
+            )
+        )
+            .then(() => {
+                const url = new URL(window.location.href);
+                url.search = "";
+
+                if (image_name) {
+                    url.pathname = "/gallery/images";
+                    url.searchParams.set("image_name", image_name);
+                } else {
+                    url.pathname = "/gallery/";
+                }
+
+                url.searchParams.set("page", targetPage);
+                url.searchParams.set("count", count);
+                if (COUNT !== parseInt(count)) {
+                    url.searchParams.set("lastindex", PAGE * COUNT);
+                }
+                url.searchParams.set("folder", folder);
+                url.searchParams.set("textflag", TEXTFLAG);
+                window.location.href = url.toString();
+            })
+            .catch((err) => {
+                alert("Fehler beim Speichern!");
+                console.error(err);
+            });
+    }
+
+    function saveAndGoName(image_name) {
+        saveAndGo(PAGE, COUNT, FOLDER, image_name);
+    }
+
+    function saveAndGoRefresh(targetPage, count, folder, image_name) {
+        saveAndGo(targetPage, count, folder, image_name);
+        refresh_count();
+    }
+
+    function gotoPage() {
+        const input = document.getElementById("gotoPageInput");
+        if (!input) return;
+
+        const page = parseInt(input.value);
+        if (!page || page < 1 || page > {{ total_pages }}) {
+            alert("Ungültige Seitenzahl (1–{{ total_pages }})");
+            return;
+        }
+        toggleMenu();
+        saveAndGo(page, {{ count }}, "{{ folder_name }}");
+    }
+
+    // --------------------------------------------------
+    // Menü + Navigation (logout, dashboard, Ordner)
+    // --------------------------------------------------
+    function toggleMenu() {
+        const menu = document.getElementById("menu");
+        if (!menu) return;
+
+        const visible = menu.style.display === "block";
+        menu.style.display = visible ? "none" : "block";
+        localStorage.setItem("menuOpen", !visible);
+    }
+
+    function hideMenu() {
+        const menu = document.getElementById("menu");
+        if (!menu) return;
+        menu.style.display = "none";
+        localStorage.setItem("menuOpen", false);
+    }
+
+    function logout() {
+        hideMenu();
+        const url = new URL(window.location.href);
+        url.pathname = "/gallery/logout";
+        window.location.href = url.toString();
+    }
+
+    function dashboard() {
+        hideMenu();
+        const url = new URL(window.location.href);
+        url.pathname = "/gallery/dashboard";
+        window.location.href = url.toString();
+    }
+
+    function navigateToFolder(kategorien, cat, count) {
+        hideMenu();
+
+        const url = new URL(window.location.href);
+        url.searchParams.set("page", 1);
+        url.searchParams.set("count", count);
+        url.searchParams.set("folder", cat);
+        url.searchParams.set("textflag", TEXTFLAG);
+
+        window.location.href = url.toString();
+    }
+
+    function moveToFolder(kategorien, cat) {
+        const labelMap = Object.fromEntries(
+            kategorien.map((k) => [k.key, k.label])
+        );
+
+        fetch(`/gallery/moveToFolder/${cat}`)
+            .then((res) => res.json())
+            .then((data) => {
+                const count = data.count;
+
+                if (count === 0) {
+                    alert(`Keine Bilder zum ${labelMap[cat]} vorhanden.`);
+                    return;
+                }
+
+                const ok = confirm(
+                    `${count} Bild(er) würden nach '${labelMap[cat]}' verschoben. Fortfahren?`
+                );
+                if (!ok) return;
+
+                const currentParams = new URLSearchParams(window.location.search);
+                const countValue = currentParams.get("count") || "6";
+                const orgfolder = currentParams.get("folder") || "real";
+
+                const moveUrl =
+                    `/gallery/moveToFolder/${cat}?count=${countValue}` +
+                    `&folder=${orgfolder}&textflag=${TEXTFLAG}`;
+
+                fetch(moveUrl, {method: "POST"})
+                    .then((res) => res.json())
+                    .then((response) => {
+                        localStorage.setItem("menuOpen", "false");
+                        const moved = response.moved || 0;
+                        const targetUrl =
+                            `?page=1&count=${countValue}&folder=${cat}` +
+                            `&textflag=${TEXTFLAG}&done=${cat}&moved=${moved}`;
+                        window.location.href = targetUrl;
+                    })
+                    .catch((err) => {
+                        console.error("Fehler beim POST:", err);
+                        alert("❌ Beim Verschieben ist ein Fehler aufgetreten.");
+                    });
+            });
+    }
+
+    function move(folder, image_name) {
+        const url =
+            `/gallery/moveToFolder/${folder}/${image_name}` +
+            `?folder=${FOLDER}&count=${COUNT}&page=${PAGE}&textflag=${TEXTFLAG}`;
+
+        fetch(url, {method: "POST"})
+            .then((response) => response.json())
+            .then((data) => {
+                if (data.status === "ok" && data.redirect) {
+                    window.location.href = data.redirect;
+                } else if (data.status !== "ok") {
+                    console.error("Error moving file:", data.message);
+                    alert("Error moving file: " + (data.message || "Unknown error"));
+                }
+            })
+            .catch((error) => {
+                console.error("Error:", error);
+                alert("Error moving file: " + error);
+            });
+    }
+
+    // --------------------------------------------------
+    // Kategorien / Checkboxen
+    // --------------------------------------------------
+    function selectCategory(cat) {
+        hideMenu();
+        document
+            .querySelectorAll(
+                '.checkbox-container input[type="checkbox"][name$="_' + cat + '"]'
+            )
+            .forEach((cb) => (cb.checked = true));
+        saveAndGoRefresh(PAGE, COUNT, FOLDER);
+    }
+
+    function deselectAll() {
+        hideMenu();
+        document
+            .querySelectorAll('.checkbox-container input[type="checkbox"]')
+            .forEach((cb) => (cb.checked = false));
+        saveAndGoRefresh(PAGE, COUNT, FOLDER);
+    }
+
+    function handleCheckboxChange(checkbox) {
+        const group = checkbox.dataset.group;
+        const checkboxes = document.querySelectorAll(
+            `input[data-group="${group}"]`
+        );
+
+        if (checkbox.checked) {
+            checkboxes.forEach((cb) => {
+                if (cb !== checkbox) cb.checked = false;
+            });
+        }
+
+        const formData = new FormData();
+        formData.append("image_id", checkbox.name.split("_")[0]);
+        checkboxes.forEach((cb) => {
+            formData.append(cb.name, cb.checked);
+        });
+
+        fetch("/gallery/save", {
+            method: "POST",
+            body: formData,
+        });
+    }
+
+    function refresh_count() {
+        if (typeof kategorien === "undefined") return;
+
+        kategorien.forEach((cat) => {
+            fetch(`/gallery/verarbeite/check/${cat.key}`)
+                .then((res) => res.json())
+                .then((data) => {
+                    const elem = document.getElementById(`count-${cat.key}`);
+                    if (elem) elem.textContent = data.count;
+                });
+        });
+    }
+
+    // --------------------------------------------------
+    // Filter / Text-Historie
+    // --------------------------------------------------
+    function updateFilterText(updateHistory = false) {
+        const inputElement = document.getElementById("newTextInput");
+        if (!inputElement) return;
+
+        const text = inputElement.value.trim();
+        if (updateHistory && text === undefined) return;
+
+        const formData = new FormData();
+        formData.append("text", text);
+
+        fetch("/gallery/filter/update_history", {
+            method: "POST",
+            body: formData,
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                if (data.status === "ok") {
+                    if (updateHistory) {
+                        const datalist = document.getElementById("textHistory");
+                        if (datalist) {
+                            datalist.innerHTML = data.last_texts
+                                .map((t) => `<option value="${t}">`)
+                                .join("");
+                        }
+                    }
+
+                    hideMenu();
+
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("page", PAGE);
+                    url.searchParams.set("count", COUNT);
+                    url.searchParams.set("folder", FOLDER);
+                    url.searchParams.set("textflag", TEXTFLAG);
+                    window.location.href = url.toString();
+                } else {
+                    showMessage(data.status, true, 5000);
+                }
+            });
+    }
+
+    function submitFilterText() {
+        updateFilterText(true);
+    }
+
+    function setFilterText(text) {
+        const inputElement = document.getElementById("newTextInput");
+        const menu = document.getElementById("menu");
+        if (!inputElement || !menu) return;
+
+        if (menu.style.display === "block") {
+            inputElement.value = text;
+            submitFilterText();
+        }
+    }
+
+    // --------------------------------------------------
+    // Suche / Search-Historie
+    // --------------------------------------------------
+    function updateSearchText(updateHistory = false) {
+        const inputElement = document.getElementById("searchInput");
+        if (!inputElement) return;
+
+        const text = inputElement.value.trim();
+        if (updateHistory && text === undefined) return;
+
+        const formData = new FormData();
+        formData.append("text", text);
+
+        fetch("/gallery/search/update_history", {
+            method: "POST",
+            body: formData,
+        })
+            .then((response) => response.json())
+            .then((data) => {
+                if (data.status === "ok") {
+                    if (updateHistory) {
+                        const datalist = document.getElementById("searchHistory");
+                        if (datalist) {
+                            datalist.innerHTML = data.search_history
+                                .map((t) => `<option value="${t}">`)
+                                .join("");
+                        }
+                    }
+
+                    hideMenu();
+
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("page", PAGE);
+                    url.searchParams.set("count", COUNT);
+                    url.searchParams.set("folder", FOLDER);
+                    url.searchParams.set("textflag", TEXTFLAG);
+                    window.location.href = url.toString();
+                } else {
+                    showMessage(data.status, true, 5000);
+                }
+            });
+    }
+
+    function submitSearchText() {
+        updateSearchText(true);
+    }
+
+    function setSearchText(text) {
+        const inputElement = document.getElementById("searchInput");
+        const menu = document.getElementById("menu");
+        if (!inputElement || !menu) return;
+
+        if (menu.style.display === "block") {
+            inputElement.value = text;
+            submitSearchText();
+        }
+    }
+
+    // --------------------------------------------------
+    // NSFW-Balken
+    // --------------------------------------------------
+    function initNsfwBars() {
+        document.querySelectorAll(".nsfw_quality-bar").forEach((bar) => {
+            bar.style.cursor = "pointer";
+            bar.addEventListener("click", function () {
+                const text = this.getAttribute("data-tooltip");
+                if (text) setFilterText(text);
+            });
+        });
+    }
+
+    // --------------------------------------------------
+    // Meldungen
+    // --------------------------------------------------
+    function showMessage(message, isError = false, duration = 2500) {
+        const msg = document.createElement("div");
+        msg.innerText = message;
+        msg.style.position = "fixed";
+        msg.style.top = "10px";
+        msg.style.right = "10px";
+        msg.style.padding = "10px 20px";
+        msg.style.color = "white";
+        msg.style.borderRadius = "8px";
+        msg.style.zIndex = 1000;
+        msg.style.background = isError ? "#ff4444" : "#4caf50";
+
+        document.body.appendChild(msg);
+
+        setTimeout(() => {
+            msg.remove();
+        }, duration);
+
+        return msg;
+    }
+
+    // --------------------------------------------------
+    // Gen-Count speichern
+    // --------------------------------------------------
+    function saveGenCount(imageId, count) {
+        fetch(
+            `/gallery/savegencount?image_id=${imageId}&comfyui_count=${count}`,
+            {method: "POST"}
+        )
+            .then((response) => response.json())
+            .then((data) => {
+                if (data.status === "ok") {
+                    console.log("Gen-Anzahl gespeichert:", data);
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("page", PAGE);
+                    url.searchParams.set("count", COUNT);
+                    url.searchParams.set("folder", FOLDER);
+                    url.searchParams.set("textflag", TEXTFLAG);
+                    window.location.href = url.toString();
+                } else {
+                    console.error(
+                        "Fehler beim Speichern:",
+                        data.message || data.detail
+                    );
+                    alert(
+                        "Fehler beim Speichern: " +
+                        (data.message || data.detail || "Unbekannter Fehler")
+                    );
+                }
+            })
+            .catch((error) => {
+                console.error("Netzwerkfehler:", error);
+                alert("Netzwerkfehler: " + error);
+            });
+    }
+
+    // --------------------------------------------------
+    // Initialisierung nach DOM-Load
+    // --------------------------------------------------
+    window.addEventListener("DOMContentLoaded", () => {
+        const menu = document.getElementById("menu");
+
+        // configForm-Listener
+        const configForm = document.getElementById("configForm");
+        if (configForm) {
+            configForm.addEventListener("change", (e) => {
+                if (e.target.name === "textOption") {
+                    const newFlag = e.target.value;
+                    const url = new URL(window.location.href);
+                    url.searchParams.set("page", PAGE);
+                    url.searchParams.set("count", COUNT);
+                    url.searchParams.set("folder", FOLDER);
+                    url.searchParams.set("textflag", newFlag);
+                    window.location.href = url.toString();
+                }
+            });
+        }
+
+        // gotoPageInput-Listener
+        const gotoPageInput = document.getElementById("gotoPageInput");
+        if (gotoPageInput) {
+            gotoPageInput.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                    gotoPage();
+                }
+            });
+        }
+
+        // Filter-Input Enter
+        const inputfilter = document.getElementById("newTextInput");
+        if (inputfilter) {
+            inputfilter.addEventListener("keypress", (event) => {
+                if (event.key === "Enter") {
+                    submitFilterText();
+                    event.preventDefault();
+                }
+            });
+        }
+
+        // Search-Input Enter
+        const inputsearch = document.getElementById("searchInput");
+        if (inputsearch) {
+            inputsearch.addEventListener("keypress", (event) => {
+                if (event.key === "Enter") {
+                    submitSearchText();
+                    event.preventDefault();
+                }
+            });
+        }
+
+        // done/moved Meldung + Menü-Status
+        if (menu) {
+            const params = new URLSearchParams(window.location.search);
+            const done = params.get("done");
+
+            if (done) {
+                const moved = params.get("moved");
+                const msg = moved
+                    ? `✅ ${moved} Bild(er) wurden nach '${done}' verschoben.`
+                    : `✅ Bilder wurden nach '${done}' verschoben.`;
+                showMessage(msg, false, 5000);
+
+                const cleanParams = new URLSearchParams(window.location.search);
+                cleanParams.delete("done");
+                cleanParams.delete("moved");
+                const newUrl = `${window.location.pathname}?${cleanParams.toString()}`;
+                window.history.replaceState({}, document.title, newUrl);
+
+                localStorage.setItem("menuOpen", "false");
+                menu.style.display = "none";
+            } else {
+                const saved = localStorage.getItem("menuOpen");
+                menu.style.display = saved === "true" ? "block" : "none";
+            }
+        }
+
+        initNsfwBars();
+        refresh_count();
+    });
+</script>

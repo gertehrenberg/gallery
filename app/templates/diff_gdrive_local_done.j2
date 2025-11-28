@@ -11,7 +11,9 @@
             background: #f6f6f6;
         }
 
-        h1 { margin-bottom: 20px; }
+        h1 {
+            margin-bottom: 20px;
+        }
 
         .box {
             background: #fff;
@@ -19,14 +21,27 @@
             padding: 18px;
             margin-bottom: 25px;
             border: 1px solid #ddd;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
         }
 
-        .success { border-left: 6px solid #5cb85c; }
-        .error   { border-left: 6px solid #d9534f; }
+        .success {
+            border-left: 6px solid #5cb85c;
+        }
 
-        ul { margin-top: 10px; margin-bottom: 0; }
-        li { margin-bottom: 6px; line-height: 1.4; word-break: break-all; }
+        .error {
+            border-left: 6px solid #d9534f;
+        }
+
+        ul {
+            margin-top: 10px;
+            margin-bottom: 0;
+        }
+
+        li {
+            margin-bottom: 6px;
+            line-height: 1.4;
+            word-break: break-all;
+        }
 
         .back-btn {
             padding: 10px 20px;
@@ -39,7 +54,9 @@
             font-size: 16px;
         }
 
-        .back-btn:hover { background: #025aa5; }
+        .back-btn:hover {
+            background: #025aa5;
+        }
     </style>
 </head>
 
@@ -61,25 +78,25 @@
 <!-- ========================================================= -->
 
 {% if renamed_local and renamed_local|length > 0 %}
-<div class="box success">
-    <h2>✏️ Umbenannt – Lokale Dateien</h2>
-    <ul>
-        {% for r in renamed_local %}
-            <li>{{ r.old }} → <strong>{{ r.new }}</strong></li>
-        {% endfor %}
-    </ul>
-</div>
+    <div class="box success">
+        <h2>✏️ Umbenannt – Lokale Dateien</h2>
+        <ul>
+            {% for r in renamed_local %}
+                <li>{{ r.old }} → <strong>{{ r.new }}</strong></li>
+            {% endfor %}
+        </ul>
+    </div>
 {% endif %}
 
 {% if renamed_gdrive and renamed_gdrive|length > 0 %}
-<div class="box success">
-    <h2>✏️ Umbenannt – Google Drive Dateien</h2>
-    <ul>
-        {% for r in renamed_gdrive %}
-            <li>ID {{ r.id }} → <strong>{{ r.new }}</strong></li>
-        {% endfor %}
-    </ul>
-</div>
+    <div class="box success">
+        <h2>✏️ Umbenannt – Google Drive Dateien</h2>
+        <ul>
+            {% for r in renamed_gdrive %}
+                <li>ID {{ r.id }} → <strong>{{ r.new }}</strong></li>
+            {% endfor %}
+        </ul>
+    </div>
 {% endif %}
 
 <!-- ========================================================= -->
@@ -87,25 +104,25 @@
 <!-- ========================================================= -->
 
 {% if synced_local and synced_local|length > 0 %}
-<div class="box success">
-    <h2>⬇️ Synchronisiert – GDrive → Lokal</h2>
-    <ul>
-        {% for s in synced_local %}
-            <li>{{ s }}</li>
-        {% endfor %}
-    </ul>
-</div>
+    <div class="box success">
+        <h2>⬇️ Synchronisiert – GDrive → Lokal</h2>
+        <ul>
+            {% for s in synced_local %}
+                <li>{{ s }}</li>
+            {% endfor %}
+        </ul>
+    </div>
 {% endif %}
 
 {% if synced_gdrive and synced_gdrive|length > 0 %}
-<div class="box success">
-    <h2>⬆️ Synchronisiert – Lokal → GDrive</h2>
-    <ul>
-        {% for s in synced_gdrive %}
-            <li>{{ s }}</li>
-        {% endfor %}
-    </ul>
-</div>
+    <div class="box success">
+        <h2>⬆️ Synchronisiert – Lokal → GDrive</h2>
+        <ul>
+            {% for s in synced_gdrive %}
+                <li>{{ s }}</li>
+            {% endfor %}
+        </ul>
+    </div>
 {% endif %}
 
 <!-- ========================================================= -->
@@ -113,25 +130,25 @@
 <!-- ========================================================= -->
 
 {% if deleted_local and deleted_local|length > 0 %}
-<div class="box success">
-    <h2>🗑️ Gelöscht – Lokale Dateien</h2>
-    <ul>
-        {% for d in deleted_local %}
-            <li>{{ d }}</li>
-        {% endfor %}
-    </ul>
-</div>
+    <div class="box success">
+        <h2>🗑️ Gelöscht – Lokale Dateien</h2>
+        <ul>
+            {% for d in deleted_local %}
+                <li>{{ d }}</li>
+            {% endfor %}
+        </ul>
+    </div>
 {% endif %}
 
 {% if deleted_gdrive and deleted_gdrive|length > 0 %}
-<div class="box success">
-    <h2>🗑️ Gelöscht – Google Drive Dateien</h2>
-    <ul>
-        {% for d in deleted_gdrive %}
-            <li>{{ d }}</li>
-        {% endfor %}
-    </ul>
-</div>
+    <div class="box success">
+        <h2>🗑️ Gelöscht – Google Drive Dateien</h2>
+        <ul>
+            {% for d in deleted_gdrive %}
+                <li>{{ d }}</li>
+            {% endfor %}
+        </ul>
+    </div>
 {% endif %}
 
 <!-- ========================================================= -->
@@ -139,43 +156,43 @@
 <!-- ========================================================= -->
 
 {% if filename_collisions and filename_collisions|length > 0 %}
-<div class="box error">
-    <h2>⚠️ Dateinamen-Kollisionen (noch vorhanden)</h2>
+    <div class="box error">
+        <h2>⚠️ Dateinamen-Kollisionen (noch vorhanden)</h2>
 
-    <ul>
-        {% for col in filename_collisions %}
-            <li>
-                <strong>{{ col.name }}</strong>
-                (Ordner: {{ col.folder }})<br>
+        <ul>
+            {% for col in filename_collisions %}
+                <li>
+                    <strong>{{ col.name }}</strong>
+                    (Ordner: {{ col.folder }})<br>
 
-                <u>Local:</u>
-                {% if col.local %}
-                    <ul>
-                    {% for item in col.local %}
-                        <li>{{ item.path }} (MD5: {{ item.md5 }})</li>
-                    {% endfor %}
-                    </ul>
-                {% else %}
-                    – keine lokalen Dateien –
-                {% endif %}
+                    <u>Local:</u>
+                    {% if col.local %}
+                        <ul>
+                            {% for item in col.local %}
+                                <li>{{ item.path }} (MD5: {{ item.md5 }})</li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        – keine lokalen Dateien –
+                    {% endif %}
 
-                <u>GDrive:</u>
-                {% if col.gdrive %}
-                    <ul>
-                    {% for item in col.gdrive %}
-                        <li>ID {{ item.id }} – {{ item.name }} (MD5: {{ item.md5 }})</li>
-                    {% endfor %}
-                    </ul>
-                {% else %}
-                    – keine GDrive-Dateien –
-                {% endif %}
+                    <u>GDrive:</u>
+                    {% if col.gdrive %}
+                        <ul>
+                            {% for item in col.gdrive %}
+                                <li>ID {{ item.id }} – {{ item.name }} (MD5: {{ item.md5 }})</li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        – keine GDrive-Dateien –
+                    {% endif %}
 
-                <u>Hashes:</u> {{ col.md5_list }}
-            </li>
-        {% endfor %}
-    </ul>
+                    <u>Hashes:</u> {{ col.md5_list }}
+                </li>
+            {% endfor %}
+        </ul>
 
-</div>
+    </div>
 {% endif %}
 
 <!-- ========================================================= -->
@@ -183,14 +200,14 @@
 <!-- ========================================================= -->
 
 {% if errors and errors|length > 0 %}
-<div class="box error">
-    <h2>⚠️ Fehler</h2>
-    <ul>
-        {% for e in errors %}
-            <li>{{ e }}</li>
-        {% endfor %}
-    </ul>
-</div>
+    <div class="box error">
+        <h2>⚠️ Fehler</h2>
+        <ul>
+            {% for e in errors %}
+                <li>{{ e }}</li>
+            {% endfor %}
+        </ul>
+    </div>
 {% endif %}
 
 <!-- ========================================================= -->
@@ -206,10 +223,10 @@
    and (not filename_collisions or filename_collisions|length == 0)
    and (not errors or errors|length == 0) %}
 
-<div class="box">
-    <h2>ℹ️ Keine Änderungen erforderlich</h2>
-    <p>Es wurden keine Dateien synchronisiert, gelöscht oder umbenannt.</p>
-</div>
+    <div class="box">
+        <h2>ℹ️ Keine Änderungen erforderlich</h2>
+        <p>Es wurden keine Dateien synchronisiert, gelöscht oder umbenannt.</p>
+    </div>
 
 {% endif %}
 

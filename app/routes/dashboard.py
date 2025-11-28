@@ -23,6 +23,7 @@ from starlette.responses import JSONResponse
 from . import what
 from .auth import load_drive_service
 from .auth import load_drive_service_token
+from .cost_hyperstack import load_hyperstack_costs
 from .cost_openai_api import load_openai_costs_from_dir
 from .cost_runpod import load_runpod_costs_from_dir
 from .hashes import download_file
@@ -63,6 +64,34 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), ".
 logger = setup_logger(__name__)
 
 router.include_router(what.router)
+
+
+def check_gdrive_status():
+    """
+    Einfache Gesundheitsprüfung für Google Drive:
+    - Service laden
+    - minimale Anfrage ausführen
+    """
+    try:
+        service = load_drive_service()
+        if not service:
+            return {
+                "ok": False,
+                "message": "Kein Google-Token gefunden. Bitte unter /gallery/auth anmelden."
+            }
+
+        # Mini-Request: root-Liste mit 1 Eintrag
+        service.files().list(pageSize=1, fields="files(id)", spaces="drive").execute()
+        return {
+            "ok": True,
+            "message": "Google Drive erreichbar."
+        }
+    except Exception as e:
+        logger.warning(f"GDrive Status-Check fehlgeschlagen: {e}")
+        return {
+            "ok": False,
+            "message": "Google Drive nicht erreichbar oder Token abgelaufen."
+        }
 
 
 @router.get("/dashboard/progress")
@@ -109,8 +138,17 @@ async def dashboard(request: Request, year: int = None, month: int = None):
     default_daily = load_default_costs(year, month)
     default_map = {d["tag"]: float(d["kosten_chf"]) for d in default_daily}
 
+    hyperstack_daily = load_hyperstack_costs(year, month)
+    hyperstack_map = {d["tag"]: float(d["kosten_chf"]) for d in hyperstack_daily}
+
     # Kombiniere alle Tags von allen Diensten
-    all_tags = sorted(set(gcp_map) | set(openai_map) | set(runpod_map) | set(default_map))
+    all_tags = sorted(
+        set(gcp_map)
+        | set(openai_map)
+        | set(runpod_map)
+        | set(default_map)
+        | set(hyperstack_map)
+    )
     labels = [datetime.strptime(tag, "%Y-%m-%d").strftime("%d.%m.") for tag in all_tags]
 
     values_gcp = [
@@ -120,15 +158,25 @@ async def dashboard(request: Request, year: int = None, month: int = None):
     values_openai = [openai_map.get(tag, 0.0) for tag in all_tags]
     values_runpod = [runpod_map.get(tag, 0.0) for tag in all_tags]
     values_default = [default_map.get(tag, 0.0) for tag in all_tags]
+    values_hyperstack = [hyperstack_map.get(tag, 0.0) for tag in all_tags]
 
     if all_tags:
         first_day = datetime.strptime(all_tags[0], "%Y-%m-%d").strftime("%d.%m.%Y")
         last_day = datetime.strptime(all_tags[-1], "%Y-%m-%d").strftime("%d.%m.%Y")
+
+        # ---------------------------------------------------------
+        # ⭐ TOTAL-KOSTEN inklusive Hyperstack!
+        # ---------------------------------------------------------
         total_chf = round(
-            sum(values_gcp) + sum(values_openai) +
-            sum(values_runpod) + sum(values_default),
+            sum(values_gcp)
+            + sum(values_openai)
+            + sum(values_runpod)
+            + sum(values_default)
+            + sum(values_hyperstack),
             2
         )
+        # ---------------------------------------------------------
+
         info = [
             {"from_to": f"{first_day}–{last_day}"},
             {"kosten_chf": f"CHF {total_chf}"}
@@ -147,7 +195,6 @@ async def dashboard(request: Request, year: int = None, month: int = None):
         {"label": "Hyperstack", "url": "https://console.hyperstack.cloud/", "icon": "☁️"},
     ]
 
-    # Tool Links Definition
     tool_links = [
         {"label": "Diff GDrive/Local", "url": "/gallery/diff_gdrive_local", "icon": "🧹"},
         {"label": 'Sync mit "Save" (GDrive)', "url": f"{_BASE}/test?folder=save&direction=manage_save", "icon": "🔄"},
@@ -167,24 +214,32 @@ async def dashboard(request: Request, year: int = None, month: int = None):
         {
             'label': 'Google',
             'data': values_gcp,
-            'color': 'rgba(54, 162, 235, 0.6)'  # Blau
+            'color': 'rgba(54, 162, 235, 0.6)'
         },
         {
             'label': 'OpenAI (+ChatGPT)',
             'data': values_openai,
-            'color': 'rgba(255, 99, 132, 0.6)'  # Rot
+            'color': 'rgba(255, 99, 132, 0.6)'
+        },
+        {
+            'label': 'Hyperstack',
+            'data': values_hyperstack,
+            'color': 'rgba(255, 159, 64, 0.6)'  # Orange
         },
         {
             'label': 'RunPod',
             'data': values_runpod,
-            'color': 'rgba(75, 192, 192, 0.6)'  # Türkis
+            'color': 'rgba(75, 192, 192, 0.6)'
         },
         {
             'label': 'JetBrains, Wingo, One',
             'data': values_default,
-            'color': 'rgba(153, 102, 255, 0.6)'  # Violett
+            'color': 'rgba(153, 102, 255, 0.6)'
         }
     ]
+
+    # GDrive-Status für Übersicht
+    gdrive_status = check_gdrive_status()
 
     return templates.TemplateResponse("dashboard.j2", {
         "request": request,
@@ -194,6 +249,7 @@ async def dashboard(request: Request, year: int = None, month: int = None):
         "cost_datasets": cost_datasets,
         "help_links": help_links,
         "tool_links": tool_links,
+        "gdrive_status": gdrive_status,
         "nav": {
             "current": current.strftime("%Y-%m"),
             "prev": f"{_BASE}?year={prev_month.year}&month={prev_month.month}",

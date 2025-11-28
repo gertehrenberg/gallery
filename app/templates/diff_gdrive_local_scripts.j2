@@ -1,15 +1,15 @@
 <script>
-function fillGemini(countMax) {
-    const boxes = document.querySelectorAll("input[name='unique_filename_ids']");
-    let count = 0;
+    function fillGemini(countMax) {
+        const boxes = document.querySelectorAll("input[name='unique_filename_ids']");
+        let count = 0;
 
-    boxes.forEach(box => {
-        if (count < countMax && box.dataset.folder === "gemini") {
-            box.checked = true;
-            count++;
-        }
-    });
-}
+        boxes.forEach(box => {
+            if (count < countMax && box.dataset.folder === "gemini") {
+                box.checked = true;
+                count++;
+            }
+        });
+    }
 
     let progressTimer = null;
 

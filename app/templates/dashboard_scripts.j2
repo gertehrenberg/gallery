@@ -1,0 +1,63 @@
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+    (function () {
+        const ctx = document.getElementById('costChart');
+        if (!ctx) return;
+
+        const labels = {{ labels|tojson|safe }};
+        const datasetsCfg = {{ cost_datasets|tojson|safe }};
+
+        const datasets = datasetsCfg.map(ds => ({
+            label: ds.label,
+            data: ds.data,
+            borderColor: ds.color,
+            backgroundColor: ds.color,
+            fill: false,
+            tension: 0.2,
+            borderWidth: 2,
+            pointRadius: 2
+        }));
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#e5e7eb',
+                            font: {size: 11}
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function (context) {
+                                const v = context.parsed.y || 0;
+                                return `${context.dataset.label}: CHF ${v.toFixed(2)}`;
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {color: '#9ca3af', maxRotation: 45, minRotation: 45},
+                        grid: {color: '#020617'}
+                    },
+                    y: {
+                        ticks: {color: '#9ca3af'},
+                        grid: {color: '#020617'}
+                    }
+                }
+            }
+        });
+    })();
+</script>

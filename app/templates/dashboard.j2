@@ -2,324 +2,276 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Dashboard</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <style>
-        body {
-            background-color: #f3f4f6;
-            color: #1f2937;
-        }
+    <title>Gallery Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
-        .dashboard-title {
-            font-size: 1.5rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-        }
+    {% include "dashboard_css.j2" %}
+</head>
+<body>
+<div class="page">
 
-        .card {
-            background-color: #ffffff;
-            border-radius: 0.75rem;
-            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-            padding: 1rem;
-        }
+    <div class="top-row">
+        <div>
+            <h1>Gallery Dashboard</h1>
+            <div class="subtitle">
+                Übersicht &amp; Systemstatus
+            </div>
+        </div>
+    </div>
 
-        .icon-link {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 1.125rem;
-        }
+    {# ============================
+       Übersicht
+       ============================ #}
+    <h2>Übersicht</h2>
 
-        .icon-link-sm {
-            display: flex;
-            align-items: center;
-            gap: 0.25rem;
-            font-size: 0.875rem;
-        }
+    <div class="overview-grid">
 
-        .icon {
-            font-size: 1.25rem;
-        }
+        {# 1 – Kosten (Monat) #}
+        <div class="overview-card">
+            <div class="overview-card-header">
+                <div class="overview-card-title">Kosten (Monat)</div>
+                <div class="overview-card-icon">💰</div>
+            </div>
 
-        .icon-sm {
-            font-size: 1rem;
-        }
+            <div class="sys-row" style="border-top:none;">
+                <div class="sys-row-header">
+                    <div class="label">Gesamt</div>
+                    <div class="overview-card-value">
+                        {% set total_chf = info[1].kosten_chf if info|length > 1 and info[1].kosten_chf is defined else "CHF 0.0" %}
+                        {{ total_chf }}
+                    </div>
+                </div>
+                <div class="small">
+                    Gesamtkosten für den ausgewählten Monat.
+                </div>
+            </div>
 
-        .text-blue {
-            color: #2563eb;
-        }
+            <div class="sys-row">
+                <div class="sys-row-header">
+                    <div class="label">Zeitraum</div>
+                </div>
+                <div class="small">
+                    {{ info[0].from_to if info|length > 0 and info[0].from_to is defined else "unbekannt" }}
+                </div>
+            </div>
 
-        .text-blue:hover {
-            text-decoration: underline;
-        }
-    </style>
-<body class="bg-gray-100 text-gray-900">
-<div class="p-6">
-    <h1 class="dashboard-title">Dashboard</h1>
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <!-- Übersicht -->
-        <div class="card">
-            <h2 class="text-lg font-semibold mb-2">Übersicht</h2>
-            <p>Projektname: n8n-Test</p>
-            <p>Projekt-ID: innate-setup-454010-i9</p>
-
-            {% for row in info %}
-                {% if row.from_to %}
-                    <p>Abrechnung: {{ row.from_to }}</p>
-                {% elif row.kosten_chf %}
-                    <p>Betrag: {{ row.kosten_chf }} CHF</p>
-                {% endif %}
-            {% endfor %}
+            <div class="sys-row">
+                <div class="sys-row-header">
+                    <div class="label">Dienste</div>
+                </div>
+                <div class="small">
+                    Summe aus Google, OpenAI, RunPod, Hyperstack und Fixkosten.
+                </div>
+            </div>
         </div>
 
-        <!-- GDrive -->
-        <div class="bg-white rounded-xl shadow p-4">
-            <h2 class="text-lg font-semibold mb-2">GDrive vs. Lokal</h2>
-            <table class="w-full text-sm text-left">
+        {# 2 – System #}
+        {% set has_gs = gdrive_status is defined and gdrive_status %}
+        {% set gs_ok = has_gs and gdrive_status.ok %}
+        {% set gs_msg = gdrive_status.message if has_gs and gdrive_status.message is defined else 'Status unbekannt' %}
+
+        <div class="overview-card">
+            <div class="overview-card-header">
+                <div class="overview-card-title">System</div>
+                <div class="overview-card-icon">🧩</div>
+            </div>
+
+            <div class="sys-row">
+                <div class="sys-row-header">
+                    <div class="label">Google Drive</div>
+                    <div class="status-pill {{ 'ok' if gs_ok else 'error' }}">
+                        <span class="status-dot"></span>
+                        {{ 'Online' if gs_ok else 'Offline' }}
+                    </div>
+                </div>
+                <div class="small">
+                    {{ gs_msg }}
+                </div>
+            </div>
+
+            <div class="sys-row">
+                <div class="sys-row-header">
+                    <div class="label">Kategorien</div>
+                    <div class="overview-card-value">
+                        {{ gdrive_stats|length if gdrive_stats is defined else 0 }}
+                    </div>
+                </div>
+                <div class="small">
+                    Ordner mit Hash-/DB-Statistik
+                </div>
+            </div>
+
+            <div class="muted" style="margin-top:8px;">
+                Weitere Checks können hier später ergänzt werden.
+            </div>
+        </div>
+    </div>
+
+    {# ============================
+       Quick Links
+       ============================ #}
+    <h2>Quick Links</h2>
+    <div class="card">
+        <div class="card-header">
+            <h3>Dienste &amp; Tools</h3>
+            <small>Schnellzugriff</small>
+        </div>
+
+        <div style="margin-bottom:12px;">
+            <strong>Services</strong>
+            <div class="help-links" style="margin-top:6px;">
+                {% for h in help_links %}
+                    <a href="{{ h.url }}" target="_blank" class="chip-link">
+                        <span class="icon">{{ h.icon }}</span>
+                        <span>{{ h.label }}</span>
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
+
+        <div>
+            <strong>Tools</strong>
+            <div class="tool-links" style="margin-top:6px;">
+                {% for t in tool_links %}
+                    <a href="{{ t.url }}" class="chip-link">
+                        <span class="icon">{{ t.icon }}</span>
+                        <span>{{ t.label }}</span>
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    {# ============================
+       GDrive vs. Local / DB
+       ============================ #}
+    <h2 style="margin-top:30px;">GDrive / Local / DB – Übersicht</h2>
+
+    <div class="card">
+        <div class="card-header">
+            <h3>Hash- &amp; DB-Statistik</h3>
+            <small>Abgleich pro Kategorie</small>
+        </div>
+
+        <div style="overflow-x:auto;">
+            <table>
                 <thead>
                 <tr>
-                    <th class="font-medium">Kategorie</th>
-                    <th class="font-medium text-right">GDrive</th>
-                    <th class="font-medium text-center"></th>
-                    <th class="font-medium text-left">Lokal</th>
-                    <th class="font-medium text-left">DB Cache</th>
+                    <th>Kat.</th>
+                    <th>Ordner</th>
+                    <th style="text-align:right;">GDrive-Hashes</th>
+                    <th style="text-align:center;">Sync</th>
+                    <th style="text-align:right;">Local-Hashes</th>
+                    <th style="text-align:left;">DB-Cache</th>
+                    <th>Hinweis</th>
                 </tr>
                 </thead>
                 <tbody>
-                {% for stat in gdrive_stats %}
-                    <tr class="border-t {% if stat.has_gdrive_mismatch or stat.has_count_mismatch %}bg-red-50{% endif %}">
+                {% for entry in gdrive_stats %}
+                    {% set has_count_mismatch = entry.has_count_mismatch %}
+                    {% set has_gdrive_mismatch = entry.has_gdrive_mismatch %}
+                    <tr>
+                        <td>{{ entry.icon }}</td>
+
                         <td>
-                            <div class="icon-link-sm">
-                                <span class="icon-sm">{{ stat.icon }}</span>
-                                <a href="/gallery/?page=1&amp;count=6&amp;folder={{ stat.key }}&amp;textflag=1"
-                                   class="text-blue">
-                                    {{ stat.label }}
-                                </a>
-                            </div>
+                            <a href="/gallery?page=1&count=6&folder={{ entry.key }}&textflag=1">
+                                {{ entry.label }}
+                            </a>
                         </td>
-                        <td class="text-right {% if stat.has_gdrive_mismatch %}text-red-600{% endif %}">{{ stat.gdrive_count }}</td>
-                        <td class="text-center">
-                            <div class="flex justify-center gap-4">
-                                <form action="/gallery/dashboard/test">
-                                    <input type="hidden" name="folder" value="{{ stat.key }}">
+
+                        <td style="text-align:right;"
+                            class="{{ 'count-badge-error' if has_gdrive_mismatch else 'count-badge-ok' }}">
+                            {{ entry.gdrive_count }}
+                        </td>
+
+                        <td style="text-align:center;">
+                            <div style="display:flex; justify-content:center; gap:8px;">
+                                <form action="/gallery/dashboard/test" method="get" style="margin:0;">
+                                    <input type="hidden" name="folder" value="{{ entry.key }}">
                                     <input type="hidden" name="direction" value="gdrive_zu_local">
-                                    <button type="submit" class="text-xl">&rarr;</button>
+                                    <button type="submit" title="GDrive → Lokal"
+                                            style="background:none;border:none;color:inherit;cursor:pointer;">
+                                        →
+                                    </button>
                                 </form>
-                                <form action="/gallery/dashboard/test">
-                                    <input type="hidden" name="folder" value="{{ stat.key }}">
+                                <form action="/gallery/dashboard/test" method="get" style="margin:0;">
+                                    <input type="hidden" name="folder" value="{{ entry.key }}">
                                     <input type="hidden" name="direction" value="lokal_zu_gdrive">
-                                    <button type="submit" class="text-xl">&larr;</button>
+                                    <button type="submit" title="Lokal → GDrive"
+                                            style="background:none;border:none;color:inherit;cursor:pointer;">
+                                        ←
+                                    </button>
                                 </form>
                             </div>
                         </td>
-                        <td class="text-left pl-2">
-                            {% if stat.has_count_mismatch %}
-                                <span class="text-red-600">{{ stat.local_count }}</span>
+
+                        <td style="text-align:right;">
+                            {% if has_count_mismatch %}
+                                <span class="count-badge-error">{{ entry.local_count }}</span>
                             {% else %}
-                                {{ stat.local_count }}
+                                {{ entry.local_count }}
                             {% endif %}
                         </td>
-                        <td class="text-left pl-2">
-                            <form action="/gallery/dashboard/test">
-                                <input type="hidden" name="folder" value="{{ stat.key }}">
+
+                        <td style="text-align:left;">
+                            <form action="/gallery/dashboard/test" method="get" style="margin:0;display:inline;">
+                                <input type="hidden" name="folder" value="{{ entry.key }}">
                                 <input type="hidden" name="direction" value="reloadcache">
-                                <button type="submit">🔁{{ stat.db_count }}</button>
+                                <button type="submit"
+                                        style="background:none;border:none;color:inherit;cursor:pointer;">
+                                    🔁 {{ entry.db_count }}
+                                </button>
                             </form>
+                        </td>
+
+                        <td>
+                            {% if has_count_mismatch or has_gdrive_mismatch %}
+                                {% if has_gdrive_mismatch %}
+                                    <span class="count-badge-error">Hashfile-Mismatch</span>
+                                {% elif has_count_mismatch %}
+                                    <span class="count-badge-warn">DB-Mismatch</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="count-badge-ok">OK</span>
+                            {% endif %}
                         </td>
                     </tr>
                 {% endfor %}
+                {% if not gdrive_stats %}
+                    <tr>
+                        <td colspan="7" style="text-align:center; color:#6b7280; padding:10px;">
+                            Keine Daten verfügbar.
+                        </td>
+                    </tr>
+                {% endif %}
                 </tbody>
             </table>
         </div>
+    </div>
 
-        <!-- Tools -->
-        <!-- Tools -->
-        <div class="bg-white rounded-xl shadow p-4">
-            <h2 class="text-lg font-semibold mb-2">Tools</h2>
-
-            <ul class="space-y-1 text-sm">
-                <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 text-sm">
-                    {% for link in help_links %}
-                        <a href="{{ link.url }}" target="_blank" rel="noopener noreferrer"
-                           class="icon-link-sm text-blue-600 hover:underline flex items-center gap-1">
-                            <span class="icon-sm">{{ link.icon }}</span>
-                            {{ link.label }}
-                        </a>
-                    {% endfor %}
-                </div>
-
-                <hr class="my-2">
-
-                {% for link in tool_links %}
-                    <li>
-                        {% if "dashboard/what" in link.url %}
-                            <a href="#"
-                               onclick="openWhatModal('{{ link.url }}'); return false;"
-                               class="icon-link-sm text-blue-600 hover:underline">
-                                <span class="icon-sm">{{ link.icon }}</span>
-                                {{ link.label }}
-                            </a>
-                        {% else %}
-                            <a href="{{ link.url }}"
-                               class="icon-link-sm text-blue-600 hover:underline">
-                                <span class="icon-sm">{{ link.icon }}</span>
-                                {{ link.label }}
-                            </a>
-                        {% endif %}
-                    </li>
-                {% endfor %}
-            </ul>
+    {# ============================
+       Kosten-Chart
+       ============================ #}
+    <h2 style="margin-top:30px;">Kostenverlauf</h2>
+    <!-- ⭐ NEUE Position der Monatsnavigation -->
+    <div class="nav-months" style="margin: 10px 0 20px 0; display:flex; gap:12px; align-items:center;">
+        <a href="{{ nav.prev }}" class="btn-small">◀ Vorheriger Monat</a>
+        <span style="font-size:1.2rem; font-weight:600;">{{ nav.current }}</span>
+        <a href="{{ nav.next }}" class="btn-small">Nächster Monat ▶</a>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <h3>Verlauf der monatlichen Kosten</h3>
+            <small>Statische Ansicht für den ausgewählten Monat</small>
+        </div>
+        <div style="height: 220px;">
+            <canvas id="costChart"></canvas>
         </div>
     </div>
 
-    <!-- Monatsnavigation -->
-    <div class="flex justify-between items-center my-4">
-        <a href="{{ nav.prev|safe }}" class="text-blue-600 hover:underline">← Vorheriger Monat</a>
-        <span class="font-semibold">Monat: {{ nav.current }}</span>
-        <a href="{{ nav.next|safe }}" class="text-blue-600 hover:underline">Nächster Monat →</a>
-    </div>
-
-    <!-- Balkenanzeige -->
-    <!-- Balkenanzeige -->
-    <div class="mt-6 bg-white rounded-xl shadow p-4">
-        <h2 class="text-lg font-semibold mb-4">Tagesgenaue Kosten im aktuellen Monat</h2>
-        <canvas id="dailyCostsChart" height="100"></canvas>
-        <script>
-            const ctx = document.getElementById('dailyCostsChart').getContext('2d');
-            const dailyChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: {{ labels | tojson }},
-                    datasets: {{ cost_datasets | tojson | safe }}
-                },
-                options: {
-                    responsive: true,
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                        },
-                        tooltip: {
-                            mode: 'index',
-                            intersect: false,
-                            callbacks: {
-                                label: function (context) {
-                                    return context.dataset.label + ': CHF ' +
-                                        context.parsed.y.toFixed(2);
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            title: {
-                                display: true,
-                                text: 'CHF'
-                            }
-                        },
-                        x: {
-                            stacked: false
-                        }
-                    }
-                }
-            });
-        </script>
-    </div>
 </div>
-<script>
-    async function openWhatModal(url) {
-        if (document.getElementById("what-modal-backdrop")) return;
 
-        const response = await fetch(url);
-        const html = await response.text();
+{% include "dashboard_scripts.j2" %}
 
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = html;
-        const modal = tempDiv.firstElementChild;
-        document.body.appendChild(modal);
-
-        // Disable scroll behind modal
-        document.body.style.overflow = 'hidden';
-
-        // Bind buttons AFTER insert
-        const form = modal.querySelector("#what-form");
-        const cancelBtn = modal.querySelector("#what-cancel");
-
-        if (!form) {
-            console.error("❌ Form not found in modal!");
-            return;
-        }
-
-        form.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            console.log("✅ Submit-Handler aktiv");
-
-            const formData = new FormData(form);
-
-            try {
-                const res = await fetch(form.action, {
-                    method: "POST",
-                    body: formData
-                });
-
-                const result = await res.json();
-                console.log("✅ Antwort erhalten", result);
-
-                if (result.message) {
-                    showSuccessToast(result.message);
-                } else if (result.selected) {
-                    showSuccessToast("✅ Ausgewählt: " + result.selected.join(", "));
-                } else {
-                    showSuccessToast("Aktion abgeschlossen.");
-                }
-
-            } catch (err) {
-                console.error("❌ Fehler bei POST:", err);
-                showSuccessToast("Fehler beim Senden.", true);
-            }
-
-            closeWhatModal();
-        });
-
-        cancelBtn?.addEventListener("click", closeWhatModal);
-        document.addEventListener("keydown", function escClose(e) {
-            if (e.key === "Escape") {
-                closeWhatModal();
-                document.removeEventListener("keydown", escClose);
-            }
-        });
-    }
-
-    function closeWhatModal() {
-        const modal = document.getElementById("what-modal-backdrop");
-        if (modal) modal.remove();
-        document.body.style.overflow = '';
-    }
-
-    function showSuccessToast(text, isError = false) {
-        const msg = document.createElement("div");
-        msg.innerText = text;
-
-        msg.style.position = "fixed";
-        msg.style.top = "10px";
-        msg.style.right = "10px";
-        msg.style.padding = "12px 20px";
-        msg.style.backgroundColor = isError ? "#dc2626" : "#4caf50";
-        msg.style.color = "white";
-        msg.style.borderRadius = "8px";
-        msg.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)";
-        msg.style.zIndex = 10000;
-        msg.style.fontSize = "1rem";
-        msg.style.transition = "opacity 0.3s ease";
-
-        document.body.appendChild(msg);
-
-        setTimeout(() => {
-            msg.style.opacity = "0";
-            setTimeout(() => msg.remove(), 300);
-        }, 2500);
-    }
-</script>
 </body>
 </html>

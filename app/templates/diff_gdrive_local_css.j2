@@ -1,92 +1,203 @@
 <style>
     body {
-        font-family: Arial, sans-serif;
-        padding: 20px;
+        margin: 0;
+        padding: 0;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #020617;
+        color: #e5e7eb;
+    }
+
+    a {
+        color: #38bdf8;
+        text-decoration: none;
+    }
+
+    a:hover {
+        text-decoration: underline;
+    }
+
+    .page {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 24px 16px 40px;
+    }
+
+    h1 {
+        font-size: 26px;
+        margin: 0 0 4px;
+    }
+
+    h2 {
+        font-size: 18px;
+        margin: 24px 0 12px;
+    }
+
+    .subtitle {
+        font-size: 13px;
+        color: #9ca3af;
     }
 
     table {
         width: 100%;
         border-collapse: collapse;
         margin-top: 12px;
+        font-size: 12px;
     }
 
-    th, td {
-        padding: 8px 10px;
-        border-bottom: 1px solid #ddd;
+    th,
+    td {
+        padding: 6px 8px;
+        border-bottom: 1px solid #111827;
         vertical-align: middle;
     }
 
     th {
-        background: #f8f8f8;
         text-align: left;
+        font-weight: 600;
+        color: #9ca3af;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: .06em;
+        background: #020617;
+    }
+
+    tr:nth-child(even) {
+        background: #020617;
+    }
+
+    tr:nth-child(odd) {
+        background: #030712;
     }
 
     img.thumb {
         height: 60px;
-        border: 1px solid #ccc;
+        border: 1px solid #1f2937;
         border-radius: 4px;
         object-fit: cover;
+        background: #020617;
+    }
+
+    .card {
+        background: #020617;
+        border: 1px solid #1f2937;
+        border-radius: 12px;
+        padding: 14px 16px 18px;
+        box-shadow: 0 16px 35px rgba(0, 0, 0, 0.65);
+        margin-bottom: 16px;
+    }
+
+    .card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 10px;
+    }
+
+    .card-header h3 {
+        margin: 0;
+        font-size: 15px;
+    }
+
+    .card-header small {
+        color: #9ca3af;
+        font-size: 12px;
     }
 
     .btn {
-        padding: 10px 10px;
-        border-radius: 6px;
+        padding: 8px 10px;
+        border-radius: 999px;
         margin-right: 6px;
-        border: none;
+        border: 1px solid #1f2937;
         cursor: pointer;
-        font-weight: 600;
+        font-weight: 500;
         line-height: 1.2;
         vertical-align: middle;
+        font-size: 12px;
+        background: #020617;
+        color: #e5e7eb;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .btn:hover {
+        background: #111827;
     }
 
     .btn-blue {
-        background: #0275d8;
-        color: white;
+        background: #0ea5e9;
+        color: #0b1120;
+        border-color: #0ea5e9;
+    }
+
+    .btn-blue:hover {
+        background: #38bdf8;
     }
 
     .btn-orange {
-        background: #f0ad4e;
-        color: white;
+        background: #f97316;
+        color: #111827;
+        border-color: #f97316;
+    }
+
+    .btn-orange:hover {
+        background: #fb923c;
     }
 
     .btn-red {
-        background: #d9534f;
-        color: white;
+        background: #ef4444;
+        color: #0b1120;
+        border-color: #ef4444;
+    }
+
+    .btn-red:hover {
+        background: #f87171;
     }
 
     .btn-cyan {
-        background: #5bc0de;
-        color: white;
+        background: #22c1c3;
+        color: #0b1120;
+        border-color: #22c1c3;
+    }
+
+    .btn-cyan:hover {
+        background: #67e8f9;
     }
 
     .sticky-bar {
         position: sticky;
         top: 0;
-        background: #ffffff;
+        background: rgba(2, 6, 23, 0.9);
         padding: 10px 0;
-        border-bottom: 1px solid #ddd;
+        border-bottom: 1px solid #1f2937;
         margin-bottom: 10px;
-        backdrop-filter: blur(4px);
+        backdrop-filter: blur(10px);
         z-index: 50;
     }
 
     .progress-bar-bg {
         width: 100%;
         height: 22px;
-        background: #ddd;
-        border-radius: 10px;
+        background: #020617;
+        border-radius: 999px;
         overflow: hidden;
         margin: 6px 0;
+        border: 1px solid #1f2937;
     }
 
     .progress-bar {
-        height: 22px;
+        height: 100%;
         width: 100%;
-        background: #0275d8;
+        background: linear-gradient(90deg, #0ea5e9, #22c55e);
         transition: width .3s ease;
     }
 
     .detail-bar {
-        background: #5cb85c;
+        background: linear-gradient(90deg, #22c55e, #0ea5e9);
+    }
+
+    .muted {
+        color: #9ca3af;
+        font-size: 12px;
     }
 </style>

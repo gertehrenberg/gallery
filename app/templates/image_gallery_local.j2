@@ -3,311 +3,12 @@
 <head>
     <meta charset="UTF-8"/>
     <title>Galerie – Seite {{ page }}</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            margin: 0;
-            background: #f7f7f7;
-        }
 
-        /* Grid-Container für Einträge */
-        .grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 10px;
-            padding: 10px;
-            width: 100%;
-            row-gap: 2px;
-        }
-
-        /* Einzelner Eintrag */
-        .eintrag {
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            padding: 10px;
-            box-shadow: 2px 2px 6px rgba(0, 0, 0, 0.1);
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            width: 95%;
-        }
-
-        /* Bildbereich */
-        .bild-wrapper {
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-        }
-
-        /* Bild selbst */
-        .bild {
-            width: 100%;
-            max-width: 250px;
-            height: auto;
-            border-radius: 8px;
-            cursor: pointer;
-        }
-
-        /* Checkbox-Container */
-        .checkbox-container {
-            display: flex;
-            flex-direction: column;
-            gap: 0px;
-        }
-
-        /* Checkbox-Labels */
-        .checkbox-container label {
-            display: block;
-            margin-bottom: 0px;
-            font-size: 0.7em;
-            padding: 0;
-        }
-
-        /* Bildname-Box */
-        .bildname-box {
-            display: flex;
-            justify-content: center;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            padding: 5px;
-            margin-top: 10px;
-            background: #f5f5f5;
-            font-size: 0.7em;
-        }
-
-        /* Bildname-Text */
-        .bildname {
-            color: #555;
-            text-align: center;
-            margin-top: 8px;
-            font-size: 0.7em;
-        }
-
-        /* Bildbeschreibung/Text */
-        .text {
-            margin-top: 10px;
-            font-size: 0.9em;
-            color: #333;
-            white-space: pre-wrap;
-        }
-
-        /* Sticky Navigation oben */
-        .sticky-nav {
-            position: sticky;
-            top: 0;
-            background: #fff;
-            padding: 8px 20px;
-            border-bottom: 1px solid #ddd;
-            text-align: center;
-            font-size: 1.1em;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 20px;
-            z-index: 1000;
-            max-width: 100%; /* Begrenze die maximale Breite */
-        }
-
-        /* Links und Texte in der Navigation */
-        .sticky-nav a,
-        .sticky-nav span {
-            text-decoration: none;
-            color: #333;
-            font-weight: bold;
-        }
-
-        /* Hover-Effekt Navigation */
-        .sticky-nav a:hover {
-            color: #007bff;
-        }
-
-        .modal {
-            position: fixed;
-            z-index: 9999;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.9);
-            display: none;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .modal img {
-            max-width: 90vw;
-            max-height: 90vh;
-            object-fit: contain;
-            display: block;
-            margin: auto;
-        }
-
-        .close {
-            position: absolute;
-            top: 20px;
-            right: 40px;
-            z-index: 10001;
-            font-size: 32px;
-            color: white;
-            background: rgba(0, 0, 0, 0.5);
-            border: none;
-            padding: 6px 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            pointer-events: auto;
-        }
-
-        #menu {
-            margin-top: 10px;
-            background: white;
-            box-shadow: 0 0 5px #ccc;
-            border-radius: 10px;
-            padding: 10px;
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        #spinner {
-            position: absolute;
-            z-index: 9999;
-            border: 6px solid #f3f3f3;
-            border-top: 6px solid white;
-            border-radius: 50%;
-            width: 50px;
-            height: 50px;
-            animation: spin 1s linear infinite;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            display: none;
-        }
-
-        #zoomWrapper {
-            cursor: grab;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-
-        @keyframes spin {
-            0% {
-                transform: translate(-50%, -50%) rotate(0deg);
-            }
-            100% {
-                transform: translate(-50%, -50%) rotate(360deg);
-            }
-        }
-
-        .thumbnail-mini {
-            width: 50px;
-            height: 20px;
-            object-fit: cover;
-            margin-right: 4px;
-            border: 1px solid #ccc;
-            border-radius: 4px;
-        }
-
-        .thumbnails-row {
-            display: flex;
-            flex-direction: row;
-            flex-wrap: nowrap;
-            gap: 4px;
-            margin-top: 6px;
-            overflow-x: auto;
-        }
-
-        .config-section {
-            display: none;
-            margin-top: 1rem;
-            border-top: 1px solid #ccc;
-            padding-top: 0.5rem;
-        }
-
-        .config-section.show {
-            display: block;
-        }
-
-        button.section-toggle {
-            background: none;
-            border: none;
-            color: #007BFF;
-            text-align: left;
-            padding: 0;
-            margin-top: 0.5rem;
-            cursor: pointer;
-        }
-
-    </style>
-    <style>
-        .nsfw-bars {
-            margin-top: 0.5rem;
-            margin-bottom: 1rem;
-        }
-
-        .nsfw_quality-bar {
-            margin-top: 3px;
-            position: relative;
-            height: 10px;
-            background: linear-gradient(to right, green, yellow, red);
-            border-radius: 5px;
-            overflow: hidden;
-            cursor: pointer;
-        }
-
-        .nsfw_quality-bar .nsfw_bar {
-            width: 100%;
-            height: 100%;
-            position: relative;
-        }
-
-        .nsfw_quality-bar .nsfw_marker {
-            position: absolute;
-            top: -1px; /* leicht oberhalb des Balkens */
-            transform: translateX(-50%);
-            background: transparent;
-            color: rgba(0, 0, 0, 0.6); /* halbtransparentes Schwarz */
-            padding: 0;
-            font-size: 11px;
-            font-weight: normal;
-            line-height: 1;
-            z-index: 2;
-        }
-
-        /* Tooltip */
-        .nsfw_quality-bar::after {
-            content: attr(data-tooltip);
-            position: absolute;
-            right: -5px;
-            top: 50%;
-            transform: translateY(-50%);
-            background: rgba(0, 0, 0, 0.75);
-            color: #fff;
-            padding: 3px 8px;
-            border-radius: 4px;
-            font-size: 11px;
-            white-space: nowrap;
-            z-index: 10;
-            opacity: 0;
-            transition: opacity 0.2s ease-in-out;
-            pointer-events: none;
-        }
-
-        .nsfw_quality-bar:hover::after {
-            opacity: 1;
-        }
-
-        .nsfw_quality-bar:nth-child(3) {
-            background: linear-gradient(to right, red, yellow, green);
-        }
-    </style>
+    {% include "image_gallery_local_css.j2" %}
 </head>
 <body>
-<div
-        id="hamburger"
-        style="position: fixed; top: 50px; left: 20px; z-index: 1000"
->
+
+<div id="hamburger" style="position: fixed; top: 50px; left: 20px; z-index: 1000">
     <button
             onclick="toggleMenu()"
             style="padding: 8px 12px; font-size: 0.8em"
@@ -425,73 +126,89 @@
         </div>
     </div>
 </div>
+
+
 <div class="sticky-nav">
-    {% if page > 1 %}
-        <a
-                href="#"
-                onclick="saveAndGo(1, {{ count }}, '{{ folder_name }}')"
-        >⏮ Anfang</a
-        >
-        <a
-                href="#"
-                onclick="saveAndGo({{ page - 1 }}, {{ count }}, '{{ folder_name }}')"
-        >⬅ Zurück</a
-        >
-    {% else %}
-        <span style="color: #ccc">⏮ Anfang</span>
-        <span style="color: #ccc">⬅ Zurück</span>
-    {% endif %}
-    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
-        <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ folder_name }}')">
-            ➗2
-        </button>
+    <div class="nav-section nav-left">
+        {% if page > 1 %}
+            <a href="#"
+               class="nav-link"
+               onclick="saveAndGo(1, {{ count }}, '{{ folder_name }}')">
+                ⏮ Anfang
+            </a>
+            <a href="#"
+               class="nav-link"
+               onclick="saveAndGo({{ page - 1 }}, {{ count }}, '{{ folder_name }}')">
+                ⬅ Zurück
+            </a>
+        {% else %}
+            <span class="nav-link nav-link-disabled">⏮ Anfang</span>
+            <span class="nav-link nav-link-disabled">⬅ Zurück</span>
+        {% endif %}
     </div>
-    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
-        <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ folder_name }}')">
-            ➖
+
+    <div class="nav-section nav-center">
+        {% if lastcall %}
+            <button class="nav-btn nav-btn-icon"
+                    title="Zurück zur letzten Ansicht"
+                    onclick="window.location.href='{{ lastcall }}'">
+                ↩️
+            </button>
+        {% endif %}
+
+        <span class="nav-folder">
+            {{ kategorien | selectattr("key", "eq", folder_name) | map(attribute="label") | first }}
+        </span>
+
+        <button class="nav-btn nav-btn-primary"
+                onclick="saveAndGoRefresh({{ page }}, {{ count }}, '{{ folder_name }}')">
+            {% if filter_text %}⚡{% endif %}{% if search_text %}⚡{% endif %}
+            Seite {{ page }} von {{ total_pages }} ({{ total_images }})
         </button>
     </div>
 
-    {% if lastcall %}
-        <button onclick="window.location.href='{{ lastcall }}'" style="margin:1em;">↩️</button>
-    {% endif %}
-    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
-        <span style="font-weight: bold;">{{ kategorien | selectattr("key", "eq", folder_name) | map(attribute="label") | first }} </span>
-        <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGoRefresh({{ page }}, {{ count }}, '{{ folder_name }}')">
-            {% if filter_text %}⚡ {% endif %} {% if search_text %}⚡ {% endif %} Seite {{ page }} von {{ total_pages }}
-            ({{ total_images }})
-        </button>
+    <div class="nav-section nav-right">
+        <div class="nav-count-buttons">
+            <button class="nav-btn nav-btn-ghost"
+                    title="Anzahl halbieren"
+                    onclick="saveAndGo({{ page }}, {{ (count // 2) if count > 1 else 1 }}, '{{ folder_name }}')">
+                ➗2
+            </button>
+            <button class="nav-btn nav-btn-ghost"
+                    title="Anzahl -1"
+                    onclick="saveAndGo({{ page }}, {{ (count - 1) if count > 1 else 1 }}, '{{ folder_name }}')">
+                ➖
+            </button>
+            <button class="nav-btn nav-btn-ghost"
+                    title="Anzahl +1"
+                    onclick="saveAndGo({{ page }}, {{ count + 1 }}, '{{ folder_name }}')">
+                ➕
+            </button>
+            <button class="nav-btn nav-btn-ghost"
+                    title="Anzahl verdoppeln"
+                    onclick="saveAndGo({{ page }}, {{ count * 2 }}, '{{ folder_name }}')">
+                ✖️2
+            </button>
+        </div>
+
+        <div class="nav-right-links">
+            {% if page < total_pages %}
+                <a href="#"
+                   class="nav-link"
+                   onclick="saveAndGo({{ page + 1 }}, {{ count }}, '{{ folder_name }}')">
+                    Weiter ➡
+                </a>
+                <a href="#"
+                   class="nav-link"
+                   onclick="saveAndGo({{ total_pages }}, {{ count }}, '{{ folder_name }}')">
+                    ⏭ Ende
+                </a>
+            {% else %}
+                <span class="nav-link nav-link-disabled">Weiter ➡</span>
+                <span class="nav-link nav-link-disabled">⏭ Ende</span>
+            {% endif %}
+        </div>
     </div>
-    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
-        <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ page }}, {{ count + 1 }}, '{{ folder_name }}')">
-            ➕
-        </button>
-    </div>
-    <div style="display: flex; gap: 4px; margin-bottom: 4px; align-items: center;">
-        <button style="padding: 4px 8px; font-size: 12px;"
-                onclick="saveAndGo({{ page }}, {{ count * 2 }}, '{{ folder_name }}')">
-            ✖️2
-        </button>
-    </div>
-    {% if page < total_pages %}
-        <a
-                href="#"
-                onclick="saveAndGo({{ page + 1 }}, {{ count }}, '{{ folder_name }}')"
-        >Weiter ➡</a
-        >
-        <a
-                href="#"
-                onclick="saveAndGo({{ total_pages }}, {{ count }}, '{{ folder_name }}')"
-        >⏭ Ende</a
-        >
-    {% else %}
-        <span style="color: #ccc">Weiter ➡</span>
-        <span style="color: #ccc">⏭ Ende</span>
-    {% endif %}
 </div>
 
 <div class="grid">{{ images_html | safe }}</div>
@@ -510,579 +227,7 @@
     </div>
 </div>
 
-<script src="https://unpkg.com/@panzoom/panzoom/dist/panzoom.min.js"></script>
-<script>
-    const TEXTFLAG = "{{ textflag }}";
-    const PAGE = parseInt("{{ page }}");
-    const COUNT = parseInt("{{ count }}");
-    const FOLDER = "{{ folder_name }}";
+{% include "image_gallery_local_scripts.j2" %}
 
-    const kategorien = {{ kategorien | tojson }};
-
-    function toggleConfigSection() {
-        const section = document.getElementById("configSection");
-        if (!section) return;
-        section.classList.toggle("show");
-    }
-
-    document.getElementById("configForm").addEventListener("change", function (e) {
-        if (e.target.name === "textOption") {
-            const newFlag = e.target.value;
-            const url = new URL(window.location.href);
-            url.searchParams.set("page", PAGE);
-            url.searchParams.set("count", COUNT);
-            url.searchParams.set("folder", FOLDER);
-            url.searchParams.set("textflag", newFlag);
-            window.location.href = url.toString();
-        }
-    });
-
-    let panzoomInstance;
-
-    function openModal(image_name) {
-        const modal = document.getElementById("meinModal");
-        const img = document.getElementById("zoomImage");
-        const spinner = document.getElementById("spinner");
-
-        spinner.style.display = "block"; // Spinner zeigen
-
-        img.onload = () => {
-            spinner.style.display = "none"; // Spinner verstecken
-            modal.style.display = "flex";
-
-            if (panzoomInstance) panzoomInstance.destroy();
-            panzoomInstance = Panzoom(img, {
-                maxScale: 5,
-                minScale: 1,
-                contain: 'outside'
-            });
-
-            img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
-            img.addEventListener('dblclick', () => panzoomInstance.reset());
-        };
-
-        img.src = "/gallery/static/imagefiles/" + image_name;
-    }
-
-    function openModalThumb(image_pfad) {
-        const modal = document.getElementById("meinModal");
-        const img = document.getElementById("zoomImage");
-        const spinner = document.getElementById("spinner");
-
-        spinner.style.display = "block"; // Spinner zeigen
-
-        img.onload = () => {
-            spinner.style.display = "none"; // Spinner verstecken
-            modal.style.display = "flex";
-
-            if (panzoomInstance) panzoomInstance.destroy();
-            panzoomInstance = Panzoom(img, {
-                maxScale: 5,
-                minScale: 1,
-                contain: 'outside'
-            });
-
-            img.addEventListener('wheel', panzoomInstance.zoomWithWheel);
-            img.addEventListener('dblclick', () => panzoomInstance.reset());
-        };
-
-        img.src = image_pfad
-    }
-
-    function closeModal() {
-        const modal = document.getElementById("meinModal");
-        const img = document.getElementById("zoomImage");
-        modal.style.display = "none";
-        img.src = "";
-        if (panzoomInstance) panzoomInstance.destroy();
-    }
-
-    document.addEventListener('keydown', function (e) {
-        if (e.key === "Escape") closeModal();
-    });
-
-    function save() {
-        return Array.from(document.querySelectorAll("form.checkbox-container")).map(
-            (form) => {
-                const entry = {};
-                // Extrahiere image_id aus dem Formular
-                entry.image_id = form.querySelector('[name="image_id"]').value;
-
-                // Gehe durch alle Kategorien und speichere die Checkbox-Werte
-                kategorien.forEach((cat) => {
-                    // Name der Checkbox angepasst an das Format img_5242.jpg_<key>
-                    const box = form.querySelector(
-                        `[name="${entry.image_id}_${cat.key}"]`
-                    );
-                    entry[cat.key] = box && box.checked ? "on" : ""; // 'on' wenn angekreuzt, sonst leer
-                });
-
-                // Notiz extrahieren
-                entry.notiz = form.querySelector('[name="notiz"]')?.value || "";
-                return entry;
-            }
-        );
-    }
-
-    function saveAndGoName(image_name) {
-        saveAndGo(PAGE, COUNT, FOLDER, image_name)
-    }
-
-    function saveAndGoRefresh(targetPage, count, folder, image_name) {
-        saveAndGo(targetPage, count, folder, image_name)
-        refresh_count()
-    }
-
-    function saveAndGo(targetPage, count, folder, image_name) {
-        data = save()
-
-        // Sende die Daten an den Server
-        Promise.all(
-            data.map((entry) =>
-                fetch("/gallery/save", {
-                    method: "POST",
-                    headers: {"Content-Type": "application/x-www-form-urlencoded"},
-                    body: new URLSearchParams(entry),
-                })
-            )
-        )
-            .then(() => {
-                const url = new URL(window.location.href);
-
-                // Alle vorhandenen Suchparameter entfernen
-                url.search = '';
-
-                if (image_name) {
-                    url.pathname = '/gallery/images';
-                    url.searchParams.set("image_name", image_name);
-
-                } else {
-                    url.pathname = '/gallery/';
-                }
-
-                url.searchParams.set("page", targetPage);
-                url.searchParams.set("count", count);
-                if (COUNT !== parseInt(count)) {
-                    url.searchParams.set("lastindex", PAGE * COUNT);
-                }
-                url.searchParams.set("folder", folder);
-                url.searchParams.set("textflag", TEXTFLAG);
-                window.location.href = url.toString();
-            })
-            .catch((err) => {
-                alert("Fehler beim Speichern!");
-                console.error(err);
-            });
-    }
-
-    function gotoPage() {
-        const input = document.getElementById("gotoPageInput");
-        const page = parseInt(input.value);
-        if (!page || page < 1 || page > {{ total_pages }}) {
-            alert("Ungültige Seitenzahl (1–{{ total_pages }})");
-            return;
-        }
-        toggleMenu();
-        saveAndGo(page, {{ count }}, "{{ folder_name }}");
-    }
-
-    document.getElementById("gotoPageInput").addEventListener("keydown", function (e) {
-        if (e.key === "Enter") {
-            e.preventDefault();
-            gotoPage();
-        }
-    });
-
-    function toggleMenu() {
-        const menu = document.getElementById("menu");
-        const visible = menu.style.display === "block";
-        menu.style.display = visible ? "none" : "block";
-        localStorage.setItem("menuOpen", !visible);
-    }
-
-    function logout() {
-        // Menü ausblenden
-        const menu = document.getElementById("menu");
-        menu.style.display = "none";
-        localStorage.setItem("menuOpen", false);
-
-        const url = new URL(window.location.href);
-        url.pathname = "/gallery/logout";
-        window.location.href = url.toString();
-    }
-
-    function dashboard() {
-        // Menü ausblenden
-        const menu = document.getElementById("menu");
-        menu.style.display = "none";
-        localStorage.setItem("menuOpen", false);
-
-        const url = new URL(window.location.href);
-        url.pathname = "/gallery/dashboard";
-        window.location.href = url.toString();
-    }
-
-    function navigateToFolder(kategorien, cat, count) {
-        // Menü ausblenden
-        const menu = document.getElementById("menu");
-        menu.style.display = "none";
-        localStorage.setItem("menuOpen", false);
-
-        // URL neu setzen
-        const url = new URL(window.location.href);
-
-        // Werte setzen (page und count hier neu festlegen!)
-        url.searchParams.set("page", 1); // beim Ordnerwechsel immer auf Seite 1
-        url.searchParams.set("count", count); // kannst du ggf. anpassen
-        url.searchParams.set("folder", cat); // der neue Folder
-        url.searchParams.set("textflag", TEXTFLAG);
-
-        window.location.href = url.toString(); // Seite neu laden
-    }
-
-    function moveToFolder(kategorien, cat) {
-        const labelMap = Object.fromEntries(
-            kategorien.map((k) => [k.key, k.label])
-        );
-
-        fetch(`/gallery/moveToFolder/${cat}`)
-            .then((res) => res.json())
-            .then((data) => {
-                const count = data.count;
-
-                if (count === 0) {
-                    alert(`Keine Bilder zum ${labelMap[cat]} vorhanden.`);
-                    return;
-                }
-
-                const ok = confirm(
-                    `${count} Bild(er) würden nach '${labelMap[cat]}' verschoben. Fortfahren?`
-                );
-
-                if (ok) {
-                    const currentParams = new URLSearchParams(window.location.search);
-                    const countValue = currentParams.get("count") || "6";
-                    const orgfolder = currentParams.get("folder") || "real";
-
-                    let moveUrl = `/gallery/moveToFolder/${cat}?count=${countValue}&folder=${orgfolder}&textflag=${TEXTFLAG}`;
-
-                    fetch(moveUrl, {
-                        method: "POST"
-                    })
-                        .then((res) => res.json())
-                        .then((response) => {
-                            localStorage.setItem("menuOpen", "false");
-                            const moved = response.moved || 0;
-                            const targetUrl = `?page=1&count=${countValue}&folder=${cat}&textflag=${TEXTFLAG}&done=${cat}&moved=${moved}`;
-                            window.location.href = targetUrl;
-                        })
-                        .catch((err) => {
-                            console.error("Fehler beim POST:", err);
-                            alert("❌ Beim Verschieben ist ein Fehler aufgetreten.");
-                        });
-                }
-            });
-    }
-
-    function refresh_count() {
-        // Zähler für Kategorien aktualisieren
-        if (typeof kategorien !== "undefined") {
-            kategorien.forEach((cat) => {
-                fetch(`/gallery/verarbeite/check/${cat.key}`)
-                    .then((res) => res.json())
-                    .then((data) => {
-                        const elem = document.getElementById(`count-${cat.key}`);
-                        if (elem) elem.textContent = data.count;
-                    });
-            });
-        }
-    }
-
-    window.addEventListener("DOMContentLoaded", () => {
-        const menu = document.getElementById("menu");
-        const params = new URLSearchParams(window.location.search);
-        const done = params.get("done");
-
-        if (done) {
-            const moved = params.get("moved");
-            const msg = document.createElement("div");
-            msg.innerText = moved
-                ? `✅ ${moved} Bild(er) wurden nach '${done}' verschoben.`
-                : `✅ Bilder wurden nach '${done}' verschoben.`;
-
-            // Entferne done und moved aus der URL, ohne Seite neu zu laden
-            const cleanParams = new URLSearchParams(window.location.search);
-            cleanParams.delete("done");
-            cleanParams.delete("moved");
-            const newUrl = `${window.location.pathname}?${cleanParams.toString()}`;
-            window.history.replaceState({}, document.title, newUrl);
-
-            localStorage.setItem("menuOpen", "false");
-            menu.style.display = "none";
-        } else {
-            const saved = localStorage.getItem("menuOpen");
-            menu.style.display = saved === "true" ? "block" : "none";
-        }
-
-        refresh_count()
-
-    });
-
-    function selectCategory(cat) {
-        const menu = document.getElementById("menu");
-        menu.style.display = "none";
-        localStorage.setItem("menuOpen", false);
-        document.querySelectorAll('.checkbox-container input[type="checkbox"][name$="_' + cat + '"]').forEach(cb => cb.checked = true);
-        saveAndGoRefresh(PAGE, COUNT, FOLDER);
-    }
-
-    function deselectAll() {
-        const menu = document.getElementById("menu");
-        menu.style.display = "none";
-        localStorage.setItem("menuOpen", false);
-        document.querySelectorAll('.checkbox-container input[type="checkbox"]').forEach(cb => cb.checked = false);
-        saveAndGoRefresh(PAGE, COUNT, FOLDER);
-    }
-
-    function updateFilterText(updateHistory = false) {
-        const inputElement = document.getElementById('newTextInput');
-        const text = inputElement.value.trim();
-
-        if (updateHistory && text === undefined) return;
-
-        const formData = new FormData();
-        formData.append('text', text);
-
-        fetch('/gallery/filter/update_history', {
-            method: 'POST',
-            body: formData
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    if (updateHistory) {
-                        const datalist = document.getElementById('textHistory');
-                        datalist.innerHTML = data.last_texts
-                            .map(t => `<option value="${t}">`)
-                            .join('');
-                    }
-
-                    const menu = document.getElementById("menu");
-                    menu.style.display = "none";
-                    localStorage.setItem("menuOpen", false);
-
-                    // Seite neu laden
-                    const url = new URL(window.location.href);
-                    url.searchParams.set("page", PAGE);
-                    url.searchParams.set("count", COUNT);
-                    url.searchParams.set("folder", FOLDER);
-                    url.searchParams.set("textflag", TEXTFLAG);
-                    window.location.href = url.toString();
-                } else {
-                    // Fehlermeldung für 5 Sekunden anzeigen
-                    showMessage(data.status, true, 5000);
-                }
-            });
-    }
-
-    const inputfilter = document.getElementById('newTextInput');
-    inputfilter.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') {
-            submitFilterText();
-            event.preventDefault();
-        }
-    });
-
-    function setFilterText(text) {
-        const inputElement = document.getElementById('newTextInput');
-        const menu = document.getElementById("menu");
-
-        // Nur wenn das Menü sichtbar ist
-        if (menu.style.display === "block" && inputElement) {
-            inputElement.value = text;
-            submitFilterText(); // Direkt submitten
-        }
-    }
-
-    // Wrapper-Funktion für die Historie-Funktionalität
-    function submitFilterText() {
-        updateFilterText(true);
-    }
-
-    function updateSearchText(updateHistory = false) {
-        const inputElement = document.getElementById('searchInput');
-        const text = inputElement.value.trim();
-
-        if (updateHistory && text === undefined) return;
-
-        const formData = new FormData();
-        formData.append('text', text);
-
-        fetch('/gallery/search/update_history', {
-            method: 'POST',
-            body: formData
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    if (updateHistory) {
-                        const datalist = document.getElementById('searchHistory');
-                        datalist.innerHTML = data.search_history
-                            .map(t => `<option value="${t}">`)
-                            .join('');
-                    }
-
-                    const menu = document.getElementById("menu");
-                    menu.style.display = "none";
-                    localStorage.setItem("menuOpen", false);
-
-                    // Seite neu laden
-                    const url = new URL(window.location.href);
-                    url.searchParams.set("page", PAGE);
-                    url.searchParams.set("count", COUNT);
-                    url.searchParams.set("folder", FOLDER);
-                    url.searchParams.set("textflag", TEXTFLAG);
-                    window.location.href = url.toString();
-                } else {
-                    // Fehlermeldung für 5 Sekunden anzeigen
-                    showMessage(data.status, true, 5000);
-                }
-            });
-    }
-
-    const inputsearch = document.getElementById('searchInput');
-    inputsearch.addEventListener('keypress', (event) => {
-        if (event.key === 'Enter') {
-            submitSearchText();
-            event.preventDefault();
-        }
-    });
-
-    function setSearchText(text) {
-        const inputElement = document.getElementById('searchInput');
-        const menu = document.getElementById("menu");
-
-        // Nur wenn das Menü sichtbar ist
-        if (menu.style.display === "block" && inputElement) {
-            inputElement.value = text;
-            submitSearchText(); // Direkt submitten
-        }
-    }
-
-    // Wrapper-Funktion für die Historie-Funktionalität
-    function submitSearchText() {
-        updateSearchText(true);
-    }
-
-    // Click-Handler für die Balken bei Seitenladung hinzufügen
-    document.addEventListener('DOMContentLoaded', () => {
-        document.querySelectorAll('.nsfw_quality-bar').forEach(bar => {
-            bar.style.cursor = 'pointer';
-            bar.addEventListener('click', function () {  // this bezieht sich jetzt auf das bar-Element
-                const text = this.getAttribute('data-tooltip');
-                if (text) {
-                    setFilterText(text);
-                }
-            });
-        });
-    });
-
-    function showMessage(message, isError = false, duration = 2500) {
-        const msg = document.createElement("div");
-        msg.innerText = message;
-        msg.style.position = "fixed";
-        msg.style.top = "10px";
-        msg.style.right = "10px";
-        msg.style.padding = "10px 20px";
-        msg.style.color = "white";
-        msg.style.borderRadius = "8px";
-        msg.style.zIndex = 1000;
-        msg.style.background = isError ? "#ff4444" : "#4caf50";  // Rot für Fehler, Grün für Erfolg
-
-        document.body.appendChild(msg);
-
-        setTimeout(() => {
-            msg.remove();
-        }, duration);
-
-        return msg; // Falls wir die Referenz später noch brauchen
-    }
-
-    function move(folder, image_name) {
-        // Use the global constants instead of getting from URL
-        const url = `/gallery/moveToFolder/${folder}/${image_name}?folder=${FOLDER}&count=${COUNT}&page=${PAGE}&textflag=${TEXTFLAG}`;
-
-        fetch(url, {
-            method: 'POST'
-        })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    if (data.redirect) {
-                        window.location.href = data.redirect;
-                    }
-                } else {
-                    console.error('Error moving file:', data.message);
-                    alert('Error moving file: ' + (data.message || 'Unknown error'));
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Error moving file: ' + error);
-            });
-    }
-
-    function handleCheckboxChange(checkbox) {
-        const group = checkbox.dataset.group;
-        const checkboxes = document.querySelectorAll(`input[data-group="${group}"]`);
-
-        if (checkbox.checked) {
-            checkboxes.forEach(cb => {
-                if (cb !== checkbox) {
-                    cb.checked = false;
-                }
-            });
-        }
-
-        const formData = new FormData();
-        formData.append('image_id', checkbox.name.split('_')[0]);
-        checkboxes.forEach(cb => {
-            formData.append(cb.name, cb.checked);
-        });
-
-        fetch('/gallery/save', {
-            method: 'POST',
-            body: formData
-        });
-    }
-
-    // Funktion zum Speichern der Gen-Anzahl
-    function saveGenCount(imageId, count) {
-        fetch(
-            `/gallery/savegencount?image_id=${imageId}&comfyui_count=${count}`,
-            {method: 'POST'}
-        )
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'ok') {
-                    console.log('Gen-Anzahl gespeichert:', data);
-                    const url = new URL(window.location.href);
-                    url.searchParams.set("page", PAGE);
-                    url.searchParams.set("count", COUNT);
-                    url.searchParams.set("folder", FOLDER);
-                    url.searchParams.set("textflag", TEXTFLAG);
-                    window.location.href = url.toString();
-                } else {
-                    console.error('Fehler beim Speichern:', data.message || data.detail);
-                    alert('Fehler beim Speichern: ' + (data.message || data.detail || 'Unbekannter Fehler'));
-                }
-            })
-            .catch(error => {
-                console.error('Netzwerkfehler:', error);
-                alert('Netzwerkfehler: ' + error);
-            });
-    }
-
-</script>
 </body>
 </html>
