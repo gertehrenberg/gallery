@@ -21,7 +21,7 @@
         border: 1px solid #1f2937;
         border-radius: 12px;
         padding: 10px;
-        box-shadow: 0 16px 35px rgba(0,0,0,0.65);
+        box-shadow: 0 16px 35px rgba(0, 0, 0, 0.65);
         display: flex;
         flex-direction: column;
         gap: 10px;
@@ -40,7 +40,7 @@
         height: auto;
         border-radius: 8px;
         cursor: pointer;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.6);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6);
     }
 
     .checkbox-container {
@@ -86,7 +86,7 @@
     .sticky-nav {
         position: sticky;
         top: 0;
-        background: rgba(2,6,23,0.9);
+        background: rgba(2, 6, 23, 0.9);
         padding: 8px 20px;
         border-bottom: 1px solid #1f2937;
         text-align: center;
@@ -172,7 +172,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background: rgba(15,23,42,0.95);
+        background: rgba(15, 23, 42, 0.95);
         display: none;
         justify-content: center;
         align-items: center;
@@ -184,7 +184,7 @@
         object-fit: contain;
         display: block;
         margin: auto;
-        box-shadow: 0 20px 45px rgba(0,0,0,0.9);
+        box-shadow: 0 20px 45px rgba(0, 0, 0, 0.9);
         border-radius: 12px;
         background: #020617;
     }
@@ -196,7 +196,7 @@
         z-index: 10001;
         font-size: 28px;
         color: #e5e7eb;
-        background: rgba(15,23,42,0.8);
+        background: rgba(15, 23, 42, 0.8);
         border: 1px solid #1f2937;
         padding: 6px 12px;
         border-radius: 999px;
@@ -227,8 +227,12 @@
     }
 
     @keyframes spin {
-        0% { transform: translate(-50%, -50%) rotate(0deg); }
-        100% { transform: translate(-50%, -50%) rotate(360deg); }
+        0% {
+            transform: translate(-50%, -50%) rotate(0deg);
+        }
+        100% {
+            transform: translate(-50%, -50%) rotate(360deg);
+        }
     }
 
     .thumbnail-mini {
@@ -310,7 +314,7 @@
         font-weight: normal;
         line-height: 1;
         z-index: 2;
-        text-shadow: 0 0 4px rgba(0,0,0,0.7);
+        text-shadow: 0 0 4px rgba(0, 0, 0, 0.7);
     }
 
     .nsfw_quality-bar::after {
@@ -319,7 +323,7 @@
         right: -5px;
         top: 50%;
         transform: translateY(-50%);
-        background: rgba(15,23,42,0.95);
+        background: rgba(15, 23, 42, 0.95);
         color: #f9fafb;
         padding: 3px 8px;
         border-radius: 4px;
@@ -329,7 +333,7 @@
         opacity: 0;
         transition: opacity 0.2s ease-in-out;
         pointer-events: none;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.6);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
     }
 
     .nsfw_quality-bar:hover::after {
@@ -352,7 +356,7 @@
     .menu-panel {
         margin-top: 8px;
         background: #020617;
-        box-shadow: 0 22px 50px rgba(0,0,0,0.9);
+        box-shadow: 0 22px 50px rgba(0, 0, 0, 0.9);
         border-radius: 14px;
         padding: 10px 10px 12px;
         border: 1px solid #1f2937;
@@ -405,7 +409,7 @@
     .menu-input:focus {
         outline: none;
         border-color: #38bdf8;
-        box-shadow: 0 0 0 1px rgba(56,189,248,0.6);
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.6);
     }
 
     .menu-input-small {
@@ -438,7 +442,7 @@
     .menu-icon:hover {
         transform: translateY(-1px) scale(1.05);
         background: #030712;
-        filter: drop-shadow(0 0 6px rgba(148,163,184,0.8));
+        filter: drop-shadow(0 0 6px rgba(148, 163, 184, 0.8));
     }
 
     .menu-goto-row {
@@ -532,7 +536,52 @@
     }
 
     .hamburger-btn {
-        box-shadow: 0 10px 25px rgba(0,0,0,0.7);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7);
         font-size: 0.9rem;
     }
+
+    /* --- FIX: Navigation sauber ausrichten --- */
+
+    /* Alle drei Bereiche exakt mittig ausrichten */
+    .sticky-nav {
+        display: flex;
+        align-items: center;
+    }
+
+    /* Jede Sektion ebenfalls sauber zentrieren */
+    .nav-section {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    /* Einheitliche Höhe für alle Navigationselemente */
+    .nav-btn,
+    .nav-link,
+    .nav-folder,
+    .nav-btn-primary,
+    .nav-btn-ghost,
+    .nav-btn-icon {
+        height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding-top: 0;
+        padding-bottom: 0;
+        line-height: 1;
+    }
+
+    /* Icon-Buttons quadratisch halten */
+    .nav-btn-icon {
+        width: 32px;
+        padding: 0;
+    }
+
+    /* Center-Button mit Text — horizontales Padding ok */
+    .nav-btn-primary {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+
+
 </style>

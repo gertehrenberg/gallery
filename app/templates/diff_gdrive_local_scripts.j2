@@ -35,12 +35,24 @@
         document.getElementById("progressBox").style.display = "block";
         document.getElementById("reloadBtn").disabled = true;
 
-        fetch("/gallery/diff_gdrive_local_start", {method: "POST"})
-            .then(() => {
-                if (!progressTimer)
-                    progressTimer = setInterval(updateProgress, 200);
-            });
+        // 🔥 Kategorien einsammeln
+        const selectedCats = [];
+        document.querySelectorAll(".cat-check").forEach(cb => {
+            if (cb.checked) {
+                selectedCats.push(cb.dataset.cat);
+            }
+        });
+
+        fetch("/gallery/diff_gdrive_local_start", {
+            method: "POST",
+            headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({categories: selectedCats})
+        }).then(() => {
+            if (!progressTimer)
+                progressTimer = setInterval(updateProgress, 200);
+        });
     }
+
 </script>
 
 <div id="meinModal"
@@ -150,8 +162,24 @@
             return;
         }
 
+// 👉 Kategorie-Checkboxen hinzufügen
+        document.querySelectorAll('.cat-check').forEach(cb => {
+            if (cb.checked) {
+                const hidden = document.createElement("input");
+                hidden.type = "hidden";
+                hidden.name = "active_categories";
+                hidden.value = cb.dataset.cat;
+                form.appendChild(hidden);
+            }
+        });
         // OK → Formular absenden
         form.submit();
+    }
+
+    function toggleCategory(folderName) {
+        const groupBox = document.querySelector("input[data-cat='" + folderName + "']");
+        const boxes = document.querySelectorAll("input[data-folder='" + folderName + "']");
+        boxes.forEach(b => b.checked = groupBox.checked);
     }
 
 </script>

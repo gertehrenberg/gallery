@@ -1,14 +1,40 @@
 <form id="diffForm" action="/gallery/diff_gdrive_local_delete" method="post">
 
     <div class="sticky-bar">
-        <button type="button" class="btn btn-blue" onclick="window.location.href='/gallery/dashboard'">📊 Dashboard
+        <button type="button" class="btn btn-blue" onclick="window.location.href='/gallery/dashboard'">
+            📊 Dashboard
         </button>
-        <button id="reloadBtn" type="button" class="btn btn-orange" onclick="startReload()">🔄 Neu laden</button>
-        {#        <button id="fillGeminiBtn" type="button" class="btn btn-orange" onclick="fillGemini(50)">50 Gemini checken</button>#}
-        <button id="deleteBtn" type="button" class="btn btn-red" onclick="checkAndSubmit()">🗑/🔁/✏️ Ausführen</button>
+
+        <button id="reloadBtn" type="button" class="btn btn-orange" onclick="startReload()">
+            🔄 Neu laden
+        </button>
+
+        <button id="deleteBtn" type="button" class="btn btn-red" onclick="checkAndSubmit()">
+            🗑/🔁/✏️ Ausführen
+        </button>
+
+        <div class="category-bar">
+            {% for cat in categories %}
+                <label class="cat-pill"
+                       data-folder="{{ cat.key }}"
+                       title="{{ cat.label }}">   <!-- 👈 HIER: HINT -->
+
+                    <input type="checkbox"
+                           class="cat-check"
+                           data-cat="{{ cat.key }}"
+                           onclick="toggleCategory('{{ cat.key }}')"
+                           checked>
+
+                    <span class="icon">{{ cat.icon }}</span>
+                </label>
+            {% endfor %}
+        </div>
     </div>
 
-    <!-- PROGRESS -->
+    <!-- ============================= -->
+    <!--          PROGRESS             -->
+    <!-- ============================= -->
+
     <div id="progressBox" style="display:none;">
         <div id="progressText" style="font-weight:bold;">Starte…</div>
         <div class="progress-bar-bg">
@@ -21,6 +47,10 @@
     </div>
 
     <h2>Diff Tabelle</h2>
+
+    <!-- ============================= -->
+    <!--          TABELLE              -->
+    <!-- ============================= -->
 
     <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
         <thead>
@@ -43,18 +73,17 @@
             {% for col in filename_collisions %}
                 <tr style="background:#ffe0e0;">
                     <td colspan="6" style="padding:10px;">
-                        <b>🔥 Konflikt: Varianten: {{ col.md5_list|length }} — {{ col.local|length }}x
-                            local, {{ col.gdrive|length }}x gdrive
+                        <b>🔥 Konflikt: Varianten: {{ col.md5_list|length }} —
+                            {{ col.local|length }}x local, {{ col.gdrive|length }}x gdrive
                         </b>
                     </td>
                 </tr>
 
-                <!-- Lokale Versionen -->
                 {% for l in col.local %}
                     <tr>
                         <td class="center">
-                            <input type="checkbox" name="unique_filename_ids" value="{{ l.path }}"
-                                   data-folder="{{ l.folder }}">
+                            <input type="checkbox" name="unique_filename_ids"
+                                   value="{{ l.path }}" data-folder="{{ l.folder }}">
                         </td>
                         <td class="center"></td>
                         <td class="center">
@@ -74,12 +103,11 @@
                     </tr>
                 {% endfor %}
 
-                <!-- GDrive Versionen -->
                 {% for g in col.gdrive %}
                     <tr>
                         <td class="center">
-                            <input type="checkbox" name="unique_filename_ids" value="{{ g.id }}"
-                                   data-folder="{{ g.folder }}">
+                            <input type="checkbox" name="unique_filename_ids"
+                                   value="{{ g.id }}" data-folder="{{ g.folder }}">
                         </td>
                         <td class="center"></td>
                         <td class="center">
@@ -103,28 +131,22 @@
         {% endif %}
 
         <!-- ========================================================= -->
-        <!--   1) UNGÜLTIGE NAMEN – IMMER OBEN                         -->
+        <!--   1) UNGÜLTIGE NAMEN                                      -->
         <!-- ========================================================= -->
         {% for n in invalid_names %}
             <tr style="background:#fff3cd;">
-                <!-- ✏️ rename -->
                 {% if n.source == "local" %}
                     <td class="center">
-                        <input type="checkbox"
-                               name="rename_ids"
-                               value="{{ n.uid }}">
+                        <input type="checkbox" name="rename_ids" value="{{ n.uid }}">
                     </td>
                     <td class="center"></td>
                     <td class="center">
-                        <input type="checkbox"
-                               name="delete_ids"
-                               value="{{ n.path }}">
+                        <input type="checkbox" name="delete_ids" value="{{ n.path }}">
                     </td>
                     <td>
                         <img class="thumb"
                              src="/gallery/static/thumbnails/{{ n.md5 }}.png"
-                             onclick="openModal('{{ n.folder }}/{{ n.orig_name }}')"
-                             style="cursor:pointer;">
+                             onclick="openModal('{{ n.folder }}/{{ n.orig_name }}')">
                     </td>
                     <td>
                         <div>{{ n.folder }}</div>
@@ -134,20 +156,15 @@
                     </td>
                 {% else %}
                     <td class="center">
-                        <input type="checkbox"
-                               name="rename_ids"
-                               value="{{ n.id }}">
+                        <input type="checkbox" name="rename_ids" value="{{ n.id }}">
                     </td>
                     <td class="center"></td>
                     <td class="center">
-                        <input type="checkbox"
-                               name="delete_ids"
-                               value="{{ n.id }}">
+                        <input type="checkbox" name="delete_ids" value="{{ n.id }}">
                     </td>
                     <td>
                         <img class="thumb"
                              src="https://drive.google.com/thumbnail?id={{ n.id }}&sz=w200"
-                             style="cursor:pointer;"
                              onclick="openModalGdrive('{{ n.id }}')">
                     </td>
                     <td>
@@ -166,81 +183,57 @@
         <!-- ========================================================= -->
         {% for m in invalid_md5 %}
             <tr style="background:#ffe0e0;">
-                <td colspan="6"
-                    style="font-weight:bold; padding-top:12px; padding-bottom:12px;">
+                <td colspan="6" style="font-weight:bold; padding:12px;">
                     MD5: {{ m.md5 }} — {{ m.status }}
                 </td>
             </tr>
 
-            <!-- ---------- GDRIVE FILES ---------- -->
             {% for g in m.gdrive %}
                 <tr>
-
                     <td class="center"></td>
-
-                    <!-- 🔁 sync wenn keine local Datei -->
                     <td class="center">
                         {% if m.local|length == 0 %}
                             <input type="checkbox" name="sync_ids" value="{{ g.id }}">
                         {% endif %}
                     </td>
-
-                    <!-- 🗑 delete -->
                     <td class="center">
                         <input type="checkbox" name="delete_ids" value="{{ g.id }}">
                     </td>
-
-                    <!-- Bild mit Vollbild-Link -->
                     <td>
                         <img class="thumb"
                              src="https://drive.google.com/thumbnail?id={{ g.id }}&sz=w200"
-                             style="cursor:pointer;"
                              onclick="openModalGdrive('{{ g.id }}')">
                     </td>
-
                     <td>
                         <div>{{ g.folder }}</div>
                         <div>{{ g.id }}</div>
                         <div>{{ g.name }}</div>
                     </td>
-
                     <td>GDrive</td>
                 </tr>
             {% endfor %}
 
-            <!-- ---------- LOCAL FILES ---------- -->
             {% for l in m.local %}
                 <tr>
-
-                    <!-- ✏️ rename falls invalid -->
                     <td class="center"></td>
-
-                    <!-- 🔁 sync wenn kein gdrive -->
                     <td class="center">
                         {% if m.gdrive|length == 0 %}
                             <input type="checkbox" name="sync_ids" value="{{ l.path }}">
                         {% endif %}
                     </td>
-
-                    <!-- 🗑 delete -->
                     <td class="center">
                         <input type="checkbox" name="delete_ids" value="{{ l.path }}">
                     </td>
-
-                    <!-- Lokales Bild → Modal -->
                     <td>
                         <img class="thumb"
                              src="/gallery/static/thumbnails/{{ m.md5 }}.png"
-                             onclick="openModal('{{ l.folder }}/{{ l.name }}')"
-                             style="cursor:pointer;">
+                             onclick="openModal('{{ l.folder }}/{{ l.name }}')">
                     </td>
-
                     <td>
                         <div>{{ l.folder }}</div>
                         <div>{{ l.path }}</div>
                         <div>{{ l.name }}</div>
                     </td>
-
                     <td>Lokal</td>
                 </tr>
             {% endfor %}

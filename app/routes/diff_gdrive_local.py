@@ -387,7 +387,7 @@ async def filename_collision(folder_name: str):
             })
 
 
-async def run_full_scan():
+async def run_full_scan(selected_categories=None):
     global SCAN_CACHE, GLOBAL_MD5_INDEX, processed_files, total_files
 
     reset_progress()
@@ -403,7 +403,11 @@ async def run_full_scan():
     }
 
     Settings._user_type = UserType.ADMIN
-    categories = [c["key"] for c in Settings.kategorien() if c["key"] != "XXXX"]
+
+    if not selected_categories:
+        selected_categories = [c["key"] for c in Settings.kategorien()]
+    categories = selected_categories
+
     total_categories = len(categories)
 
     processed_files = 0
@@ -497,11 +501,13 @@ async def diff_gdrive_local(request: Request):
     logger.info(f"invalid_names: {len(invalid_names)}")
     logger.info(f"filename_collisions: {len(filename_collisions)}")
 
+
+
     return templates.TemplateResponse(
         "diff_gdrive_local.j2",
         {
             "request": request,
-            "categories": categories,
+            "categories": Settings.kategorien(),
             "invalid_md5": invalid_md5,
             "invalid_names": invalid_names,
             "filename_collisions": filename_collisions,
@@ -510,11 +516,16 @@ async def diff_gdrive_local(request: Request):
     )
 
 
+from fastapi import Body
+
 @router.post("/diff_gdrive_local_start")
-async def diff_gdrive_local_start():
+async def diff_gdrive_local_start(payload: dict = Body(None)):
+    categories = payload.get("categories", [])
+    logger.info(f"Aktive Kategorien: {categories}")
+
     reset_progress()
-    asyncio.get_running_loop().create_task(run_full_scan())
-    return JSONResponse({"started": True})
+    asyncio.get_running_loop().create_task(run_full_scan(categories))
+    return JSONResponse({"started": True, "categories": categories})
 
 
 @router.get("/diff_gdrive_local_progress")
