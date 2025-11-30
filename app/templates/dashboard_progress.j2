@@ -3,49 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <title>Fortschritt</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+
+    {% include "diff_gdrive_local_css.j2" %}
 </head>
-<body class="bg-gray-100 text-gray-900 p-6">
-<!-- Header -->
-<h1 class="text-2xl font-bold mb-6">Dateiübertragung – Fortschritt</h1>
+
+<body class="page">
+
+<h1>Dateiübertragung – Fortschritt</h1>
 
 <!-- Hauptfortschritt -->
-<div class="mb-8">
-    <div class="flex justify-between items-center mb-2">
-        <div id="status" class="text-sm text-gray-700 italic">Warte auf Start...</div>
-        <div id="mainPercent" class="text-sm font-medium">0%</div>
+<div class="card">
+    <div class="card-header">
+        <h3>Status</h3>
+        <small id="mainPercent">0%</small>
     </div>
-    <div class="w-full bg-gray-200 rounded-full h-6 overflow-hidden shadow-inner">
-        <div id="progressBar"
-             class="bg-blue-600 h-6 text-white text-center text-sm leading-6 transition-all duration-300 ease-in-out"
-             style="width: 0%">
-        </div>
+
+    <div id="status" class="muted" style="margin-bottom:8px;">Warte auf Start...</div>
+
+    <div class="progress-bar-bg">
+        <div id="progressBar" class="progress-bar" style="width:0%;"></div>
     </div>
 </div>
 
 <!-- Detailfortschritt -->
-<div class="mb-8">
-    <div class="flex justify-between items-center mb-2">
-        <div id="detailStatus" class="text-sm text-gray-700">Details: -</div>
-        <div id="detailPercent" class="text-sm font-medium">0%</div>
+<div class="card">
+    <div class="card-header">
+        <h3>Details</h3>
+        <small id="detailPercent">0%</small>
     </div>
-    <div class="w-full bg-gray-200 rounded-full h-4 overflow-hidden shadow-inner">
-        <div id="detailProgressBar"
-             class="bg-green-500 h-4 transition-all duration-300 ease-in-out"
-             style="width: 0%">
-        </div>
+
+    <div id="detailStatus" class="muted" style="margin-bottom:8px;">Details: -</div>
+
+    <div class="progress-bar-bg" style="height:14px;">
+        <div id="detailProgressBar" class="detail-bar" style="width:0%;height:100%;"></div>
     </div>
 </div>
 
-<!-- Aktionsbereich -->
-<div class="flex justify-between items-center">
-    <button onclick="startTransfer()"
-            class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700
-                       transition-colors duration-200 flex items-center space-x-2 disabled:opacity-50"
-            id="startButton">
-        <span>{{ button_text }}</span>
+<!-- Button + Zeit -->
+<div class="card">
+    <button id="startButton" class="btn btn-blue" onclick="startTransfer()">
+        {{ button_text }}
     </button>
-    <div id="timeEstimate" class="text-sm text-gray-600"></div>
+    <div id="timeEstimate" class="muted" style="margin-top:8px;"></div>
 </div>
 
 <script>
@@ -53,6 +52,7 @@
     const PROGRESS_URL = "{{ progress_url }}";
     const FOLDER = "{{ folder_name }}";
     const DIRECTION = "{{ direction }}";
+
     let interval = null;
     let startTime = null;
 
@@ -66,21 +66,13 @@
         formData.append("direction", DIRECTION);
 
         try {
-            const response = await fetch(START_URL, {
-                method: "POST",
-                body: formData
-            });
+            const response = await fetch(START_URL, { method: "POST", body: formData });
+            if (!response.ok) throw new Error("HTTP " + response.status);
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+            if (!interval) interval = setInterval(updateProgress, 200);
 
-            if (!interval) {
-                interval = setInterval(updateProgress, 200);
-            }
         } catch (error) {
-            console.error("Fehler beim Starten:", error);
-            document.getElementById("status").textContent = "❌ Fehler beim Starten: " + error.message;
+            document.getElementById("status").textContent = "❌ Fehler: " + error.message;
             startButton.disabled = false;
         }
     }
@@ -90,13 +82,13 @@
 
         const elapsed = (Date.now() - startTime) / 1000;
         const total = elapsed * (100 / progress);
-        const remaining = Math.max(0, total - elapsed);
+        const remaining = total - elapsed;
 
-        const minutes = Math.floor(remaining / 60);
-        const seconds = Math.floor(remaining % 60);
+        const m = Math.floor(remaining / 60);
+        const s = Math.floor(remaining % 60);
 
         document.getElementById('timeEstimate').textContent =
-            `Geschätzte Restzeit: ${minutes}m ${seconds}s`;
+            `Geschätzte Restzeit: ${m}m ${s}s`;
     }
 
     async function updateProgress() {
@@ -104,43 +96,38 @@
             const response = await fetch(PROGRESS_URL);
             const data = await response.json();
 
-            // Hauptfortschritt aktualisieren
+            // Main progress
             const mainProgress = data.progress || 0;
-            const statusText = document.getElementById("status");
-            const progressBar = document.getElementById("progressBar");
-            const mainPercent = document.getElementById("mainPercent");
-
-            statusText.textContent = data.status;
-            progressBar.style.width = mainProgress + "%";
-            mainPercent.textContent = mainProgress + "%";
+            document.getElementById("status").textContent = data.status;
+            document.getElementById("progressBar").style.width = mainProgress + "%";
+            document.getElementById("mainPercent").textContent = mainProgress + "%";
 
             updateTimeEstimate(mainProgress);
 
-            // Detail-Fortschritt aktualisieren
+            // Details
             if (data.details) {
-                const detailStatus = document.getElementById("detailStatus");
-                const detailBar = document.getElementById("detailProgressBar");
-                const detailPercent = document.getElementById("detailPercent");
+                document.getElementById("detailStatus").textContent = data.details.status || "Details: -";
 
-                detailStatus.textContent = data.details.status || "Details: -";
                 if (data.details.progress !== undefined) {
-                    const detailProgress = data.details.progress;
-                    detailBar.style.width = detailProgress + "%";
-                    detailPercent.textContent = detailProgress + "%";
+                    const d = data.details.progress;
+                    document.getElementById("detailProgressBar").style.width = d + "%";
+                    document.getElementById("detailPercent").textContent = d + "%";
                 }
             }
 
+            // Completed
             if (data.status === "Abgeschlossen.") {
                 clearInterval(interval);
                 interval = null;
-                document.getElementById('timeEstimate').textContent = "Fertig!";
-                setTimeout(() => window.location.href = "/gallery/dashboard", 500);
+                document.getElementById("timeEstimate").textContent = "Fertig!";
+                setTimeout(() => window.location.href = "/gallery/dashboard", 600);
             }
+
         } catch (error) {
-            console.error("Fehler beim Update:", error);
-            document.getElementById("status").textContent = "⚠️ Verbindungsfehler: " + error.message;
+            document.getElementById("status").textContent = "⚠️ Fehler: " + error.message;
         }
     }
 </script>
+
 </body>
 </html>
